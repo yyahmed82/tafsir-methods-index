@@ -98,7 +98,7 @@ p { margin: 0; }
 .topbar { position: sticky; top: 0; z-index: 30; background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px);
   border-bottom: 1px solid var(--border); }
-.topbar-in { max-width: 1440px; margin: 0 auto; display: flex; align-items: center; gap: 12px;
+.topbar-in { max-width: 1600px; margin: 0 auto; display: flex; align-items: center; gap: 12px;
   padding: 10px 20px; min-height: 62px; }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--text); }
 .brand:hover { text-decoration: none; }
@@ -125,7 +125,7 @@ p { margin: 0; }
 .nav svg, .btn svg, .icon-btn svg { width: 17px; height: 17px; flex: none; }
 svg.ic { flex: none; vertical-align: -3px; }
 .kicker svg.ic, .chip svg.ic { width: 14px; height: 14px; }
-@media (min-width: 961px) { .nav a.adm span { display: none; } .nav a.adm { padding: 8px 10px; } }
+@media (min-width: 1201px) { .nav a.adm span { display: none; } .nav a.adm { padding: 8px 10px; } }
 .top-actions { display: flex; align-items: center; gap: 8px; }
 .icon-btn { width: 38px; height: 38px; display: inline-grid; place-items: center; border-radius: 10px;
   border: 1px solid var(--border); background: var(--surface); color: var(--text-2); cursor: pointer;
@@ -406,20 +406,22 @@ pre.out { background: var(--surface-2); border: 1px solid var(--border); border-
 .tabs button:hover { color: var(--text); }
 .drawer-back { display: none; }
 
-/* ---------- responsive */
-@media (max-width: 1560px) {
+/* ---------- responsive
+   The top bar needs ~1550px with every label, so it sheds detail step by step and
+   becomes a drawer at 1200px; it never wraps onto a second row. */
+@media (max-width: 1580px) {
   .brand-sub { display: none; }
   .mode-toggle .lbl { display: none; }
   .mode-toggle button { padding: 5px 9px; }
 }
-@media (max-width: 1180px) {
-  .agents { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .wires { display: none; }
-  .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 1420px) {
   .nav a { padding: 8px 10px; }
   .nav a span.lbl-opt { display: none; }
 }
-@media (max-width: 960px) {
+@media (max-width: 1260px) {
+  .badge-beta { display: none; }
+}
+@media (max-width: 1200px) {
   .menu-btn { display: inline-grid; }
   .topbar { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--surface); }
   .nav { position: fixed; top: 0; bottom: 0; inset-inline-start: 0; width: min(300px, 84vw); z-index: 50; background: var(--surface);
@@ -431,6 +433,13 @@ pre.out { background: var(--surface-2); border: 1px solid var(--border); border-
   .nav a { padding: 11px 12px; font-size: 15px; }
   .nav a span.lbl-opt { display: inline; }
   .nav .sep { width: auto; height: 1px; margin: 8px 4px; }
+}
+@media (max-width: 1180px) {
+  .agents { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .wires { display: none; }
+  .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 960px) {
   .g3, .agent-detail { grid-template-columns: 1fr; }
   .g2 { grid-template-columns: 1fr; }
   .span2 { grid-column: auto; }
