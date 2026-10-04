@@ -8,6 +8,8 @@
     --muted: #5b6b67;
     --line: #d9e0dd;
     --primary: #1f5f5b;
+    --mirqat-brand: var(--primary);
+    --mirqat-rule: var(--line);
     --matched: #2f7a4b;
     --matched-bg: #e3f3e8;
     --highlighted: #9a6b00;
@@ -29,6 +31,8 @@
       --muted: #a9b8b3;
       --line: #31403c;
       --primary: #8fd0c8;
+      --mirqat-brand: var(--primary);
+      --mirqat-rule: var(--line);
       --matched: #8ed0a6;
       --matched-bg: #173226;
       --highlighted: #e4c36a;
@@ -48,6 +52,8 @@
     --muted: #a9b8b3;
     --line: #31403c;
     --primary: #8fd0c8;
+    --mirqat-brand: var(--primary);
+    --mirqat-rule: var(--line);
     --matched: #8ed0a6;
     --matched-bg: #173226;
     --highlighted: #e4c36a;
@@ -84,6 +90,56 @@
     line-height: 1.35;
     font-weight: 600;
     margin: 0 0 0.35rem;
+  }
+
+  .brand-lockup {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+    margin: 0 0 0.35rem;
+  }
+  .brand-team {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .brand-heading {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+  }
+  .brand-rule {
+    width: 1px;
+    height: 18px;
+    margin-inline: 12px;
+    background: var(--mirqat-rule);
+    flex: 0 0 auto;
+    align-self: center;
+  }
+  .brand-product {
+    font-weight: 700;
+    font-size: 1.15rem;
+    line-height: 1.25;
+    min-width: 0;
+    color: var(--ink);
+  }
+  .brand-lockup h1 { margin: 0; }
+  .mirqat-mark {
+    width: 22px;
+    height: 28px;
+    flex: 0 0 auto;
+    color: var(--mirqat-brand);
+    display: block;
+  }
+  .mirqat-wordmark {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--mirqat-brand);
+    line-height: 1.2;
+    white-space: nowrap;
   }
 
   .subtitle {
@@ -473,13 +529,23 @@
 </style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&amp;family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&amp;display=swap">
 <div class="app" id="app" dir="rtl" lang="ar">
+  <div class="brand-lockup">
+    <span class="brand-team">
+    <svg class="mirqat-mark" viewBox="0 0 24 32" width="22" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true" focusable="false"><path d="M7 30L5 3"/><path d="M17 30L19 3"/><path d="M6.2 8.5h11.6"/><path d="M6.5 15h11"/><path d="M6.8 21.5h10.4"/><path d="M7 28h10"/></svg>
+    <span class="mirqat-wordmark">مِرْقاة</span>
+    </span>
+    <span class="brand-heading">
+    <span class="brand-rule" aria-hidden="true"></span>
+    <span class="brand-product">فهرس مناهج التفسير</span>
+    </span>
+  </div>
   <h1>شاشة المطابقة — نقطة التحكم الثانية</h1>
   <p class="subtitle">لا يحكم النظام بأن النص مطابق؛ المراجع يرى المقارنة بعينه ويقرر.</p>
   <p class="quiet">لا يُشغَّل نموذج في هذه الخطوة، ولا يُضاف مدخل جديد. القبول والرفض فعل بشري فقط.</p>
   <p class="meta">
     <span>ابن كثير · البقرة ٢:٢٥٥ · آية الكرسي</span>
     <span class="ltr" id="sha"></span>
-    <button type="button" id="theme">المظهر</button>
+    <button type="button" id="theme" aria-pressed="false" aria-label="تبديل المظهر" title="بدّل بين المظهر الفاتح والداكن">المظهر</button>
   </p>
 
   <div class="toolbar">
@@ -19935,6 +20001,9 @@
       var root = document.documentElement;
       if (state.theme === 0) root.removeAttribute("data-theme");
       else root.setAttribute("data-theme", state.theme === 1 ? "dark" : "light");
+      target.setAttribute("aria-pressed", state.theme === 1 ? "true" : "false");
+      target.setAttribute("aria-label", state.theme === 1 ? "وضع فاتح" : "وضع داكن");
+      target.title = state.theme === 1 ? "التبديل إلى المظهر الفاتح" : "التبديل إلى المظهر الداكن";
     }
   });
 

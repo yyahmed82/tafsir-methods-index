@@ -16,6 +16,8 @@
   --sub: #4A5175;
   --muted: #7E86A8;
   --accent: #5B3FD9;
+  --mirqat-brand: var(--accent);
+  --mirqat-rule: var(--line);
   --accent-bg: #EEEAFE;
   --accent-hover: #482ec4;
   --ok: #0C7A5C;
@@ -52,6 +54,8 @@
   --sub: #C8CFE8;
   --muted: #9AA3C8;
   --accent: #8E78FF;
+  --mirqat-brand: var(--accent);
+  --mirqat-rule: var(--line);
   --accent-bg: #2C275E;
   --accent-hover: #A493FF;
   --ok: #2EF2C2;
@@ -75,6 +79,11 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+html { overflow-x: clip; max-width: 100%; }
 body, .shell {
   background: var(--base);
   color: var(--ink);
@@ -83,6 +92,7 @@ body, .shell {
   direction: rtl;
   text-align: right;
   line-height: 1.6;
+  overflow-x: clip;
 }
 
 /* Header */
@@ -103,13 +113,92 @@ body, .shell {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+}
+button.brand-lockup:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.brand-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.brand-heading {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.brand-rule {
+  width: 1px;
+  height: 18px;
+  margin-inline: 12px;
+  background: var(--mirqat-rule);
+  flex: 0 0 auto;
+  align-self: center;
+}
+.mirqat-mark {
+  width: 22px;
+  height: 28px;
+  flex: 0 0 auto;
+  color: var(--mirqat-brand);
+  display: block;
+}
+.mirqat-wordmark {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--mirqat-brand);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.brand-product,
 .brand-title {
   font-weight: 700;
   font-size: 1.15rem;
   color: var(--accent);
   text-decoration: none;
-  cursor: pointer;
+  min-width: 0;
+  line-height: 1.25;
+}
+.source-row,
+.src-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.source-row a,
+.src-box a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding-block: 2px;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 500;
 }
 .mode-badge {
   background: #F2B84B;
@@ -263,6 +352,11 @@ body, .shell {
     gap: 24px;
     padding: 0 14px;
   }
+  .app-header {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .brand-title { font-size: 0.92rem; }
 }
 
 .ayah-card {
@@ -703,10 +797,7 @@ aside.reader-aside {
   font-size: 0.76rem;
   color: var(--muted);
   line-height: 1.8;
-}
-.src-box a {
-  color: var(--accent);
-  text-decoration: none;
+  margin-top: 8px;
 }
 .src-box a:hover { text-decoration: underline; }
 
@@ -1252,7 +1343,16 @@ aside.reader-aside {
 <div class="shell" dir="rtl">
   <div class="app-header" role="banner">
     <div class="brand-wrap">
-      <div class="brand-title" id="brand-logo" title="فهرس مناهج التفسير">فهرس مناهج التفسير</div>
+      <button type="button" class="brand-lockup" id="brand-logo" aria-label="العودة إلى وضع القراءة">
+        <span class="brand-team">
+        <svg class="mirqat-mark" viewBox="0 0 24 32" width="22" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true" focusable="false"><path d="M7 30L5 3"/><path d="M17 30L19 3"/><path d="M6.2 8.5h11.6"/><path d="M6.5 15h11"/><path d="M6.8 21.5h10.4"/><path d="M7 28h10"/></svg>
+        <span class="mirqat-wordmark">مِرْقاة</span>
+        </span>
+        <span class="brand-heading">
+        <span class="brand-rule" aria-hidden="true"></span>
+        <span class="brand-product brand-title">فهرس مناهج التفسير</span>
+        </span>
+      </button>
       <span class="mode-badge" id="header-mode-badge" hidden>وضع المراجعة</span>
     </div>
 
@@ -1290,7 +1390,7 @@ aside.reader-aside {
     <div class="header-actions">
       <button type="button" class="btn" id="btn-export-decisions" hidden title="تصدير قرارات المتخصص بصيغة JSON">صدّر القرارات</button>
       <button type="button" class="btn btn-primary" id="btn-toggle-mode">وضع المراجعة ←</button>
-      <button type="button" class="ib-btn" id="btn-theme-toggle" aria-label="تبديل المظهر" title="تبديل المظهر الفاتح/الداكن">◐</button>
+      <button type="button" class="ib-btn" id="btn-theme-toggle" aria-pressed="false" aria-label="تبديل المظهر" title="تبديل المظهر الفاتح/الداكن">◐</button>
       <a href="fahras.html" class="btn btn-ghost" title="الرجوع إلى الواجهة الكلاسيكية">الواجهة الكلاسيكية</a>
     </div>
   </div>
@@ -1363,7 +1463,7 @@ aside.reader-aside {
       </div>
 
       <div class="src-box" id="reader-source-box">
-        المصدر: مركز تفسير — CC BY 4.0 · <a href="https://dorar.net" target="_blank" rel="noopener" id="reader-dorar-link">الدرر السنية</a> · <a href="https://quran.com" target="_blank" rel="noopener" id="reader-quran-link">quran.com</a>
+        اقرأ في المصدر: مركز تفسير — CC BY 4.0 · <a href="https://dorar.net" target="_blank" rel="noopener" id="reader-dorar-link">الدرر السنية</a> · <a href="https://quran.com" target="_blank" rel="noopener" id="reader-quran-link" dir="ltr" translate="no"><bdi dir="ltr" translate="no">quran.com</bdi></a> · <a id="reader-quranpedia-link" class="js-quranpedia-link" target="_blank" rel="noopener noreferrer" hidden title="نص التفسير في قرآنبيديا — لا يستضيفون تمييزات المنهج">قرآنبيديا</a>
       </div>
     </aside>
   </main>
@@ -1395,6 +1495,13 @@ aside.reader-aside {
           <span>المعرّفات: <b>ظاهرة</b></span>
         </div>
       </div>
+      <p class="source-row" id="review-source-row">اقرأ في المصدر:
+        <a id="review-dorar-link" href="https://dorar.net" target="_blank" rel="noopener">الدرر السنية</a>
+        ·
+        <a id="review-quran-link" href="https://quran.com" target="_blank" rel="noopener" dir="ltr" translate="no"><bdi dir="ltr" translate="no">quran.com</bdi></a>
+        ·
+        <a id="review-quranpedia-link" class="js-quranpedia-link" target="_blank" rel="noopener noreferrer" hidden title="نص التفسير في قرآنبيديا — لا يستضيفون تمييزات المنهج">قرآنبيديا</a>
+      </p>
 
       <div class="paper-box" id="review-paper">
         <!-- Text with spans & outlined selection -->
@@ -1506,6 +1613,7 @@ aside.reader-aside {
 
 <script type="application/json" id="methods-data">__METHODS_DATA_JSON__</script>
 
+<script src="assets/brand/quranpedia-books.js"></script>
 <script>
 (function () {
   "use strict";
@@ -1551,6 +1659,23 @@ aside.reader-aside {
     al_baghawi: "ar-tafsir-al-baghawi",
     al_saadi: "ar-tafseer-al-saddi"
   };
+
+  function updateQuranpediaLinks(surah, ayah) {
+    var qpUrl = (typeof quranpediaSourceUrl === "function")
+      ? quranpediaSourceUrl(state.tafsirId, surah, ayah)
+      : "";
+    document.querySelectorAll(".js-quranpedia-link").forEach(function (a) {
+      if (!qpUrl) {
+        a.hidden = true;
+        a.removeAttribute("href");
+        return;
+      }
+      a.hidden = false;
+      a.href = qpUrl;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+    });
+  }
 
   var NONAUTHOR_LAYERS = {
     apparatus: true,
@@ -1634,7 +1759,9 @@ aside.reader-aside {
     var b1 = document.getElementById("btn-theme-toggle");
     if (b1) {
       b1.textContent = dark ? "☼" : "◐";
+      b1.setAttribute("aria-pressed", dark ? "true" : "false");
       b1.setAttribute("aria-label", dark ? "وضع فاتح" : "وضع داكن");
+      b1.title = dark ? "التبديل إلى المظهر الفاتح" : "التبديل إلى المظهر الداكن";
     }
   }
 
@@ -2455,6 +2582,11 @@ aside.reader-aside {
     if (rDorar) rDorar.href = dLink;
     var rQuran = document.getElementById("reader-quran-link");
     if (rQuran) rQuran.href = qLink;
+    var rvDorar = document.getElementById("review-dorar-link");
+    if (rvDorar) rvDorar.href = dLink;
+    var rvQuran = document.getElementById("review-quran-link");
+    if (rvQuran) rvQuran.href = qLink;
+    updateQuranpediaLinks(ayahParts.surah, ayahParts.ayah);
   }
 
   function renderDistribution(counts, presentMethods) {
@@ -2767,6 +2899,15 @@ aside.reader-aside {
   function renderReview() {
     var w = currentWindow();
     if (!w) return;
+    var ayahParts = parseWindowKey(state.windowId);
+    var qSlug = QURAN_TAFSIR_SLUGS[state.tafsirId] || "ar-tafsir-al-tabari";
+    var qLink = "https://quran.com/ar/" + ayahParts.surah + ":" + ayahParts.ayah + "/tafsirs/" + qSlug;
+    var dLink = "https://dorar.net/tafseer/" + ayahParts.surah;
+    var rvDorar = document.getElementById("review-dorar-link");
+    if (rvDorar) rvDorar.href = dLink;
+    var rvQuran = document.getElementById("review-quran-link");
+    if (rvQuran) rvQuran.href = qLink;
+    updateQuranpediaLinks(ayahParts.surah, ayahParts.ayah);
 
     var moves = state.reviewMoves;
     var counts = { pending: 0, candidate: 0, done: 0, approved: 0, rejected: 0, edited: 0 };
