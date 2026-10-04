@@ -1,0 +1,239 @@
+"""SQLite storage for the console (users, roles, sessions, tasks, reports…).
+
+The database lives in ``console/var/console.db`` (gitignored). It holds console
+state only — never tafsir text, tags or approvals of record.
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+import threading
+import time
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Iterator
+
+from . import config
+
+_LOCK = threading.RLock()
+_DB_PATH: Path | None = None
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS roles (
+  id INTEGER PRIMARY KEY,
+  key TEXT UNIQUE NOT NULL,
+  name_ar TEXT NOT NULL,
+  name_en TEXT NOT NULL,
+  description_ar TEXT NOT NULL DEFAULT '',
+  system INTEGER NOT NULL DEFAULT 0,
+  permissions TEXT NOT NULL DEFAULT '[]'
+);
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  role_id INTEGER NOT NULL REFERENCES roles(id),
+  lang TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at REAL NOT NULL,
+  created_by INTEGER,
+  last_login_at REAL
+);
+CREATE TABLE IF NOT EXISTS otp_codes (
+  id INTEGER PRIMARY KEY,
+  email TEXT NOT NULL,
+  code_hash TEXT NOT NULL,
+  created_at REAL NOT NULL,
+  expires_at REAL NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  used INTEGER NOT NULL DEFAULT 0,
+  ip TEXT
+);
+CREATE INDEX IF NOT EXISTS otp_email ON otp_codes(email, created_at);
+CREATE TABLE IF NOT EXISTS sessions (
+  id INTEGER PRIMARY KEY,
+  token_hash TEXT UNIQUE NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  created_at REAL NOT NULL,
+  expires_at REAL NOT NULL,
+  ip TEXT,
+  user_agent TEXT,
+  revoked INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at REAL,
+  updated_by INTEGER
+);
+CREATE TABLE IF NOT EXISTS languages (
+  code TEXT PRIMARY KEY,
+  name_native TEXT NOT NULL,
+  name_en TEXT NOT NULL,
+  dir TEXT NOT NULL DEFAULT 'ltr',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  sort INTEGER NOT NULL DEFAULT 100
+);
+CREATE TABLE IF NOT EXISTS translations (
+  lang TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  PRIMARY KEY (lang, key)
+);
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL,
+  title_ar TEXT NOT NULL,
+  params TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  created_by INTEGER,
+  created_at REAL NOT NULL,
+  started_at REAL,
+  finished_at REAL,
+  total_steps INTEGER NOT NULL DEFAULT 0,
+  done_steps INTEGER NOT NULL DEFAULT 0,
+  failed_steps INTEGER NOT NULL DEFAULT 0,
+  skipped_steps INTEGER NOT NULL DEFAULT 0,
+  cancel_requested INTEGER NOT NULL DEFAULT 0,
+  error TEXT
+);
+CREATE TABLE IF NOT EXISTS task_steps (
+  id INTEGER PRIMARY KEY,
+  task_id INTEGER NOT NULL REFERENCES tasks(id),
+  seq INTEGER NOT NULL,
+  agent TEXT NOT NULL,
+  tafsir TEXT NOT NULL,
+  window TEXT NOT NULL,
+  model TEXT,
+  status TEXT NOT NULL DEFAULT 'queued',
+  started_at REAL,
+  finished_at REAL,
+  duration_ms INTEGER,
+  exit_code INTEGER,
+  result TEXT,
+  output_tail TEXT
+);
+CREATE INDEX IF NOT EXISTS steps_task ON task_steps(task_id, seq);
+CREATE INDEX IF NOT EXISTS steps_finished ON task_steps(finished_at);
+CREATE TABLE IF NOT EXISTS reports (
+  id INTEGER PRIMARY KEY,
+  day TEXT UNIQUE NOT NULL,
+  generated_at REAL NOT NULL,
+  generated_by INTEGER,
+  content TEXT NOT NULL,
+  mailed_at REAL
+);
+CREATE TABLE IF NOT EXISTS decisions (
+  id INTEGER PRIMARY KEY,
+  tafsir TEXT NOT NULL,
+  window TEXT NOT NULL,
+  annotator TEXT NOT NULL,
+  move_id TEXT NOT NULL,
+  decision TEXT NOT NULL,
+  compared_with_source INTEGER NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT '',
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS decisions_unit ON decisions(tafsir, window, annotator, move_id);
+CREATE TABLE IF NOT EXISTS audit (
+  id INTEGER PRIMARY KEY,
+  at REAL NOT NULL,
+  user_id INTEGER,
+  action TEXT NOT NULL,
+  target TEXT,
+  detail TEXT,
+  ip TEXT
+);
+CREATE INDEX IF NOT EXISTS audit_at ON audit(at);
+CREATE TABLE IF NOT EXISTS outbox (
+  id INTEGER PRIMARY KEY,
+  at REAL NOT NULL,
+  to_addr TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  status TEXT NOT NULL,
+  error TEXT
+);
+"""
+
+
+def init(db_path: Path | None = None) -> Path:
+    """Open (and create) the database. Safe to call more than once."""
+    global _DB_PATH
+    config.ensure_dirs()
+    _DB_PATH = Path(db_path) if db_path else (config.VAR_DIR / "console.db")
+    _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with connect() as con:
+        con.executescript(SCHEMA)
+    return _DB_PATH
+
+
+@contextmanager
+def connect() -> Iterator[sqlite3.Connection]:
+    if _DB_PATH is None:
+        raise RuntimeError("db.init() was not called")
+    with _LOCK:
+        con = sqlite3.connect(_DB_PATH, timeout=30)
+        con.row_factory = sqlite3.Row
+        con.execute("PRAGMA foreign_keys = ON")
+        con.execute("PRAGMA journal_mode = WAL")
+        try:
+            yield con
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+        finally:
+            con.close()
+
+
+def now() -> float:
+    return time.time()
+
+
+def rows(sql: str, params: tuple | list = ()) -> list[dict[str, Any]]:
+    with connect() as con:
+        return [dict(r) for r in con.execute(sql, params).fetchall()]
+
+
+def row(sql: str, params: tuple | list = ()) -> dict[str, Any] | None:
+    with connect() as con:
+        r = con.execute(sql, params).fetchone()
+        return dict(r) if r else None
+
+
+def execute(sql: str, params: tuple | list = ()) -> int:
+    with connect() as con:
+        cur = con.execute(sql, params)
+        return int(cur.lastrowid or 0)
+
+
+def scalar(sql: str, params: tuple | list = ()) -> Any:
+    with connect() as con:
+        r = con.execute(sql, params).fetchone()
+        return r[0] if r else None
+
+
+def dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def loads(value: str | None, default: Any = None) -> Any:
+    if value is None or value == "":
+        return default
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def audit(action: str, *, user_id: int | None = None, target: str | None = None,
+          detail: Any = None, ip: str | None = None) -> None:
+    execute(
+        "INSERT INTO audit(at, user_id, action, target, detail, ip) VALUES (?,?,?,?,?,?)",
+        (now(), user_id, action, target, dumps(detail) if detail is not None else None, ip),
+    )
