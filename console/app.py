@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import hashlib
 import ipaddress
 import json
 import os
@@ -61,14 +62,20 @@ def create_app(start_worker: bool = True) -> FastAPI:
             resp.headers["Strict-Transport-Security"] = "max-age=31536000"
         if request.url.path.startswith("/api/"):
             resp.headers["Cache-Control"] = "no-store"
+        elif request.url.path.startswith("/static/"):
+            # Cloudflare caches .js/.css/.svg at the edge. A URL carrying the current
+            # asset version never changes, so it may be cached for a year; anything
+            # else must be revalidated, or a release keeps serving the old UI.
+            fresh = request.query_params.get("v") == asset_version()
+            resp.headers["Cache-Control"] = ("public, max-age=31536000, immutable"
+                                             if fresh else "no-cache")
         return resp
 
     app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 
     @app.get("/", include_in_schema=False)
-    def index() -> FileResponse:
-        return FileResponse(config.STATIC_DIR / "index.html",
-                            headers={"Cache-Control": "no-cache"})
+    def index() -> HTMLResponse:
+        return HTMLResponse(render_index(), headers={"Cache-Control": "no-cache"})
 
     _routes(app)
     return app
@@ -85,6 +92,38 @@ def _ip(request: Request) -> str | None:
         except ValueError:
             pass
     return request.client.host if request.client else None
+
+
+def _asset_files() -> list:
+    root = config.STATIC_DIR
+    files = [root / "app.js", root / "app.css", root / "logo.svg"]
+    files += sorted((root / "brand").glob("*")) if (root / "brand").is_dir() else []
+    return [f for f in files if f.is_file()]
+
+
+@functools.lru_cache(maxsize=16)
+def _asset_hash(stamp: tuple) -> str:
+    h = hashlib.sha1()
+    for name, _mtime, _size in stamp:
+        h.update(name.encode())
+        h.update((config.STATIC_DIR / name).read_bytes())
+    return h.hexdigest()[:10]
+
+
+def asset_version() -> str:
+    """Content hash of the UI files; changes whenever a release changes them."""
+    root = config.STATIC_DIR
+    stamp = tuple((str(f.relative_to(root)), f.stat().st_mtime_ns, f.stat().st_size)
+                  for f in _asset_files())
+    return _asset_hash(stamp)
+
+
+def render_index() -> str:
+    """index.html with ?v=<asset version> on every local /static/ link, so a new
+    release is never hidden behind a stale browser or Cloudflare cache."""
+    v = asset_version()
+    html = (config.STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    return re.sub(r'((?:href|src)="/static/[^"?]+)"', lambda m: f'{m.group(1)}?v={v}"', html)
 
 
 def _release() -> str:

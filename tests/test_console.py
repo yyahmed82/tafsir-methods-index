@@ -601,3 +601,16 @@ def test_committee_runs_pipeline_end_to_end(env, tmp_path, monkeypatch):
     finally:
         runner.stop()
         server.shutdown()
+
+
+def test_ui_assets_are_versioned_so_cdn_cache_never_hides_a_release(env):
+    from console.app import asset_version
+    r = env.get("/")
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
+    v = asset_version()
+    for path in ("/static/app.js", "/static/app.css", "/static/logo.svg", "/static/brand/icon-180.png"):
+        assert f'"{path}?v={v}"' in r.text
+    assert "immutable" in env.get(f"/static/app.js?v={v}").headers["cache-control"]
+    assert env.get("/static/app.js").headers["cache-control"] == "no-cache"
+    assert env.get("/static/app.js?v=stale").headers["cache-control"] == "no-cache"
+    assert env.get("/static/brand/mirqah-wordmark.svg").headers["cache-control"] == "no-cache"
