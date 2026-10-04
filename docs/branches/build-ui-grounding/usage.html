@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1600">
+<title>طريقة الاستخدام — build/ui-grounding</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    width: 1600px;
+    height: 900px;
+    overflow: hidden;
+    background: #f4f6fb;
+    color: #161b3d;
+    font-family: "Segoe UI", "IBM Plex Sans Arabic", Tahoma, sans-serif;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    padding: 18px 24px 14px;
+    gap: 10px;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    border-bottom: 1px solid #d5daf0;
+    padding-bottom: 8px;
+  }
+  .team { font-size: 1.05rem; font-weight: 700; color: #5b3fd9; }
+  .rule { width: 1px; height: 18px; background: #c5cbe3; }
+  h1 { margin: 0; font-size: 1.28rem; font-weight: 700; }
+  .lede { margin: 0; color: #4a5175; font-size: 0.9rem; }
+  .steps {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+  }
+  article {
+    background: #fff;
+    border: 1px solid #d5daf0;
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .n {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #5b3fd9; color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 0.85rem;
+    flex: 0 0 auto;
+  }
+  h2 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+  p { margin: 0; font-size: 0.82rem; line-height: 1.4; color: #2c3360; }
+  .why { color: #5b3fd9; font-weight: 600; }
+  .cmd {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.76rem;
+    background: #eef0f8;
+    border: 1px solid #d5daf0;
+    border-radius: 4px;
+    padding: 1px 6px;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+  .out { background: #eefaf4; border-color: #b7e0cc; }
+  .stop { color: #8c2348; font-size: 0.76rem; }
+  .bars { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .bar {
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+  .scope { background: #f8efe6; border: 1px solid #e8d2b0; }
+  .ok { background: #e8f6ee; border: 1px solid #b7e0cc; }
+  footer {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: #4a5175;
+    border-top: 1px solid #d5daf0;
+    padding-top: 8px;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <span class="team">مِرْقاة</span>
+    <span class="rule" aria-hidden="true"></span>
+    <h1>فهرس مناهج التفسير</h1>
+    <p class="lede">ست خطوات لإظهار مسار الإجابة من المصادر المعتمدة في الدرج</p>
+  </header>
+
+  <section class="steps">
+    <article>
+      <h2><span class="n">١</span> ابنِ الصفحتين</h2>
+      <p class="why">لماذا: الخريطة تُحقَن من العقد؛ لا تُنسخ عربية الرموز في القالب.</p>
+      <p>من جذر المستودع:</p>
+      <p><span class="cmd" dir="ltr">python src/build_fahras.py</span></p>
+      <p>الناتج المتوقع: <span class="cmd out" dir="ltr">br/source fidelity self-test PASS (12 windows)</span></p>
+      <p class="stop">توقّف هنا إن حُرّر ملف تحت web/ باليد.</p>
+    </article>
+    <article>
+      <h2><span class="n">٢</span> افتح وضع المراجعة</h2>
+      <p class="why">لماذا: سطر الامتناع يظهر في درج المتخصص.</p>
+      <p>شغّل الخادم ثم افتح الواجهة الجديدة بمراجعة:</p>
+      <p><span class="cmd" dir="ltr">python -m http.server 8791 --directory web</span></p>
+      <p>ثم <span class="cmd" dir="ltr">http://127.0.0.1:8791/reader.html?mode=review</span></p>
+      <p class="stop">توقّف هنا إن بقيت وضع القراءة بلا درج.</p>
+    </article>
+    <article>
+      <h2><span class="n">٣</span> اقرأ سطر المسار</h2>
+      <p class="why">لماذا: هل الدليل كافٍ؟ لا ← امتناع أو إحالة.</p>
+      <p>أعلى الدرج أيقونة ونص: «بانتظار المتخصص» مع معنى الرمز من الخريطة المحقونة، أو «مرشّح للمراجعة — ليس اعتماداً».</p>
+      <p>الناتج المتوقع: بلا رمز يظهر سطر الانتظار فقط.</p>
+      <p class="stop">توقّف هنا إن اختفت الأيقونة أو اعتُمد المرشّح بلا متخصص.</p>
+    </article>
+    <article>
+      <h2><span class="n">٤</span> أظهر الشاهد</h2>
+      <p class="why">لماذا: عرض الإجابة ومواضع الاستشهاد.</p>
+      <p>زر «أظهر الشاهد». يُضاء ما في <span class="cmd" dir="ltr">evidence_span_ids</span> فقط، وحكم المؤلف بخط مائل.</p>
+      <p>الناتج المتوقع: معرّف مجهول لا يظلّل شيئاً؛ لا تظليل لكل العلامات.</p>
+      <p class="stop">توقّف هنا إن أضاءت كل علامات النافذة.</p>
+    </article>
+    <article>
+      <h2><span class="n">٥</span> افصل الملاحظة عن الدليل</h2>
+      <p class="why">لماذا: وجود الاستشهاد لا يثبت صحة الاستنتاج.</p>
+      <p>صندوق متقطع: «ملاحظة النموذج — غير مُسنَدة، ليست دليلاً». تذييل الدرج: الاعتماد للمتخصص بعد فحص الدلالة.</p>
+      <p>الناتج المتوقع: التعليل ليس في كتلة الشاهد.</p>
+      <p class="stop">توقّف هنا إن اختلطت ملاحظة النموذج بالدليل.</p>
+    </article>
+    <article>
+      <h2><span class="n">٦</span> تحقّق بالاختبار</h2>
+      <p class="why">لماذا: الخريطة والعلامات والشاهد تُفحص بلا متصفح في الثابت، وباللقطات عبر Playwright.</p>
+      <p><span class="cmd" dir="ltr">python -m pytest tests/test_ui_grounding.py -q</span></p>
+      <p>الناتج المتوقع: <span class="cmd out" dir="ltr">5 passed</span></p>
+      <p class="stop">توقّف هنا إن بقي مجلد <span class="cmd" dir="ltr">qa/</span> بعد نقل اللقطات إلى <span class="cmd" dir="ltr">shots/</span>.</p>
+    </article>
+  </section>
+
+  <div class="bars">
+    <div class="bar scope">ما لا يفعله هذا الفرع: لا يغيّر الوسوم ولا الفاحص ولا رئيس اللجنة ولا العقد. لا يضيف بيانات. لا اعتماد آلي. لم ندرّب. أعداد توجيه وليست دقة. وكيلان من عائلتين قبل الجماعي.</div>
+    <div class="bar ok">كيف تعرف أنه يعمل: <span class="cmd" dir="ltr">python -m pytest -q</span> — الناتج المتوقع <span class="cmd out" dir="ltr">148 passed, 2 skipped</span> بلا قاعدة المصحف.</div>
+  </div>
+
+  <footer>
+    <span>build/ui-grounding</span>
+    <span>مِرْقاة · فهرس مناهج التفسير</span>
+  </footer>
+</body>
+</html>

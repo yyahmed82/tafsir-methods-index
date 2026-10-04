@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
+from grounding_contract import COMMITTEE_REASON_CODES, REASON_CODES
 from textcore import read_exact as _read_exact, read_json as _read_json
 
 TEMPLATE = ROOT / "src" / "fahras_template.html"
@@ -265,6 +266,30 @@ def _load_run1_totals(base: Path) -> dict:
     return {"auto": auto, "specialist": specialist}
 
 
+def _load_committee(base: Path) -> dict:
+    """Return verified/committee/<window>.json keyed by verse, or {} if absent."""
+    out: dict = {}
+    cdir = base / "verified" / "committee"
+    if not cdir.is_dir():
+        return out
+    for path in sorted(cdir.glob("*.json")):
+        try:
+            payload = _read_json(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        stem = path.stem
+        key = "2_255" if stem == "2_255_tafsir" else stem
+        if key not in WINDOW_ORDER:
+            continue
+        out[key] = {
+            "annotator": "committee",
+            "moves": payload.get("moves") or [],
+            "summary": payload.get("summary") or {},
+            "route": (payload.get("summary") or {}).get("route"),
+        }
+    return out
+
+
 def _assert_spans_match_raw(windows: dict, raw: dict, tafsir_id: str) -> None:
     for wid, w in windows.items():
         r = raw.get(wid)
@@ -329,6 +354,7 @@ def collect_tafsir(cfg: dict) -> dict:
         }
 
     verified, annotators, classifier_ran = _load_verified(base)
+    committee = _load_committee(base)
     run1_totals = _load_run1_totals(base)
     _assert_spans_match_raw(windows, raw, tid)
 
@@ -353,6 +379,7 @@ def collect_tafsir(cfg: dict) -> dict:
         "markers": markers,
         "layers": layers,
         "verified": verified,
+        "committee": committee,
         "raw": raw_embed,
         "annotators": annotators,
         "classifier_ran": classifier_ran,
@@ -446,6 +473,7 @@ def collect_data() -> dict:
         "windows": tafsirs["al_tabari"]["windows"],
         "markers": tafsirs["al_tabari"]["markers"],
         "verified": tafsirs["al_tabari"]["verified"],
+        "committee": tafsirs["al_tabari"]["committee"],
         "layers": tafsirs["al_tabari"]["layers"],
         "raw": tafsirs["al_tabari"]["raw"],
         "classifier_ran": tafsirs["al_tabari"]["classifier_ran"],
@@ -462,6 +490,9 @@ def collect_data() -> dict:
     core = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     payload["data_version"] = hashlib.sha256(core.encode("utf-8")).hexdigest()[:12]
     payload["build_date"] = _stable_build_date(payload["data_version"])
+    # Injected from grounding_contract — the only source of reason Arabic.
+    payload["reason_codes"] = dict(REASON_CODES)
+    payload["committee_reason_codes"] = dict(COMMITTEE_REASON_CODES)
     return payload
 
 
