@@ -10,6 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MAPPING = ROOT / "web" / "assets" / "brand" / "quranpedia-books.js"
 MARK_SVG = ROOT / "web" / "assets" / "brand" / "mirqat-mark.svg"
+LOGO_LIGHT = ROOT / "web" / "assets" / "brand" / "mirqah-wordmark.svg"
+LOGO_DARK = ROOT / "web" / "assets" / "brand" / "mirqah-wordmark-on-dark.svg"
+ICON = ROOT / "web" / "assets" / "brand" / "mirqah-icon.svg"
 WORDMARK = "مِرْقاة"
 SOURCE_AREA = "اقرأ في المصدر"
 SOURCE_LABEL = "قرآنبيديا"
@@ -108,18 +111,21 @@ class TestUiMirqat(unittest.TestCase):
         self.assertNotIn("al_qurtubi", book_ids)
         self.assertNotIn("al_shawkani", book_ids)
 
-    def test_wordmark_and_svg_mark_in_built_html(self) -> None:
-        self.assertTrue(MARK_SVG.is_file())
-        mark = MARK_SVG.read_text(encoding="utf-8")
-        self.assertIn("<svg", mark)
-        self.assertIn("currentColor", mark)
-        self.assertIn(WORDMARK, mark)
-        self.assertNotIn("url(#", mark)
+    def test_logo_in_built_html(self) -> None:
+        for svg in (LOGO_LIGHT, LOGO_DARK, ICON):
+            self.assertTrue(svg.is_file(), svg.name)
+            text = svg.read_text(encoding="utf-8")
+            self.assertIn("<svg", text, svg.name)
+            self.assertIn(f"<title>{WORDMARK}</title>", text, svg.name)
+            self.assertNotIn("<script", text, svg.name)
+            self.assertNotIn("href=", text, svg.name)  # self-contained, no external refs
         for path in HTML_PAGES:
             html = path.read_text(encoding="utf-8")
             self.assertIn(WORDMARK, html, path.name)
-            self.assertIn('class="mirqat-mark"', html, path.name)
-            self.assertIn('d="M7 30L5 3"', html, path.name)
+            self.assertIn('src="assets/brand/mirqah-wordmark.svg"', html, path.name)
+            self.assertIn('src="assets/brand/mirqah-wordmark-on-dark.svg"', html, path.name)
+            self.assertEqual(html.count(f'alt="{WORDMARK}"'), 2, path.name)
+            self.assertIn('rel="icon" href="assets/brand/mirqah-icon.svg"', html, path.name)
 
     def test_source_links_match_verified_pattern(self) -> None:
         mapping = MAPPING.read_text(encoding="utf-8")
@@ -227,37 +233,23 @@ class TestUiMirqat(unittest.TestCase):
             ROOT / "src" / "methods_template.html",
             ROOT / "src" / "reconcile_template.html",
         )
-        mark = []
-        word = []
+        logo = []
         for path in templates:
             html = path.read_text(encoding="utf-8")
-            self.assertIn('width="22" height="28"', html, path.name)
-            self.assertIn("color: var(--mirqat-brand)", html, path.name)
-            m = re.search(r"\.mirqat-mark\s*\{([^}]+)\}", html)
-            w = re.search(r"\.mirqat-wordmark\s*\{([^}]+)\}", html)
+            m = re.search(r"\.mq-logo\s*\{([^}]+)\}", html)
             g = re.search(r"\.brand-lockup\s*\{([^}]+)\}", html)
             self.assertIsNotNone(m, path.name)
-            self.assertIsNotNone(w, path.name)
             self.assertIsNotNone(g, path.name)
-            mark.append(
-                (
-                    "width: 22px" in m.group(1),
-                    "height: 28px" in m.group(1),
-                    "color: var(--mirqat-brand)" in m.group(1),
-                )
-            )
-            word.append(
-                (
-                    "font-size: 0.95rem" in w.group(1),
-                    "font-weight: 700" in w.group(1),
-                    "color: var(--mirqat-brand)" in w.group(1),
-                )
-            )
+            logo.append(("height: 46px" in m.group(1), "width: auto" in m.group(1)))
+            self.assertIn(".mq-logo--light { display: var(--mq-logo-light, inline-block); }", html, path.name)
+            self.assertIn(".mq-logo--dark { display: var(--mq-logo-dark, none); }", html, path.name)
+            # every theme block that sets the brand colour also picks the logo variant
+            n = html.count("--mirqat-brand:")
+            self.assertEqual(html.count("--mq-logo-light:"), n, path.name)
+            self.assertEqual(html.count("--mq-logo-dark:"), n, path.name)
             self.assertIn("gap: 8px", g.group(1), path.name)
-            self.assertTrue(all(mark[-1]), path.name + " mark tokens")
-            self.assertTrue(all(word[-1]), path.name + " wordmark tokens")
-        self.assertEqual(len(set(mark)), 1)
-        self.assertEqual(len(set(word)), 1)
+            self.assertTrue(all(logo[-1]), path.name + " logo tokens")
+        self.assertEqual(len(set(logo)), 1)
 
     def test_header_divider_in_built_pages(self) -> None:
         for path in HTML_PAGES:
