@@ -27,6 +27,21 @@ except Exception:  # pragma: no cover - fallback keeps the console usable
         slug = re.sub(r"[^a-zA-Z0-9]+", "_", (model or "model").strip()).strip("_").lower()
         return slug or "model"
 
+try:  # arm B (methodology profiles) naming — one source of truth in src/v2_profiles.py
+    from v2_profiles import VARIANTS, variant_annotator, variant_dir  # type: ignore  # noqa: E402
+except Exception:  # pragma: no cover - fallback keeps the console usable
+    VARIANTS = ("profile",)
+
+    def variant_annotator(slug: str, variant: str | None) -> str:
+        return f"{slug}__{variant}" if variant and not slug.endswith(f"__{variant}") else slug
+
+    def variant_dir(base: Path, name: str, variant: str | None) -> Path:
+        return Path(base) / (f"{name}_{variant}" if variant else name)
+
+# Blind A/B review: arm A = baseline (variant None), arm B = "profile". Reviewers see
+# X / Y per window; which one is the profile arm is hidden (see arm_codes()).
+ARM_VARIANTS = (None, "profile")
+
 WINDOW_RE = re.compile(r"^\d{1,3}_\d{1,3}(?:_p\d{2})?$")
 _CACHE: dict[str, tuple[float, Any]] = {}
 _CACHE_LOCK = threading.Lock()
@@ -105,29 +120,29 @@ def load_verified(tafsir: str, annotator: str, window: str) -> dict | None:
     return _read_json(p) if p.is_file() else None
 
 
-def committee_path(tafsir: str, window: str) -> Path:
-    """Chair decision written by src/committee_chair.py."""
-    return base_dir(tafsir) / "committee" / f"{window}.json"
+def committee_path(tafsir: str, window: str, variant: str | None = None) -> Path:
+    """Chair decision written by src/committee_chair.py (committee_profile/ for arm B)."""
+    return variant_dir(base_dir(tafsir), "committee", variant) / f"{window}.json"
 
 
-def load_committee(tafsir: str, window: str) -> dict | None:
-    p = committee_path(tafsir, window)
+def load_committee(tafsir: str, window: str, variant: str | None = None) -> dict | None:
+    p = committee_path(tafsir, window, variant)
     return _read_json(p) if p.is_file() else None
 
 
-def committee_is_current(tafsir: str, window: str) -> bool:
-    """True when committee/<window>.json is newer than both agents' verified files."""
+def committee_is_current(tafsir: str, window: str, variant: str | None = None) -> bool:
+    """True when the committee file is newer than both agents' verified files."""
     m = models()
-    c = committee_path(tafsir, window)
-    paths = [verified_path(tafsir, m["classifier_slug"], window),
-             verified_path(tafsir, m["verifier_slug"], window)]
+    c = committee_path(tafsir, window, variant)
+    paths = [verified_path(tafsir, variant_annotator(m["classifier_slug"], variant), window),
+             verified_path(tafsir, variant_annotator(m["verifier_slug"], variant), window)]
     if not c.is_file() or not all(p.is_file() for p in paths):
         return False
     return c.stat().st_mtime >= max(p.stat().st_mtime for p in paths)
 
 
-def _committee_summaries(tafsir: str) -> dict[str, dict]:
-    d = base_dir(tafsir) / "committee"
+def _committee_summaries(tafsir: str, variant: str | None = None) -> dict[str, dict]:
+    d = variant_dir(base_dir(tafsir), "committee", variant)
     out: dict[str, dict] = {}
     if d.is_dir():
         for p in d.glob("*.json"):
@@ -150,6 +165,17 @@ def unit_key(committee_move: dict | None, index: int) -> str:
         if committee_move.get("reviewer_move_id"):
             return f"R-{committee_move['reviewer_move_id']}"
     return f"X-{index}"
+
+
+def unit_rows(v: dict, com: dict | None) -> list[tuple[str, dict, dict | None]]:
+    """(unit key, verified move, committee row) for every move a reviewer can decide."""
+    rows = (com or {}).get("moves") or []
+    out = []
+    for i, mv in enumerate(v.get("moves") or []):
+        c = rows[i] if i < len(rows) else None
+        key = unit_key(c, i) if com is not None else str(mv.get("move_id"))
+        out.append((key, mv, c))
+    return out
 
 
 def models() -> dict[str, str]:
@@ -290,7 +316,7 @@ def _overlap(a: list[str], b: list[str]) -> bool:
     return bool(set(a or []) & set(b or []))
 
 
-def chair_preview(tafsir: str, window: str) -> dict | None:
+def chair_preview(tafsir: str, window: str, variant: str | None = None) -> dict | None:
     """Read-only committee decision per classifier move (docs/COMMITTEE_PLAN.md §ج).
 
     Candidate only if: both routes auto_candidate, same primary, overlapping
@@ -298,8 +324,8 @@ def chair_preview(tafsir: str, window: str) -> dict | None:
     reason code, first that applies. Writes nothing.
     """
     m = models()
-    cv = load_verified(tafsir, m["classifier_slug"], window)
-    vv = load_verified(tafsir, m["verifier_slug"], window)
+    cv = load_verified(tafsir, variant_annotator(m["classifier_slug"], variant), window)
+    vv = load_verified(tafsir, variant_annotator(m["verifier_slug"], variant), window)
     if cv is None:
         return None
     out = []
@@ -345,8 +371,53 @@ def chair_preview(tafsir: str, window: str) -> dict | None:
     }
 
 
+def _ab_salt() -> bytes:
+    """Per-server secret that decides which arm is X and which is Y (blind review)."""
+    import secrets
+
+    p = config.VAR_DIR / "ab_blind.salt"
+    try:
+        return p.read_bytes()
+    except OSError:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        salt = secrets.token_hex(16).encode("ascii")
+        p.write_bytes(salt)
+        return salt
+
+
+def arm_codes(tafsir: str, window: str) -> dict[str | None, str]:
+    """{None: 'X'|'Y', 'profile': 'Y'|'X'} — stable per window, hidden from reviewers."""
+    import hashlib
+
+    h = hashlib.sha256(_ab_salt() + f"{tafsir}/{window}".encode("utf-8")).digest()
+    return {None: "X", "profile": "Y"} if h[0] % 2 == 0 else {None: "Y", "profile": "X"}
+
+
+def variant_for_arm(tafsir: str, window: str, arm: str | None) -> str | None:
+    if not arm:
+        return None
+    for v, code in arm_codes(tafsir, window).items():
+        if code == arm:
+            return v
+    raise ValueError("bad_arm")
+
+
+def review_source(tafsir: str, window: str,
+                  variant: str | None = None) -> tuple[str, dict | None, dict | None]:
+    """(annotator, verified payload, committee payload) for one arm of one window."""
+    m = models()
+    com_name = variant_annotator("committee", variant)
+    com_v = load_verified(tafsir, com_name, window)
+    if com_v is not None:
+        return com_name, com_v, load_committee(tafsir, window, variant)
+    slug = variant_annotator(m["classifier_slug"], variant)
+    return slug, load_verified(tafsir, slug, window), None
+
+
 def review_units(tafsir: str | None = None) -> list[dict]:
-    """Windows ready for review: the chair's decision when it exists, else agent 1."""
+    """Units ready for review: per window and arm, the chair's decision when it
+    exists, else agent 1. Windows with an arm B run get one unit per arm, labelled
+    X / Y (blind); the variant and annotator fields are for operators only."""
     d = _demo()
     if d:
         return d.review_units(tafsir)
@@ -355,24 +426,30 @@ def review_units(tafsir: str | None = None) -> list[dict]:
     for t in config.TAFSIRS:
         if tafsir and t != tafsir:
             continue
-        sums = _summaries(t, m["classifier_slug"])
-        com = _committee_summaries(t)
         meta = {w["window"]: w for w in windows(t)}
-        for wid in sorted(set(sums) | set(com)):
-            if wid not in meta:
-                continue
-            is_com = wid in com
-            s = com[wid] if is_com else sums[wid]
-            out.append({"tafsir": t, "name_ar": config.TAFSIR_NAMES_AR[t], "window": wid,
-                        "ayah": meta[wid]["ayah"], "ayah_number": meta[wid]["ayah_number"],
-                        "moves": int(s.get("move_count") or 0),
-                        "auto_candidate": int(s.get("auto_candidate") or 0),
-                        "specialist": int(s.get("specialist") or 0),
-                        "flags": int(s.get("flag_count") or 0) if not is_com else None,
-                        "reasons": s.get("by_abstention_reason") if is_com else None,
-                        "committee": is_com,
-                        "annotator": "committee" if is_com else m["classifier_slug"]})
-    out.sort(key=lambda x: (x["ayah_number"], x["tafsir"], x["window"]))
+        arms = {}
+        for v in ARM_VARIANTS:
+            arms[v] = (_summaries(t, variant_annotator(m["classifier_slug"], v)),
+                       _committee_summaries(t, v))
+        b_windows = set(arms["profile"][0]) | set(arms["profile"][1])
+        for v, (sums, com) in arms.items():
+            for wid in sorted(set(sums) | set(com)):
+                if wid not in meta:
+                    continue
+                is_com = wid in com
+                s = com[wid] if is_com else sums[wid]
+                arm = arm_codes(t, wid)[v] if wid in b_windows else None
+                out.append({"tafsir": t, "name_ar": config.TAFSIR_NAMES_AR[t], "window": wid,
+                            "ayah": meta[wid]["ayah"], "ayah_number": meta[wid]["ayah_number"],
+                            "moves": int(s.get("move_count") or 0),
+                            "auto_candidate": int(s.get("auto_candidate") or 0),
+                            "specialist": int(s.get("specialist") or 0),
+                            "flags": int(s.get("flag_count") or 0) if not is_com else None,
+                            "reasons": s.get("by_abstention_reason") if is_com else None,
+                            "committee": is_com, "arm": arm, "variant": v,
+                            "annotator": variant_annotator(
+                                "committee" if is_com else m["classifier_slug"], v)})
+    out.sort(key=lambda x: (x["ayah_number"], x["tafsir"], x["window"], x["arm"] or ""))
     return out
 
 

@@ -39,6 +39,11 @@ KIND_TITLES_AR = {
     "dryrun": "فحص الحزم دون نموذج",
 }
 SCOPE_TITLES_AR = {"sample": "العيّنة", "ayat": "آيات", "surah": "السورة كاملة"}
+# Which arms a task runs: baseline (arm A), profile (arm B: methodology profiles),
+# or ab (both, same windows, reviewed blind as X / Y).
+TASK_VARIANTS = {"baseline": ("",), "profile": ("profile",), "ab": ("", "profile")}
+VARIANT_TITLES_AR = {"baseline": "", "profile": " · بملف المفسر",
+                     "ab": " · مقارنة A/B (الأساس + ملف المفسر)"}
 
 _VERIFIER_RE = re.compile(
     r"verifier: moves=(\d+) auto=(\d+) specialist=(\d+) flags=(\d+)")
@@ -77,9 +82,12 @@ def day_bounds(day: str) -> tuple[float, float]:
 
 # ------------------------------------------------------------------ tasks
 
-def plan_steps(kind: str, scope: str, ayat: str, tafsirs: list[str]) -> list[dict]:
+def plan_steps(kind: str, scope: str, ayat: str, tafsirs: list[str],
+               variant: str = "baseline") -> list[dict]:
     if kind not in KINDS:
         raise TaskError("kind_unknown")
+    if variant not in TASK_VARIANTS:
+        raise TaskError("variant_unknown")
     try:
         pairs = pipeline.resolve_scope(scope, ayat, tafsirs)
     except ValueError as e:
@@ -91,11 +99,14 @@ def plan_steps(kind: str, scope: str, ayat: str, tafsirs: list[str]) -> list[dic
     # Agent by agent, not window by window: every classifier step, then every
     # verifier step, then the chair. A local runtime keeps one model in memory, so
     # alternating models per window reloads a model (tens of seconds) every step.
+    # Both arms of an A/B task run back to back per agent (same model in memory).
     for agent in KINDS[kind]:
         model = m["classifier"] if agent == "classifier" else (
             m["verifier"] if agent == "verifier" else None)
-        for tafsir, window in pairs:
-            steps.append({"agent": agent, "tafsir": tafsir, "window": window, "model": model})
+        for arm in TASK_VARIANTS[variant]:
+            for tafsir, window in pairs:
+                steps.append({"agent": agent, "tafsir": tafsir, "window": window,
+                              "model": model, "variant": arm})
     return steps
 
 
@@ -120,16 +131,16 @@ def check_gates(kind: str, scope: str, steps: list[dict], user: dict) -> bool:
 
 
 def create_task(kind: str, scope: str, ayat: str, tafsirs: list[str], skip_done: bool,
-                user: dict) -> int:
-    steps = plan_steps(kind, scope, ayat, tafsirs)
+                user: dict, variant: str = "baseline") -> int:
+    steps = plan_steps(kind, scope, ayat, tafsirs, variant)
     bulk = check_gates(kind, scope, steps, user)
     windows = sorted({(s["tafsir"], s["window"]) for s in steps})
     title = f"{KIND_TITLES_AR[kind]} — {SCOPE_TITLES_AR.get(scope, scope)}"
     if scope == "ayat":
         title += f" ({ayat.strip()})"
-    title += f" · {len(windows)} نافذة"
+    title += f" · {len(windows)} نافذة" + VARIANT_TITLES_AR[variant]
     params = {"kind": kind, "scope": scope, "ayat": ayat, "tafsirs": tafsirs,
-              "skip_done": bool(skip_done), "bulk": bulk,
+              "skip_done": bool(skip_done), "bulk": bulk, "variant": variant,
               "models": {k: v for k, v in pipeline.models().items()}}
     with db.connect() as con:
         cur = con.execute(
@@ -139,14 +150,14 @@ def create_task(kind: str, scope: str, ayat: str, tafsirs: list[str], skip_done:
         )
         task_id = int(cur.lastrowid)
         con.executemany(
-            "INSERT INTO task_steps(task_id,seq,agent,tafsir,window,model,status)"
-            " VALUES (?,?,?,?,?,?,'queued')",
-            [(task_id, i, s["agent"], s["tafsir"], s["window"], s["model"])
+            "INSERT INTO task_steps(task_id,seq,agent,tafsir,window,model,status,variant)"
+            " VALUES (?,?,?,?,?,?,'queued',?)",
+            [(task_id, i, s["agent"], s["tafsir"], s["window"], s["model"], s["variant"])
              for i, s in enumerate(steps)],
         )
     db.audit("task.create", user_id=user["id"], target=str(task_id),
              detail={"kind": kind, "scope": scope, "ayat": ayat, "steps": len(steps),
-                     "bulk": bulk})
+                     "bulk": bulk, "variant": variant})
     return task_id
 
 
@@ -184,10 +195,10 @@ def retry_failed(task_id: int, user: dict) -> int:
         )
         new_id = int(cur.lastrowid)
         con.executemany(
-            "INSERT INTO task_steps(task_id,seq,agent,tafsir,window,model,status)"
-            " VALUES (?,?,?,?,?,?,'queued')",
-            [(new_id, i, s["agent"], s["tafsir"], s["window"], s["model"])
-             for i, s in enumerate(failed)],
+            "INSERT INTO task_steps(task_id,seq,agent,tafsir,window,model,status,variant)"
+            " VALUES (?,?,?,?,?,?,'queued',?)",
+            [(new_id, i, s["agent"], s["tafsir"], s["window"], s["model"],
+              s.get("variant") or "") for i, s in enumerate(failed)],
         )
     db.audit("task.retry", user_id=user["id"], target=str(new_id), detail={"from": task_id})
     return new_id
@@ -210,15 +221,19 @@ def _step_command(step: dict) -> tuple[list[str], dict[str, str]]:
         raise TaskError("window_missing")
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
+    variant = step.get("variant") or ""
+    if variant and variant not in pipeline.VARIANTS:
+        raise TaskError("bad_step")
+    arm = ["--variant", variant] if variant else []
     if step["agent"] == "chair":
         m = pipeline.models()
         cmd = [llm["python_bin"], "src/committee_chair.py", "--base", f"{root}/{step['tafsir']}",
                "--proposer", m["classifier_slug"], "--reviewer", m["verifier_slug"],
                "--window", step["window"], "--proposer-tag", m["classifier"],
-               "--reviewer-tag", m["verifier"]]
+               "--reviewer-tag", m["verifier"]] + arm
         return cmd, env
     cmd = [llm["python_bin"], "src/run_window.py", "--tafsir", step["tafsir"],
-           "--base", f"{root}/{step['tafsir']}", "--window", step["window"]]
+           "--base", f"{root}/{step['tafsir']}", "--window", step["window"]] + arm
     if step["agent"] == "packet_check":
         cmd.append("--dry-run")
     else:
@@ -237,8 +252,10 @@ def _step_command(step: dict) -> tuple[list[str], dict[str, str]]:
 def _chair_inputs_missing(step: dict) -> list[str]:
     """Agents whose verified output the chair needs but that is not there yet."""
     m = pipeline.models()
+    variant = step.get("variant") or None
     missing = []
     for agent, slug in (("classifier", m["classifier_slug"]), ("verifier", m["verifier_slug"])):
+        slug = pipeline.variant_annotator(slug, variant)
         if not pipeline.verified_path(step["tafsir"], slug, step["window"]).is_file():
             missing.append(agent)
     return missing
@@ -250,10 +267,11 @@ def _run_step(task: dict, step: dict) -> None:
     db.execute("UPDATE task_steps SET status='running', started_at=? WHERE id=?",
                (started, step["id"]))
     if params.get("skip_done") and step["agent"] in ("classifier", "verifier", "chair"):
+        variant = step.get("variant") or None
         if step["agent"] == "chair":
-            done = pipeline.committee_is_current(step["tafsir"], step["window"])
+            done = pipeline.committee_is_current(step["tafsir"], step["window"], variant)
         else:
-            slug = pipeline.model_slug(step["model"])
+            slug = pipeline.variant_annotator(pipeline.model_slug(step["model"]), variant)
             done = pipeline.verified_path(step["tafsir"], slug, step["window"]).is_file()
         if done:
             db.execute("UPDATE task_steps SET status='skipped', finished_at=?, duration_ms=0,"
@@ -313,7 +331,7 @@ def _run_step(task: dict, step: dict) -> None:
     elif cm and step["agent"] == "chair":
         result = {"moves": int(cm.group(2)), "auto_candidate": int(cm.group(3)),
                   "specialist": int(cm.group(4))}
-        com = pipeline.load_committee(step["tafsir"], step["window"])
+        com = pipeline.load_committee(step["tafsir"], step["window"], step.get("variant") or None)
         if com:
             result["reasons"] = (com.get("summary") or {}).get("by_abstention_reason")
     elif proc.returncode != 0:

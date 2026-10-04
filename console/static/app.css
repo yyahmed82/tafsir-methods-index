@@ -331,6 +331,17 @@ table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
 .kv .k { font-size: 12px; color: var(--text-3); }
 .kv .v { font-weight: 600; font-size: 14px; }
 .decide { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; margin-top: 12px; }
+/* the reviewer's lesson for the agents (review → teaching examples) */
+.lesson { border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--surface); }
+.lesson > summary { cursor: pointer; display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--accent-text); font-weight: 600; list-style: none; }
+.lesson > summary::-webkit-details-marker { display: none; }
+.lesson > summary svg { width: 15px; height: 15px; }
+.lesson[open] > summary { margin-bottom: 8px; }
+.lesson-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 8px; }
+.lesson .label { font-size: 12px; }
+details > summary { cursor: pointer; color: var(--text-2); font-weight: 600; }
+ol.rules, ol.steps { margin: 8px 0 0; padding-inline-start: 22px; display: grid; gap: 6px; line-height: 1.8; }
+ol.rules li::marker, ol.steps li::marker { color: var(--accent); font-weight: 700; }
 
 /* ---------- login */
 .auth-wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
@@ -464,6 +475,7 @@ pre.out { background: var(--surface-2); border: 1px solid var(--border); border-
   .robot { width: 74px; height: 74px; }
   .tafsir-row { grid-template-columns: 70px 1fr auto; }
   .decide { grid-template-columns: 1fr; }
+  .lesson-grid { grid-template-columns: 1fr; }
   .hide-sm { display: none !important; }
   .modal { padding: 16px; }
   .btn { min-height: 42px; }

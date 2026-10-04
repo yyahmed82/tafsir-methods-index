@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import __version__, auth, config, db, demo, mailer, mailtpl, pipeline, runner, settings
+from . import __version__, auth, config, db, demo, learning, mailer, mailtpl, pipeline, runner, settings
 
 
 # ------------------------------------------------------------------ setup
@@ -238,6 +238,7 @@ class TaskIn(BaseModel):
     ayat: str = ""
     tafsirs: list[str] = []
     skip_done: bool = True
+    variant: str = "baseline"  # baseline | profile | ab (both arms, blind review)
 
 
 class DecisionIn(BaseModel):
@@ -247,6 +248,11 @@ class DecisionIn(BaseModel):
     decision: str
     compared_with_source: bool = False
     note: str = Field(default="", max_length=1000)
+    arm: str = Field(default="", max_length=1)  # X | Y in a blind A/B window
+    # the lesson for the agents (optional on approve)
+    error_type: str = Field(default="", max_length=40)
+    correct_primary: str = Field(default="", max_length=20)
+    teach: bool = False
 
 
 class UserIn(BaseModel):
@@ -566,7 +572,8 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     @operational(write=True)
     def task_preview(body: TaskIn, user: dict = Depends(need("run_tasks"))) -> dict:
         try:
-            steps = runner.plan_steps(body.kind, body.scope, body.ayat, body.tafsirs)
+            steps = runner.plan_steps(body.kind, body.scope, body.ayat, body.tafsirs,
+                                      body.variant)
         except runner.TaskError as e:
             raise _err(400, str(e)) from e
         wins = {(s["tafsir"], s["window"]) for s in steps}
@@ -593,14 +600,15 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     def task_create(body: TaskIn, user: dict = Depends(need("run_tasks"))) -> dict:
         try:
             runner.check_gates(body.kind, body.scope,
-                               runner.plan_steps(body.kind, body.scope, body.ayat, body.tafsirs), user)
+                               runner.plan_steps(body.kind, body.scope, body.ayat, body.tafsirs,
+                                                 body.variant), user)
         except runner.TaskError as e:
             raise _err(400, str(e)) from e
         if body.kind != "dryrun" and not _probe(force=True).get("reachable"):
             raise _err(409, "engine_offline")
         try:
             tid = runner.create_task(body.kind, body.scope, body.ayat, body.tafsirs,
-                                     body.skip_done, user)
+                                     body.skip_done, user, variant=body.variant)
         except runner.TaskError as e:
             raise _err(400, str(e)) from e
         return {"id": tid}
@@ -682,38 +690,37 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         return runner.mail_report(_day(day), user["id"])
 
     # ---------- review
+    def _reveals_arms(user: dict) -> bool:
+        """Operators may see which blind arm is the profile run; reviewers may not."""
+        return "generate_reports" in user["permissions"]
+
+    def _variant(tafsir: str, window: str, arm: str | None) -> str | None:
+        try:
+            return pipeline.variant_for_arm(tafsir, window, arm or None)
+        except ValueError as e:
+            raise _err(400, "bad_arm") from e
+
     @app.get("/api/review/units")
     @operational()
     def review_units(user: dict = Depends(need("view_tasks")), tafsir: str | None = None) -> dict:
         units = pipeline.review_units(tafsir)
-        counts = {(r["tafsir"], r["window"]): r for r in db.rows(
-            "SELECT tafsir, window, COUNT(DISTINCT move_id) AS decided FROM decisions"
-            " GROUP BY tafsir, window")}
+        counts = {(r["tafsir"], r["window"], r["annotator"]): r for r in db.rows(
+            "SELECT tafsir, window, annotator, COUNT(DISTINCT move_id) AS decided FROM decisions"
+            " GROUP BY tafsir, window, annotator")}
+        reveal = _reveals_arms(user)
         for u in units:
-            u["decided"] = (counts.get((u["tafsir"], u["window"])) or {}).get("decided", 0)
-        return {"units": units, "models": pipeline.models()}
+            u["decided"] = (counts.get((u["tafsir"], u["window"], u.get("annotator"))) or {}
+                            ).get("decided", 0)
+            if not reveal:
+                u.pop("variant", None)
+                u.pop("annotator", None)
+        return {"units": units, "models": pipeline.models(), "reveals_arms": reveal}
 
-    def _review_source(tafsir: str, window: str) -> tuple[str, dict | None, dict | None]:
-        """(annotator, verified payload, committee payload): the chair's view when present."""
-        m = pipeline.models()
-        com_v = pipeline.load_verified(tafsir, "committee", window)
-        if com_v is not None:
-            return "committee", com_v, pipeline.load_committee(tafsir, window)
-        return m["classifier_slug"], pipeline.load_verified(tafsir, m["classifier_slug"],
-                                                             window), None
-
-    def _units(v: dict, com: dict | None) -> list[tuple[str, dict, dict | None]]:
-        rows = (com or {}).get("moves") or []
-        out = []
-        for i, mv in enumerate(v.get("moves") or []):
-            c = rows[i] if i < len(rows) else None
-            key = pipeline.unit_key(c, i) if com is not None else str(mv.get("move_id"))
-            out.append((key, mv, c))
-        return out
+    _units = pipeline.unit_rows
 
     @app.get("/api/review/{tafsir}/{window}")
     @operational()
-    def review_window(tafsir: str, window: str,
+    def review_window(tafsir: str, window: str, arm: str | None = None,
                       user: dict = Depends(need("view_tasks"))) -> dict:
         if tafsir not in config.TAFSIRS or not pipeline.WINDOW_RE.match(window):
             raise _err(400, "bad_unit")
@@ -722,12 +729,18 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
             if out is None:
                 raise _err(404, "unit_not_found")
             return out
-        annotator, v, com = _review_source(tafsir, window)
+        variant = _variant(tafsir, window, arm)
+        annotator, v, com = pipeline.review_source(tafsir, window, variant)
         if v is None:
             raise _err(404, "unit_not_found")
         dec = db.rows("SELECT d.*, u.name AS user_name FROM decisions d JOIN users u"
                       " ON u.id=d.user_id WHERE tafsir=? AND window=? AND annotator=?"
                       " ORDER BY d.id", (tafsir, window, annotator))
+        reveal = _reveals_arms(user)
+        for d in dec:
+            d["teach"] = db.loads(d.get("teach"), {}) or {}
+            if not reveal:
+                d.pop("annotator", None)
         latest = {}
         for d in dec:
             latest[d["move_id"]] = d
@@ -747,14 +760,20 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                     "route_reviewer", "committee_route", "outcome", "abstention_reasons",
                     "abstention_ar")}
             moves.append(row)
+        models = (com or {}).get("models")
+        if models and not reveal:
+            models = {k: {"tag": (x or {}).get("tag")} for k, x in models.items()}
         return {"tafsir": tafsir, "name_ar": config.TAFSIR_NAMES_AR[tafsir], "window": window,
-                "ayah": v.get("ayah"), "annotator": annotator,
+                "ayah": v.get("ayah"), "annotator": annotator if reveal else None,
+                "arm": arm or None, "variant": variant if reveal else None,
                 "source_file": v.get("source_file"), "source_sha256": v.get("source_sha256"),
                 "packet_sha256": v.get("packet_sha256"),
                 "summary": (com or {}).get("summary") or v.get("summary"),
-                "models": (com or {}).get("models"), "is_committee": com is not None,
+                "models": models, "is_committee": com is not None,
                 "moves": moves,
-                "chair": None if com is not None else pipeline.chair_preview(tafsir, window),
+                "chair": None if com is not None else pipeline.chair_preview(tafsir, window,
+                                                                             variant),
+                "error_types": learning.error_types(), "methods": list(learning.METHODS),
                 "history": dec}
 
     @app.post("/api/review/decision")
@@ -767,34 +786,57 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
             raise _err(400, "bad_unit")
         if body.decision == "approve" and not body.compared_with_source:
             raise _err(400, "compare_first")
-        if body.decision != "approve" and not body.note.strip():
+        if body.error_type and body.error_type not in learning.error_types():
+            raise _err(400, "bad_error_type")
+        if body.correct_primary and body.correct_primary not in learning.METHODS:
+            raise _err(400, "bad_method")
+        if body.decision != "approve" and not (body.note.strip() or body.error_type):
             raise _err(400, "note_required")
-        annotator, v, com = _review_source(body.tafsir, body.window)
-        if v is None or body.move_id not in {k for k, _m, _c in _units(v, com)}:
+        if body.teach and body.decision != "approve" and not body.error_type:
+            raise _err(400, "lesson_required")
+        variant = _variant(body.tafsir, body.window, body.arm)
+        annotator, v, com = pipeline.review_source(body.tafsir, body.window, variant)
+        units = {k: (mv, c) for k, mv, c in _units(v, com)} if v is not None else {}
+        if body.move_id not in units:
             raise _err(404, "unit_not_found")
+        teach = {}
+        if body.teach or body.error_type or body.correct_primary:
+            teach = {"teach": bool(body.teach), "error_type": body.error_type or None,
+                     "correct_primary": body.correct_primary or None}
         db.execute(
             "INSERT INTO decisions(tafsir,window,annotator,move_id,decision,compared_with_source,"
-            "note,user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            "note,user_id,created_at,teach) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (body.tafsir, body.window, annotator, body.move_id, body.decision,
-             int(body.compared_with_source), body.note.strip(), user["id"], db.now()))
+             int(body.compared_with_source), body.note.strip(), user["id"], db.now(),
+             db.dumps(teach) if teach else ""))
         db.audit("review.decision", user_id=user["id"], ip=_ip(request),
                  target=f"{body.tafsir}/{body.window}/{body.move_id}",
-                 detail={"decision": body.decision, "annotator": annotator})
-        return {"ok": True}
+                 detail={"decision": body.decision, "annotator": annotator,
+                         "teach": bool(body.teach), "error_type": body.error_type or None})
+        bank = learning.rebuild_bank(body.tafsir)
+        return {"ok": True, "teaching_examples": bank}
 
     @app.get("/api/review/export")
     @operational()
     def review_export(user: dict = Depends(need("review_units"))) -> JSONResponse:
         rows = db.rows("SELECT d.tafsir,d.window,d.annotator,d.move_id,d.decision,"
-                       "d.compared_with_source,d.note,d.created_at,u.name AS reviewer,"
+                       "d.compared_with_source,d.note,d.teach,d.created_at,u.name AS reviewer,"
                        "u.email AS reviewer_email FROM decisions d JOIN users u ON"
                        " u.id=d.user_id ORDER BY d.id")
+        for r in rows:
+            r["teach"] = db.loads(r.get("teach"), {}) or {}
         payload = {"kind": "mirqah-console-decisions", "exported_at": time.time(),
                    "note_ar": "قرارات بشرية مسجّلة في اللوحة؛ لا تُكتب في data/ إلا عبر"
                               " src/import_reviews.py بقرار الفريق.",
                    "decisions": rows}
         return JSONResponse(payload, headers={
             "Content-Disposition": 'attachment; filename="mirqah-decisions.json"'})
+
+    # ---------- learning (how reviews teach the agents)
+    @app.get("/api/learning")
+    @operational()
+    def learning_view(user: dict = Depends(need("view_tasks"))) -> dict:
+        return learning.overview(reveal_arms=_reveals_arms(user))
 
     # ---------- users
     def _role(role_id: int) -> dict:

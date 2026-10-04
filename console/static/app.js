@@ -267,11 +267,11 @@
     document.body.classList.toggle('is-view-as', viewingAs());
     document.body.classList.toggle('is-demo', inDemo());
     if (!S.me) { app.innerHTML = loginView(); bindLogin(); return; }
-    const [r, a, b] = parts();
+    const [r, a, b, c] = parts();
     const routes = {
       dashboard: [viewDashboard, 'view_dashboard'], tasks: [a ? viewTask : viewTasks, 'view_tasks'],
       progress: [viewProgress, 'view_dashboard'], reports: [a ? viewReport : viewReports, 'view_reports'],
-      review: [a ? viewReviewWindow : viewReview, 'view_tasks'], calls: [viewCalls, 'view_tasks'],
+      review: [a === 'learning' ? viewLearning : a ? viewReviewWindow : viewReview, 'view_tasks'], calls: [viewCalls, 'view_tasks'],
       audit: [viewAudit, 'view_audit'], users: [viewUsers, 'manage_users'], roles: [viewRoles, 'manage_roles'],
       settings: [viewSettings, 'manage_settings'], profile: [viewProfile, null],
     };
@@ -282,7 +282,7 @@
       entry = [viewProfile, null];
     }
     app.innerHTML = shell(loading());
-    try { await entry[0](a, b); } catch (e) {
+    try { await entry[0](a, b, c); } catch (e) {
       if (e instanceof ApiError && e.status === 401) return;
       $('#page').innerHTML = `<div class="notice bad">${ico('warn')}<span>${esc(errText(e))}</span></div>`;
     }
@@ -508,14 +508,18 @@
         <div class="field" id="ayat-f" style="display:none"><label for="ayat">${T('tasks.ayat')}</label><input class="input ltr" id="ayat" placeholder="${T('tasks.ayat_ph')}"></div>
         <div class="field"><span class="label">${T('tasks.tafsirs')}</span>
           <div class="perm-grid">${taf.map((x) => `<label class="check"><input type="checkbox" name="taf" value="${x}" checked><span>${esc(tafsirName(x))}</span></label>`).join('')}</div></div>
+        <div class="field"><span class="label">${T('tasks.variant')}</span>
+          <div class="seg" role="radiogroup">${['baseline', 'profile', 'ab'].map((v) => `<button type="button" data-variant="${v}" class="${v === (preset.variant || 'baseline') ? 'on' : ''}">${T('variant.' + v)}</button>`).join('')}</div>
+          <p class="faint mt-s" id="variant-hint">${T('variant.hint.' + (preset.variant || 'baseline'))}</p></div>
         <label class="check"><input type="checkbox" id="skip" checked><span>${T('tasks.skip_done')}</span></label>
         <div id="task-preview" class="notice"><div class="spinner sm"></div></div>
         <div class="form-actions"><button type="button" class="btn" data-act="close-modal">${T('common.cancel')}</button>
           <button type="submit" class="btn primary" id="task-go">${ico('play')} ${T('tasks.run')}</button></div>
       </form>`);
     let scope = preset.scope || 'sample';
+    let variant = preset.variant || 'baseline';
     const body = () => ({ kind: $('input[name=kind]:checked', m).value, scope, ayat: $('#ayat', m).value,
-      tafsirs: $$('input[name=taf]:checked', m).map((x) => x.value), skip_done: $('#skip', m).checked });
+      tafsirs: $$('input[name=taf]:checked', m).map((x) => x.value), skip_done: $('#skip', m).checked, variant });
     let seq = 0;
     const preview = async () => {
       const my = ++seq;
@@ -538,6 +542,8 @@
     m.addEventListener('click', (e) => {
       const s = e.target.closest('[data-scope]');
       if (s) { scope = s.dataset.scope; $$('[data-scope]', m).forEach((b) => b.classList.toggle('on', b === s)); preview(); }
+      const v = e.target.closest('[data-variant]');
+      if (v) { variant = v.dataset.variant; $$('[data-variant]', m).forEach((b) => b.classList.toggle('on', b === v)); $('#variant-hint', m).textContent = t('variant.hint.' + variant); preview(); }
     });
     m.addEventListener('change', preview);
     let deb; $('#ayat', m).addEventListener('input', () => { clearTimeout(deb); deb = setTimeout(preview, 350); });
@@ -567,7 +573,7 @@
         if (r.reason_code) return `<span class="chip bad mono">${esc(r.reason_code)}</span>`;
         return '';
       };
-      const rows = d.steps.map((s) => `<tr class="click" data-act="step" data-id="${s.id}"><td class="num">${s.seq + 1}</td><td>${agentName(s.agent)}</td><td>${esc(tafsirName(s.tafsir))}</td>
+      const rows = d.steps.map((s) => `<tr class="click" data-act="step" data-id="${s.id}"><td class="num">${s.seq + 1}</td><td>${agentName(s.agent)}${s.variant ? ` <span class="chip violet" title="${T('variant.profile')}">${T('variant.short.' + s.variant)}</span>` : ''}</td><td>${esc(tafsirName(s.tafsir))}</td>
         <td class="mono">${esc(s.window)}</td><td class="mono hide-sm">${esc(s.model || '—')}</td><td>${statusChip(s.status)}</td><td class="num">${fDur(s.duration_ms)}</td>
         <td class="hide-sm">${stepNote(s.result)}</td></tr>`).join('');
       const actions = [
@@ -662,16 +668,31 @@
   // ------------------------------------------------------------ review
   async function viewReview() {
     const d = await api('/review/units');
-    const rows = d.units.length ? d.units.map((u) => `<tr class="click" data-href="#/review/${u.tafsir}/${u.window}"><td class="mono">${esc(u.ayah)}</td><td>${esc(u.name_ar)}</td>
-      <td class="mono">${esc(u.window)} ${u.committee ? `<span class="chip violet">${T('dash.committee')}</span>` : ''}</td><td class="num">${fNum(u.moves)}</td><td class="num">${fNum(u.auto_candidate)}</td><td class="num">${fNum(u.specialist)}</td>
+    const armChip = (u) => u.arm ? `<span class="chip info" title="${T('review.arm_note')}">${T('review.arm', { a: u.arm })}${d.reveals_arms && u.variant ? ` · ${T('variant.short.' + u.variant)}` : ''}</span>` : '';
+    const rows = d.units.length ? d.units.map((u) => `<tr class="click" data-href="#/review/${u.tafsir}/${u.window}${u.arm ? '/' + u.arm : ''}"><td class="mono">${esc(u.ayah)}</td><td>${esc(u.name_ar)}</td>
+      <td class="mono">${esc(u.window)} ${u.committee ? `<span class="chip violet">${T('dash.committee')}</span>` : ''} ${armChip(u)}</td><td class="num">${fNum(u.moves)}</td><td class="num">${fNum(u.auto_candidate)}</td><td class="num">${fNum(u.specialist)}</td>
       <td class="num hide-sm">${u.flags == null ? '—' : fNum(u.flags)}</td><td class="num">${u.decided ? `<span class="chip ok">${fNum(u.decided)}/${fNum(u.moves)}</span>` : `<span class="chip">0/${fNum(u.moves)}</span>`}</td></tr>`).join('')
       : `<tr><td colspan="8" class="empty">${T('review.empty')}</td></tr>`;
-    setPage(`${head('review.title', 'review.subtitle', has('review_units') ? `<a class="btn" href="/api/review/export">${ico('download')} ${T('review.export')}</a>` : '')}
+    setPage(`${head('review.title', 'review.subtitle', `<a class="btn outline-accent" href="#/review/learning">${ico('chart')} ${T('learn.title')}</a>${has('review_units') ? `<a class="btn" href="/api/review/export">${ico('download')} ${T('review.export')}</a>` : ''}`)}
       <p class="faint mb">${T('agent.classifier')}: <span class="mono">${esc(d.models.classifier)}</span> · ${T('dash.caption_counts')}</p>
       <div class="table-wrap"><table class="t"><thead><tr><th>${T('progress.ayah')}</th><th>${T('tasks.tafsir')}</th><th>${T('tasks.window')}</th><th>${T('dash.moves')}</th><th>${T('dash.candidates')}</th><th>${T('dash.specialist')}</th><th class="hide-sm">${T('dash.flags')}</th><th>${T('review.decided')}</th></tr></thead><tbody>${rows}</tbody></table></div>`);
   }
-  async function viewReviewWindow(tafsir, win) {
-    const d = await api(`/review/${encodeURIComponent(tafsir)}/${encodeURIComponent(win)}`);
+  async function viewReviewWindow(tafsir, win, arm) {
+    const d = await api(`/review/${encodeURIComponent(tafsir)}/${encodeURIComponent(win)}${arm ? '?arm=' + encodeURIComponent(arm) : ''}`);
+    const errTypes = d.error_types || {};
+    const methods = d.methods || [];
+    const lesson = (m) => !Object.keys(errTypes).length ? '' : `<details class="lesson"><summary>${ico('flask')} ${T('learn.lesson')}</summary>
+        <div class="lesson-grid"><label class="field"><span class="label">${T('learn.error_type')}</span><select class="input" data-error>
+          <option value="">${T('learn.error_none')}</option>${Object.entries(errTypes).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('')}</select></label>
+        <label class="field"><span class="label">${T('learn.correct')}</span><select class="input" data-correct>
+          <option value="">${T('learn.correct_none')}</option>${methods.map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select></label></div>
+        <label class="check"><input type="checkbox" data-teach><span>${T('learn.teach')}</span></label>
+        <p class="faint">${T('learn.teach_note')}</p></details>`;
+    const lessonChip = (dec) => {
+      const t0 = (dec && dec.teach) || {};
+      if (!t0.error_type && !t0.teach) return '';
+      return `<span class="chip ${t0.teach ? 'ok' : ''}">${t0.teach ? T('learn.taught') : T('learn.lesson')}${t0.error_type ? ' · ' + esc(errTypes[t0.error_type] || t0.error_type) : ''}${t0.correct_primary ? ' → <span class="mono">' + esc(t0.correct_primary) + '</span>' : ''}</span>`;
+    };
     const preview = {};
     (d.chair ? d.chair.moves : []).forEach((c) => { preview[c.move_id] = c; });
     const canDecide = canDo('review_units');
@@ -695,14 +716,14 @@
       return `<article class="move" data-move="${esc(m.key)}">
         <div class="row between"><div class="row"><b class="mono">${esc(m.key)}</b><span class="chip ${m.route === 'auto_candidate' ? 'ok' : 'warn'}">${T('route.' + (m.route || 'specialist'))}</span>
           ${chairChip}${reasonChip(m.reason_code)}</div>
-          ${dec ? `<span class="chip ${dec.decision === 'approve' ? 'ok' : dec.decision === 'reject' ? 'bad' : 'warn'}">${T('review.decision.' + dec.decision)} · ${esc(dec.user_name)} · ${esc(fDT(dec.created_at))}</span>` : ''}</div>
+          <div class="row">${dec ? `<span class="chip ${dec.decision === 'approve' ? 'ok' : dec.decision === 'reject' ? 'bad' : 'warn'}">${T('review.decision.' + dec.decision)} · ${esc(dec.user_name)} · ${esc(fDT(dec.created_at))}</span>` : ''}${lessonChip(dec)}</div></div>
         ${agents}
         ${c && c.abstention_ar ? `<p class="faint mb" dir="rtl">${esc(c.abstention_ar)}</p>` : ''}
         <div class="label mb">${T('review.text')} <span class="faint mono">${esc((m.span_ids || []).join(' '))}</span></div>
         ${d.simulated ? `<div class="move-text sim">${ico('flask')} ${T('demo.text_hidden')}</div>` : `<div class="move-text">${esc(m.text || '')}</div>`}
         ${m.rationale_ar ? `<p class="faint mt-s"><b>${T('review.rationale')}</b> (${T('review.rationale_note')}): <span dir="rtl">${esc(m.rationale_ar)}</span></p>` : ''}
         ${canDecide ? `<div class="decide"><div class="stack"><label class="check"><input type="checkbox" data-compare><span>${T('review.compare')}</span></label>
-            <input class="input" data-note placeholder="${T('review.note_ph')}" maxlength="1000"></div>
+            <input class="input" data-note placeholder="${T('review.note_ph')}" maxlength="1000">${lesson(m)}</div>
           <div class="row"><button class="btn primary" data-act="decide" data-d="approve">${ico('check')} ${T('review.approve')}</button>
             <button class="btn warn" data-act="decide" data-d="needs_edit">${T('review.needs_edit')}</button>
             <button class="btn danger" data-act="decide" data-d="reject">${ico('x')} ${T('review.reject')}</button></div></div>` : ''}
@@ -711,16 +732,49 @@
     const sum = d.summary || {};
     const reasons = Object.entries(sum.by_abstention_reason || {}).filter(([, v]) => v).map(([k, v]) => `<span class="chip violet">${T('review.reason.' + k)} ${fNum(v)}</span>`).join(' ');
     const mdl = d.models ? `${T('agent.classifier')}: <span class="mono">${esc((d.models.proposer || {}).tag || '')}</span> · ${T('agent.verifier')}: <span class="mono">${esc((d.models.reviewer || {}).tag || '')}</span>` : '';
-    S.reviewCtx = { tafsir, win };
-    setPage(`<div class="page-head"><div><div class="kicker">${T('review.title')}</div><h1>${esc(d.name_ar)} · <span class="mono">${esc(d.window)}</span></h1>
+    S.reviewCtx = { tafsir, win, arm: arm || '' };
+    setPage(`<div class="page-head"><div><div class="kicker">${T('review.title')}</div><h1>${esc(d.name_ar)} · <span class="mono">${esc(d.window)}</span>${d.arm ? ` <span class="chip info">${T('review.arm', { a: d.arm })}${d.variant ? ' · ' + T('variant.short.' + d.variant) : ''}</span>` : ''}</h1>
         <p class="muted">${T('progress.ayah')} <span class="mono">${esc(d.ayah)}</span> · ${d.simulated ? T('demo.source_none') : `${T('review.source')}: <span class="mono">${esc(d.source_file)}</span> · sha256 <span class="mono">${esc((d.source_sha256 || '').slice(0, 12))}…</span>`}</p></div>
         <div class="head-actions"><a class="btn" href="#/review">${T('common.back')}</a></div></div>
       ${canDecide ? '' : `<div class="notice mb">${ico('info')}<span>${T(inDemo() ? 'demo.read_only' : viewingAs() ? 'viewas.note' : 'review.read_only')}</span></div>`}
+      ${d.arm ? `<div class="notice mb">${ico('info')}<span>${T('review.arm_note')}</span></div>` : ''}
       <div class="notice mb">${ico('shield')}<span>${T('review.subtitle')} ${d.is_committee ? T('review.committee_note') : T('review.chair_note')}</span></div>
       ${d.is_committee ? `<section class="card mb"><div class="row between"><div class="row"><b>${T('review.committee')}</b> ${mdl}</div>
         <span class="faint">${T('dash.moves')} ${fNum(sum.move_count)} · ${T('dash.candidates')} ${fNum(sum.auto_candidate)} · ${T('dash.specialist')} ${fNum(sum.specialist)} · ${esc(sum.caption || '')}</span></div>
         ${reasons ? `<div class="row mt-s">${reasons}</div>` : ''}</section>` : ''}
       ${moves}`);
+  }
+
+  async function viewLearning() {
+    const d = await api('/learning');
+    const fam = (k) => T('learn.family.' + k);
+    const errs = d.errors.length ? d.errors.map((e) => `<span class="chip warn">${esc(e.label_ar)} ${fNum(e.count)}</span>`).join(' ') : `<span class="faint">${T('learn.no_errors')}</span>`;
+    const abTable = (ab) => {
+      if (!ab) return '';
+      if (ab.error) return `<p class="faint">${esc(ab.error)}</p>`;
+      if (!ab.paired_windows.length) return `<p class="faint mt-s">${T('learn.ab_none')}</p>`;
+      const row = (k) => { const a = ab.arms[k]; return `<tr><td><b>${T('learn.arm_' + k)}</b></td><td class="num">${fNum(a.windows)}</td><td class="num">${fNum(a.moves)}</td><td class="num">${fNum(a.auto_candidate)}</td><td class="num">${fNum(a.specialist)}</td><td class="num">${fNum(a.trap_hits)}</td><td class="num">${fNum(a.trap_hits_candidates)}</td></tr>`; };
+      return `<div class="table-wrap mt-s"><table class="t"><thead><tr><th>${T('learn.arm')}</th><th>${T('dash.windows')}</th><th>${T('dash.moves')}</th><th>${T('dash.candidates')}</th><th>${T('dash.specialist')}</th><th>${T('learn.traps')}</th><th>${T('learn.traps_cand')}</th></tr></thead><tbody>${row('A')}${row('B')}</tbody></table></div>
+        <p class="faint mt-s">${T('learn.traps_note')} · ${esc(ab.caption_ar)}</p>`;
+    };
+    const cards = d.tafsirs.map((x) => {
+      const p = x.profile;
+      const bank = x.bank || { count: 0, by_family: {} };
+      const dec = x.decisions || {};
+      return `<section class="card mb"><div class="row between"><div class="row"><h2>${esc(x.name_ar)}</h2>${p ? `<span class="chip ${p.status === 'draft' ? 'warn' : 'ok'}" title="${esc(p.status_ar || p.status)}">${T('learn.profile')} <bdi class="mono">${esc(p.version)}</bdi> · ${T('learn.status.' + (p.status === 'draft' ? 'draft' : 'reviewed'))}</span>` : `<span class="chip bad">${T('learn.no_profile')}</span>`}</div>
+          <span class="faint">${T('learn.bank', { n: fNum(bank.count) })}</span></div>
+        <div class="row mt-s">${Object.entries(bank.by_family).map(([k, v]) => `<span class="chip ok">${fam(k)} ${fNum(v)}</span>`).join('') || `<span class="faint">${T('learn.bank_empty')}</span>`}</div>
+        <p class="faint mt-s">${T('review.decision.approve')} ${fNum(dec.approve || 0)} · ${T('review.decision.needs_edit')} ${fNum(dec.needs_edit || 0)} · ${T('review.decision.reject')} ${fNum(dec.reject || 0)} · ${T('learn.lessons')} ${fNum(dec.lessons || 0)}</p>
+        ${p ? `<details class="mt-s"><summary>${T('learn.rules')}</summary><ol class="rules" dir="rtl">${(p.golden_rules_ar || []).map((r) => `<li>${esc(r)}</li>`).join('')}</ol>
+          <p class="faint" dir="rtl">${esc(p.source_ar || '')}</p></details>` : ''}
+        ${d.reveals_arms ? abTable(x.ab) : ''}</section>`;
+    }).join('');
+    setPage(`${head('learn.title', 'learn.subtitle', `<a class="btn" href="#/review">${T('common.back')}</a>`)}
+      <section class="card mb"><h2>${T('learn.how')}</h2><ol class="steps mt-s">${[1, 2, 3, 4].map((i) => `<li>${T('learn.how.' + i)}</li>`).join('')}</ol></section>
+      <div class="grid g3 mb"><div class="card"><div class="kicker">${T('learn.lessons')}</div><div class="stat">${fNum(d.lessons)}</div></div>
+        <div class="card"><div class="kicker">${T('learn.decisions')}</div><div class="stat">${fNum(d.decisions)}</div></div>
+        <div class="card"><div class="kicker">${T('learn.errors')}</div><div class="row mt-s">${errs}</div></div></div>
+      ${cards}`);
   }
 
   // ------------------------------------------------------------ calls & audit
@@ -1103,8 +1157,10 @@
         case 'mail-report': { const r = await api(`/reports/${el.dataset.day}/mail`, { method: 'POST' }); toast(t('reports.mail_result', r), r.failed ? 'bad' : 'ok'); render(); break; }
         case 'decide': {
           const art = el.closest('[data-move]');
+          const val = (sel) => { const x = $(sel, art); return x ? (x.type === 'checkbox' ? x.checked : x.value) : ''; };
           const body = { tafsir: S.reviewCtx.tafsir, window: S.reviewCtx.win, move_id: art.dataset.move, decision: el.dataset.d,
-            compared_with_source: $('[data-compare]', art).checked, note: $('[data-note]', art).value };
+            compared_with_source: $('[data-compare]', art).checked, note: $('[data-note]', art).value, arm: S.reviewCtx.arm || '',
+            error_type: val('[data-error]') || '', correct_primary: val('[data-correct]') || '', teach: !!val('[data-teach]') };
           await api('/review/decision', { method: 'POST', body }); toast(t('common.saved'), 'ok'); render(); break;
         }
         case 'add-user': userModal(null); break;

@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS task_steps (
   id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL, seq INTEGER NOT NULL, agent TEXT NOT NULL,
   tafsir TEXT NOT NULL, window TEXT NOT NULL, model TEXT, status TEXT NOT NULL DEFAULT 'queued',
   started_at REAL, finished_at REAL, duration_ms INTEGER, exit_code INTEGER, result TEXT,
-  output_tail TEXT
+  output_tail TEXT, variant TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS steps_task ON task_steps(task_id, seq);
 CREATE INDEX IF NOT EXISTS steps_finished ON task_steps(finished_at);
@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS reports (
 CREATE TABLE IF NOT EXISTS decisions (
   id INTEGER PRIMARY KEY, tafsir TEXT NOT NULL, window TEXT NOT NULL, annotator TEXT NOT NULL,
   move_id TEXT NOT NULL, decision TEXT NOT NULL, compared_with_source INTEGER NOT NULL DEFAULT 0,
-  note TEXT NOT NULL DEFAULT '', user_id INTEGER NOT NULL, created_at REAL NOT NULL
+  note TEXT NOT NULL DEFAULT '', user_id INTEGER NOT NULL, created_at REAL NOT NULL,
+  teach TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS decisions_unit ON decisions(tafsir, window, annotator, move_id);
 CREATE INDEX IF NOT EXISTS decisions_at ON decisions(created_at);
@@ -227,11 +228,27 @@ def init(db_path: Path | None = None) -> Path:
     return _DB_PATH
 
 
+def _add_columns(con: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    cols = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
+    if not cols:
+        return
+    for name, decl in columns.items():
+        if name not in cols:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+
+
+# step arm (''=baseline, 'profile'=arm B) and the reviewer's lesson for the agents
+_STEP_DECISION_COLUMNS = {
+    "task_steps": {"variant": "TEXT NOT NULL DEFAULT ''"},
+    "decisions": {"teach": "TEXT NOT NULL DEFAULT ''"},
+}
+
+
 def _migrate(con: sqlite3.Connection) -> None:
     """Additive column changes for databases created by older releases."""
-    cols = {r[1] for r in con.execute("PRAGMA table_info(outbox)")}
-    if "html" not in cols:
-        con.execute("ALTER TABLE outbox ADD COLUMN html TEXT")
+    _add_columns(con, "outbox", {"html": "TEXT"})
+    for table, columns in _STEP_DECISION_COLUMNS.items():
+        _add_columns(con, table, columns)
 
 
 def demo_path() -> Path:
@@ -260,6 +277,8 @@ def init_demo() -> Path:
     try:
         con.execute("PRAGMA journal_mode = WAL")
         con.executescript(DEMO_SCHEMA)
+        for table, columns in _STEP_DECISION_COLUMNS.items():
+            _add_columns(con, table, columns)
         con.commit()
     finally:
         con.close()

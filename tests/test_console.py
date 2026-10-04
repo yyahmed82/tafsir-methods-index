@@ -683,3 +683,143 @@ def test_chair_without_verifier_is_skipped_not_failed_and_retried(env, monkeypat
         d = json.loads((ROOT / "console/static/i18n" / f"{lang}.json").read_text(encoding="utf-8"))
         assert all(k in d for k in ("tasks.skip.no_verifier", "tasks.skip.no_classifier",
                                     "tasks.skip.no_both", "tasks.skip.already"))
+
+
+# ------------------------------------------------------------------ A/B arms and teaching
+
+def test_ab_task_runs_both_arms_blind_review_and_teaching(env, tmp_path, monkeypatch):
+    fake_root = tmp_path / "repo"
+    shutil.copytree(ROOT / "src", fake_root / "src", ignore=shutil.ignore_patterns("__pycache__"))
+    for extra in ("schema", "method"):
+        if (ROOT / extra).is_dir():
+            shutil.copytree(ROOT / extra, fake_root / extra)
+    src_base = ROOT / "data" / "nur" / "al_saadi"
+    dst_base = fake_root / "data" / "nur" / "al_saadi"
+    for sub in ("raw", "layers", "spans", "windows", "markers", "packets"):
+        if (src_base / sub).is_dir():
+            shutil.copytree(src_base / sub, dst_base / sub)
+    monkeypatch.setattr(config, "REPO_ROOT", fake_root)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _FakeOllama)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        add_user("sa@example.com", "super_admin")
+        add_user("dr@example.com", "specialist")
+        login(env, "sa@example.com")
+        port = server.server_address[1]
+        env.patch("/api/settings/llm", json={"base_url": f"http://127.0.0.1:{port}"}, headers=H)
+        bad = env.post("/api/tasks/preview", json={"kind": "committee", "scope": "sample",
+                                                   "tafsirs": ["al_saadi"], "variant": "x"},
+                       headers=H)
+        assert bad.json()["detail"]["error"] == "variant_unknown"
+        r = env.post("/api/tasks", json={"kind": "committee", "scope": "sample",
+                                         "tafsirs": ["al_saadi"], "variant": "ab"}, headers=H)
+        assert r.status_code == 200, r.text
+        tid = r.json()["id"]
+        runner.start()
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            t = env.get(f"/api/tasks/{tid}").json()
+            if t["task"]["status"] in ("done", "failed"):
+                break
+            time.sleep(0.5)
+        assert t["task"]["status"] == "done", json.dumps(t, ensure_ascii=False)[:2000]
+        assert [(s["agent"], s["variant"]) for s in t["steps"]] == [
+            ("classifier", ""), ("classifier", "profile"), ("verifier", ""),
+            ("verifier", "profile"), ("chair", ""), ("chair", "profile")]
+        assert "ملف المفسر" in t["task"]["title_ar"]
+        # each arm writes its own outputs; arm B packets are rebuilt in the workspace copy
+        assert (dst_base / "committee" / "24_35.json").is_file()
+        assert (dst_base / "committee_profile" / "24_35.json").is_file()
+        assert (dst_base / "verified" / "qwen2_5_14b__profile" / "24_35.json").is_file()
+        assert (dst_base / "verified" / "committee__profile" / "24_35.json").is_file()
+        assert (dst_base / "packets_profile" / "24_35.json").is_file()
+        assert (dst_base / "packets" / "24_35.json").read_bytes() == \
+            (src_base / "packets" / "24_35.json").read_bytes()
+
+        # operators see which arm is which
+        units = [u for u in env.get("/api/review/units").json()["units"] if u["window"] == "24_35"]
+        assert sorted(u["arm"] for u in units) == ["X", "Y"]
+        b_arm = next(u["arm"] for u in units if u["variant"] == "profile")
+        a_arm = "X" if b_arm == "Y" else "Y"
+
+        # the specialist reviews blind
+        env.post("/api/auth/logout", headers=H)
+        login(env, "dr@example.com")
+        units = [u for u in env.get("/api/review/units").json()["units"] if u["window"] == "24_35"]
+        assert all("variant" not in u and "annotator" not in u for u in units)
+        rv = env.get(f"/api/review/al_saadi/24_35?arm={b_arm}").json()
+        assert rv["arm"] == b_arm and rv["variant"] is None and rv["annotator"] is None
+        assert "annotator" not in json.dumps(rv["models"])
+        assert "verse_in_report" in rv["error_types"] and "M_SUNNAH" in rv["methods"]
+        assert env.get("/api/review/al_saadi/24_35?arm=Z").json()["detail"]["error"] == "bad_arm"
+
+        body = {"tafsir": "al_saadi", "window": "24_35", "move_id": "P-m01", "arm": b_arm,
+                "decision": "needs_edit", "teach": True}
+        assert env.post("/api/review/decision", json=body, headers=H).json()["detail"][
+            "error"] == "note_required"
+        body.update(error_type="paraphrase_not_lugha", correct_primary="M_RAY")
+        ok = env.post("/api/review/decision", json=body, headers=H).json()
+        assert ok["ok"] and ok["teaching_examples"] == 1
+        assert env.post("/api/review/decision", json={**body, "error_type": "nope"},
+                        headers=H).json()["detail"]["error"] == "bad_error_type"
+        # the lesson is in the bank (references only, no text)
+        bank = json.loads((dst_base / "gold" / "examples.json").read_text(encoding="utf-8"))
+        ex = bank["examples"][0]
+        assert ex["window"] == "24_35" and ex["correct_primary"] == "M_RAY"
+        assert ex["error_type"] == "paraphrase_not_lugha" and "text" not in ex
+        # a decision on arm A is kept apart from arm B
+        env.post("/api/review/decision", json={"tafsir": "al_saadi", "window": "24_35",
+                                               "move_id": "P-m01", "arm": a_arm,
+                                               "decision": "reject", "note": "x"}, headers=H)
+        decided = {u["arm"]: u["decided"] for u in env.get("/api/review/units").json()["units"]
+                   if u["window"] == "24_35"}
+        assert decided == {"X": 1, "Y": 1}
+
+        learn = env.get("/api/learning").json()
+        saadi = next(x for x in learn["tafsirs"] if x["tafsir"] == "al_saadi")
+        assert learn["lessons"] == 1 and saadi["bank"]["count"] == 1
+        assert saadi["profile"]["version"] and len(saadi["profile"]["golden_rules_ar"]) == 8
+        assert "ab" not in saadi and learn["reveals_arms"] is False
+
+        env.post("/api/auth/logout", headers=H)
+        db.execute("UPDATE otp_codes SET created_at=created_at-3600")  # past the resend cooldown
+        login(env, "sa@example.com")
+        learn = env.get("/api/learning").json()
+        saadi = next(x for x in learn["tafsirs"] if x["tafsir"] == "al_saadi")
+        assert saadi["ab"]["paired_windows"] == ["24_35"]
+        assert saadi["ab"]["arms"]["A"]["moves"] == saadi["ab"]["arms"]["B"]["moves"] == 1
+
+        # the next arm B packet carries no example from the same ayah (no leakage)
+        pkt = json.loads((dst_base / "packets_profile" / "24_35.json").read_text(encoding="utf-8"))
+        assert not pkt.get("teaching_examples")
+    finally:
+        runner.stop()
+        server.shutdown()
+
+
+def test_ab_steps_and_variant_flags_in_commands(env, monkeypatch):
+    from console import pipeline
+    monkeypatch.setattr(pipeline, "resolve_scope", lambda scope, ayat, tafsirs: [("al_tabari", "24_2_p01")])
+    steps = runner.plan_steps("committee", "ayat", "2", ["al_tabari"], "ab")
+    assert [(s["agent"], s["variant"]) for s in steps] == [
+        ("classifier", ""), ("classifier", "profile"), ("verifier", ""), ("verifier", "profile"),
+        ("chair", ""), ("chair", "profile")]
+    monkeypatch.setattr(pipeline, "window_ids", lambda tafsir: ["24_2_p01"])
+    cmd, _ = runner._step_command({**steps[1]})
+    assert cmd[cmd.index("--variant") + 1] == "profile" and "--api" in cmd
+    cmd, _ = runner._step_command({**steps[5]})
+    assert cmd[-2:] == ["--variant", "profile"] and "src/committee_chair.py" in cmd
+    cmd, _ = runner._step_command({**steps[0]})
+    assert "--variant" not in cmd
+    assert runner._chair_inputs_missing({"tafsir": "al_tabari", "window": "24_99_p99",
+                                         "variant": "profile"}) == ["classifier", "verifier"]
+    with pytest.raises(runner.TaskError):
+        runner._step_command({**steps[0], "variant": "other"})
+
+
+def test_deploy_sync_keeps_arm_b_outputs_and_lessons():
+    script = (ROOT / "deploy" / "server" / "mirqah-deploy").read_text(encoding="utf-8")
+    for pat in ("committee_*/", "data/**/gold/", "markers_*/", "packets_*/"):
+        assert pat in script, pat
+    pull = (ROOT / "deploy" / "mac" / "pull-runs.sh").read_text(encoding="utf-8")
+    assert "committee_profile" in pull and "gold" in pull
