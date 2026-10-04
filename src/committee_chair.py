@@ -17,6 +17,7 @@ import sys
 import urllib.parse
 from pathlib import Path
 
+from v2_profiles import VARIANTS, variant_annotator, variant_dir  # noqa: E402
 from grounding_contract import (
     COMMITTEE_CAPTION,
     COMMITTEE_REASON_CODES,
@@ -372,6 +373,7 @@ def evaluate_window(
     proposer_quant: str = "Q4_K_M",
     reviewer_quant: str = "Q4_K_M",
     runtime: str | None = None,
+    variant: str | None = None,
 ) -> tuple[dict, dict]:
     """Evaluate one window with proposer and reviewer outputs.
 
@@ -382,6 +384,7 @@ def evaluate_window(
     """
     check_different_families(proposer, reviewer)
     base_path = Path(base).resolve()
+    committee_name = variant_annotator("committee", variant)
     p_file = base_path / "verified" / proposer / f"{window_id}.json"
     r_file = base_path / "verified" / reviewer / f"{window_id}.json"
 
@@ -550,7 +553,7 @@ def evaluate_window(
 
     verified_summary = {
         "window_id": window_id,
-        "annotator": "committee",
+        "annotator": committee_name,
         "move_count": len(verified_moves),
         "auto_candidate": sum(1 for m in verified_moves if m["route"] == ROUTE_AUTO),
         "specialist": sum(1 for m in verified_moves if m["route"] == ROUTE_SPECIALIST),
@@ -570,7 +573,7 @@ def evaluate_window(
     verified_committee_payload = {
         "window_id": window_id,
         "ayah": ayah,
-        "annotator": "committee",
+        "annotator": committee_name,
         "source_file": source_file,
         "source_sha256": p_verified.get("source_sha256") or r_verified.get("source_sha256"),
         "window_start": p_verified.get("window_start") if "window_start" in p_verified else r_verified.get("window_start"),
@@ -581,8 +584,8 @@ def evaluate_window(
         "summary": verified_summary,
     }
 
-    out_committee = base_path / "committee" / f"{window_id}.json"
-    out_verified = base_path / "verified" / "committee" / f"{window_id}.json"
+    out_committee = variant_dir(base_path, "committee", variant) / f"{window_id}.json"
+    out_verified = base_path / "verified" / committee_name / f"{window_id}.json"
     out_committee.parent.mkdir(parents=True, exist_ok=True)
     out_verified.parent.mkdir(parents=True, exist_ok=True)
 
@@ -606,6 +609,7 @@ def run_chair(
     reviewer_tag: str | None = None,
     proposer_quant: str = "Q4_K_M",
     reviewer_quant: str = "Q4_K_M",
+    variant: str | None = None,
 ) -> list[tuple[dict, dict]]:
     """Run committee chair on one or all windows."""
     check_different_families(proposer, reviewer)
@@ -641,6 +645,7 @@ def run_chair(
             reviewer_tag=reviewer_tag,
             proposer_quant=proposer_quant,
             reviewer_quant=reviewer_quant,
+            variant=variant,
         )
         results.append(res)
     return results
@@ -688,7 +693,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Quantization tag for reviewer (default: Q4_K_M)",
     )
 
+    parser.add_argument(
+        "--variant",
+        default=None,
+        choices=VARIANTS,
+        help="profile = arm B: reads verified/<slug>__profile, writes committee_profile/",
+    )
+
     args = parser.parse_args(argv)
+    args.proposer = variant_annotator(args.proposer, args.variant)
+    args.reviewer = variant_annotator(args.reviewer, args.variant)
 
     try:
         check_different_families(args.proposer, args.reviewer)
@@ -707,6 +721,7 @@ def main(argv: list[str] | None = None) -> int:
             reviewer_tag=args.reviewer_tag,
             proposer_quant=args.proposer_quant,
             reviewer_quant=args.reviewer_quant,
+            variant=args.variant,
         )
     except Exception as exc:
         sys.stderr.write(f"ERROR: {exc}\n")

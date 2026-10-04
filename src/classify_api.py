@@ -185,6 +185,15 @@ def build_user_prompt(packet: dict, error_feedback: str | None = None) -> str:
     h = grounding_contract.packet_sha256(packet)
     lines.append(f"packet_sha256: {h}")
     lines.append("")
+    if packet.get("profile_card_ar"):
+        lines.append("## بطاقة منهج المفسر (مستخلصة من دراسات علمية — مسودة يراجعها المختص)")
+        lines.append(str(packet["profile_card_ar"]))
+        lines.append("")
+    if packet.get("teaching_examples"):
+        import gold_bank  # local import keeps the baseline prompt path unchanged
+
+        lines.extend(gold_bank.examples_prompt_ar(packet["teaching_examples"]))
+        lines.append("")
     lines.append("## التعريفات")
     lines.append(json.dumps(packet.get("definitions") or [], ensure_ascii=False, indent=2))
     lines.append("")
@@ -227,6 +236,11 @@ def build_user_prompt(packet: dict, error_feedback: str | None = None) -> str:
         "يجب أن يسنده معرّف شاهد في evidence_span_ids."
     )
     lines.append("")
+    if packet.get("profile_signals_ar"):
+        lines.append("## معنى إشارات الملف [profile:…]")
+        for code, label in sorted(packet["profile_signals_ar"].items()):
+            lines.append(f"- {code}: {label}")
+        lines.append("")
     lines.append("## الأجزاء المرقّمة (spans)")
     for span in packet.get("spans") or []:
         sid = span.get("id")
@@ -238,6 +252,9 @@ def build_user_prompt(packet: dict, error_feedback: str | None = None) -> str:
                 str(m.get("family") or m.get("marker") or "?") for m in markers
             )
             marker_note = f" [markers:{families}]"
+        signals = span.get("profile_signals") or []
+        if signals:
+            marker_note += f" [profile:{','.join(str(x) for x in signals)}]"
         lines.append(f"{sid}:{marker_note} {text}")
     if packet.get("editor_footnote_evidence"):
         lines.append("")
@@ -357,6 +374,7 @@ def classify(
     http_post: HttpPost | None = None,
     dry_run: bool = False,
     raise_on_failure: bool = True,
+    annotator: str | None = None,
 ) -> dict[str, Any]:
     """Send packet to an OpenAI-compatible endpoint; write moves/<slug>/<window>.json.
 
@@ -381,7 +399,7 @@ def classify(
     result: dict[str, Any] = {
         "window_id": window_id,
         "model": model,
-        "annotator": model_slug(model),
+        "annotator": annotator or model_slug(model),
         "dry_run": dry_run,
         "messages": messages,
         "path": None,
@@ -480,7 +498,7 @@ def classify(
     cleaned = sanitize_moves_payload(payload, window_id)
     cleaned[grounding_contract.PACKET_SHA_FIELD] = h
     cleaned[grounding_contract.INPUT_ASSURANCE_FIELD] = grounding_contract.INPUT_API_PACKET
-    path = write_moves(out_dir, model_slug(model), window_id, cleaned)
+    path = write_moves(out_dir, result["annotator"], window_id, cleaned)
     result["path"] = path
     result["payload"] = cleaned
     result["messages"] = messages
