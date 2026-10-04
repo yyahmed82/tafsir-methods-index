@@ -614,3 +614,72 @@ def test_ui_assets_are_versioned_so_cdn_cache_never_hides_a_release(env):
     assert env.get("/static/app.js").headers["cache-control"] == "no-cache"
     assert env.get("/static/app.js?v=stale").headers["cache-control"] == "no-cache"
     assert env.get("/static/brand/mirqah-wordmark.svg").headers["cache-control"] == "no-cache"
+
+
+def test_steps_grouped_by_model_and_timeout_passed_to_pipeline(env, monkeypatch):
+    pairs = [("al_tabari", "24_2_p01"), ("al_tabari", "24_2_p02"), ("ibn_kathir", "24_2")]
+    from console import pipeline
+    monkeypatch.setattr(pipeline, "resolve_scope", lambda scope, ayat, tafsirs: pairs)
+    steps = runner.plan_steps("committee", "ayat", "2", ["al_tabari", "ibn_kathir"])
+    assert [s["agent"] for s in steps] == ["classifier"] * 3 + ["verifier"] * 3 + ["chair"] * 3
+    assert [(s["tafsir"], s["window"]) for s in steps[:3]] == pairs
+    assert {s["model"] for s in steps[:3]} == {"qwen2.5:14b"}
+    assert {s["model"] for s in steps[3:6]} == {"gemma3:12b"}
+
+    monkeypatch.setattr(pipeline, "window_ids", lambda tafsir: ["24_2_p01"])
+    cmd, envv = runner._step_command({"agent": "verifier", "tafsir": "al_tabari",
+                                      "window": "24_2_p01", "model": "gemma3:12b"})
+    assert envv["LLM_TIMEOUT_S"] == str(settings.get("llm")["step_timeout_s"] - 15)
+    assert "--api" in cmd and "gemma3:12b" in cmd
+
+
+def test_chair_waits_for_both_verified_outputs(env):
+    assert runner._chair_inputs_missing({"tafsir": "al_tabari", "window": "24_99_p99"}) == [
+        "classifier", "verifier"]
+
+
+def test_classify_api_timeout_from_env(monkeypatch):
+    sys.path.insert(0, str(ROOT / "src"))
+    import classify_api
+    monkeypatch.delenv("LLM_TIMEOUT_S", raising=False)
+    assert classify_api.request_timeout_s() == 120
+    monkeypatch.setenv("LLM_TIMEOUT_S", "585")
+    assert classify_api.request_timeout_s() == 585
+    monkeypatch.setenv("LLM_TIMEOUT_S", "99999")
+    assert classify_api.request_timeout_s() == 3600
+    monkeypatch.setenv("LLM_TIMEOUT_S", "abc")
+    assert classify_api.request_timeout_s() == 120
+
+
+def test_retry_failed_groups_steps_by_model(env):
+    uid = add_user("op@example.com", "super_admin")
+    tid = db.execute("INSERT INTO tasks(kind,title_ar,params,status,created_by,created_at,total_steps)"
+                     " VALUES ('committee','t','{}','running',?,?,4)", (uid, db.now()))
+    for seq, agent in enumerate(["verifier", "chair", "classifier", "verifier"]):
+        db.execute("INSERT INTO task_steps(task_id,seq,agent,tafsir,window,model,status)"
+                   " VALUES (?,?,?,?,?,?,'failed')", (tid, seq, agent, "al_tabari", f"24_2_p0{seq}", None))
+    new_id = runner.retry_failed(tid, {"id": uid})
+    agents = [r["agent"] for r in db.rows("SELECT agent FROM task_steps WHERE task_id=? ORDER BY seq", (new_id,))]
+    assert agents == ["classifier", "verifier", "verifier", "chair"]
+
+
+def test_chair_without_verifier_is_skipped_not_failed_and_retried(env, monkeypatch):
+    uid = add_user("op2@example.com", "super_admin")
+    tid = db.execute("INSERT INTO tasks(kind,title_ar,params,status,created_by,created_at,total_steps)"
+                     " VALUES ('committee','t','{}','running',?,?,1)", (uid, db.now()))
+    sid = db.execute("INSERT INTO task_steps(task_id,seq,agent,tafsir,window,model,status)"
+                     " VALUES (?,0,'chair','al_tabari','24_99_p99',NULL,'queued')", (tid,))
+    task = db.row("SELECT * FROM tasks WHERE id=?", (tid,))
+    step = db.row("SELECT * FROM task_steps WHERE id=?", (sid,))
+    runner._run_step(task, step)
+    st = db.row("SELECT * FROM task_steps WHERE id=?", (sid,))
+    assert st["status"] == "skipped"
+    assert json.loads(st["result"]) == {"reason": "agent_missing", "missing": ["classifier", "verifier"]}
+    t = db.row("SELECT * FROM tasks WHERE id=?", (tid,))
+    assert t["failed_steps"] == 0 and t["skipped_steps"] == 1
+    new_id = runner.retry_failed(tid, {"id": uid})
+    assert [r["agent"] for r in db.rows("SELECT agent FROM task_steps WHERE task_id=?", (new_id,))] == ["chair"]
+    for lang in ("ar", "en", "zh", "ur"):
+        d = json.loads((ROOT / "console/static/i18n" / f"{lang}.json").read_text(encoding="utf-8"))
+        assert all(k in d for k in ("tasks.skip.no_verifier", "tasks.skip.no_classifier",
+                                    "tasks.skip.no_both", "tasks.skip.already"))

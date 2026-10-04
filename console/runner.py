@@ -88,10 +88,13 @@ def plan_steps(kind: str, scope: str, ayat: str, tafsirs: list[str]) -> list[dic
         raise TaskError("scope_empty")
     m = pipeline.models()
     steps = []
-    for tafsir, window in pairs:
-        for agent in KINDS[kind]:
-            model = m["classifier"] if agent == "classifier" else (
-                m["verifier"] if agent == "verifier" else None)
+    # Agent by agent, not window by window: every classifier step, then every
+    # verifier step, then the chair. A local runtime keeps one model in memory, so
+    # alternating models per window reloads a model (tens of seconds) every step.
+    for agent in KINDS[kind]:
+        model = m["classifier"] if agent == "classifier" else (
+            m["verifier"] if agent == "verifier" else None)
+        for tafsir, window in pairs:
             steps.append({"agent": agent, "tafsir": tafsir, "window": window, "model": model})
     return steps
 
@@ -163,10 +166,13 @@ def retry_failed(task_id: int, user: dict) -> int:
     t = db.row("SELECT * FROM tasks WHERE id=?", (task_id,))
     if t is None:
         raise TaskError("task_not_found")
-    failed = db.rows("SELECT * FROM task_steps WHERE task_id=? AND status IN"
-                     " ('failed','interrupted') ORDER BY seq", (task_id,))
+    failed = db.rows("SELECT * FROM task_steps WHERE task_id=? AND (status IN"
+                     " ('failed','interrupted') OR (status='skipped' AND agent='chair'"
+                     " AND result LIKE '%\"agent_missing\"%')) ORDER BY seq", (task_id,))
     if not failed:
         raise TaskError("nothing_to_retry")
+    order = {"packet_check": 0, "classifier": 1, "verifier": 2, "chair": 3}
+    failed.sort(key=lambda s: (order.get(s["agent"], 9), s["seq"]))  # one model at a time
     p = db.loads(t["params"], {})
     p["retry_of"] = task_id
     with db.connect() as con:
@@ -223,7 +229,19 @@ def _step_command(step: dict) -> tuple[list[str], dict[str, str]]:
         # A hosted key must already be in the server's environment; never stored here.
         if llm["runtime"] == "ollama-local":
             env["LLM_API_KEY"] = env.get("LLM_API_KEY") or "ollama"
+        # one model reply may take most of the step (model load + generation)
+        env["LLM_TIMEOUT_S"] = str(max(30, int(llm["step_timeout_s"]) - 15))
     return cmd, env
+
+
+def _chair_inputs_missing(step: dict) -> list[str]:
+    """Agents whose verified output the chair needs but that is not there yet."""
+    m = pipeline.models()
+    missing = []
+    for agent, slug in (("classifier", m["classifier_slug"]), ("verifier", m["verifier_slug"])):
+        if not pipeline.verified_path(step["tafsir"], slug, step["window"]).is_file():
+            missing.append(agent)
+    return missing
 
 
 def _run_step(task: dict, step: dict) -> None:
@@ -242,6 +260,15 @@ def _run_step(task: dict, step: dict) -> None:
                        " result=? WHERE id=?",
                        (db.now(), db.dumps({"reason": "already_verified"}), step["id"]))
             db.execute("UPDATE tasks SET skipped_steps=skipped_steps+1 WHERE id=?", (task["id"],))
+            return
+    if step["agent"] == "chair":
+        missing = _chair_inputs_missing(step)
+        if missing:
+            # Not a chair failure: the chair has nothing to compare yet. Shown as
+            # "skipped: no verifier result"; «retry failed steps» re-runs it.
+            _record_step(task, step, started, 0,
+                         "skipped: no verified result yet from " + " and ".join(missing),
+                         {"reason": "agent_missing", "missing": missing}, status="skipped")
             return
     try:
         cmd, env = _step_command(step)
@@ -310,7 +337,7 @@ def _record_step(task: dict, step: dict, started: float, code: int, output: str,
         (status, fin, int((fin - started) * 1000), code,
          db.dumps(result) if result is not None else None, tail, step["id"]),
     )
-    col = {"done": "done_steps", "failed": "failed_steps"}.get(status)
+    col = {"done": "done_steps", "failed": "failed_steps", "skipped": "skipped_steps"}.get(status)
     if col:
         db.execute(f"UPDATE tasks SET {col}={col}+1 WHERE id=?", (task["id"],))
 

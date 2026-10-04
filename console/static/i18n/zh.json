@@ -449,5 +449,9 @@
  "viewas.note": "只读，不能以此账户更改任何内容",
  "viewas.return": "返回我的账户",
  "viewas.search": "按姓名或邮箱搜索",
- "viewas.title": "以其他用户身份查看"
+ "viewas.title": "以其他用户身份查看",
+ "tasks.skip.no_verifier": "已跳过：没有复核器结果",
+ "tasks.skip.no_classifier": "已跳过：没有分类器结果",
+ "tasks.skip.no_both": "已跳过：分类器和复核器都没有结果",
+ "tasks.skip.already": "此模型已验证"
 }

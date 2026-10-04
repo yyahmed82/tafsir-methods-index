@@ -449,5 +449,9 @@
  "viewas.note": "للقراءة فقط، لا يُغيَّر شيء باسم هذا الحساب",
  "viewas.return": "العودة إلى حسابي",
  "viewas.search": "ابحث بالاسم أو البريد",
- "viewas.title": "العرض كمستخدم آخر"
+ "viewas.title": "العرض كمستخدم آخر",
+ "tasks.skip.no_verifier": "تخطٍ: لا نتيجة للمدقّق",
+ "tasks.skip.no_classifier": "تخطٍ: لا نتيجة للمصنّف",
+ "tasks.skip.no_both": "تخطٍ: لا نتيجة للمصنّف ولا للمدقّق",
+ "tasks.skip.already": "سبق تحقّقها لهذا النموذج"
 }

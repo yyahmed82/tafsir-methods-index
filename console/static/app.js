@@ -554,9 +554,22 @@
       const d = await api('/tasks/' + id);
       const x = d.task;
       const agentName = (a) => T('agent.' + a);
+      const stepNote = (r) => {
+        if (!r) return '';
+        if (r.moves != null) return `${T('dash.moves')} ${r.moves} · ${T('dash.candidates')} ${r.auto_candidate} · ${T('dash.specialist')} ${r.specialist}`;
+        if (r.spans != null) return `spans ${r.spans}`;
+        if (r.reason === 'agent_missing') {
+          const m = r.missing || [];
+          const k = m.length > 1 ? 'tasks.skip.no_both' : m[0] === 'classifier' ? 'tasks.skip.no_classifier' : 'tasks.skip.no_verifier';
+          return `<span class="chip warn">${T(k)}</span>`;
+        }
+        if (r.reason === 'already_verified') return `<span class="faint">${T('tasks.skip.already')}</span>`;
+        if (r.reason_code) return `<span class="chip bad mono">${esc(r.reason_code)}</span>`;
+        return '';
+      };
       const rows = d.steps.map((s) => `<tr class="click" data-act="step" data-id="${s.id}"><td class="num">${s.seq + 1}</td><td>${agentName(s.agent)}</td><td>${esc(tafsirName(s.tafsir))}</td>
         <td class="mono">${esc(s.window)}</td><td class="mono hide-sm">${esc(s.model || '—')}</td><td>${statusChip(s.status)}</td><td class="num">${fDur(s.duration_ms)}</td>
-        <td class="hide-sm">${s.result && s.result.moves != null ? `${T('dash.moves')} ${s.result.moves} · ${T('dash.candidates')} ${s.result.auto_candidate} · ${T('dash.specialist')} ${s.result.specialist}` : s.result && s.result.spans != null ? `spans ${s.result.spans}` : ''}</td></tr>`).join('');
+        <td class="hide-sm">${stepNote(s.result)}</td></tr>`).join('');
       const actions = [
         canDo('manage_tasks') && ['queued', 'running'].includes(x.status) ? `<button class="btn danger" data-act="cancel-task" data-id="${x.id}">${ico('stop')} ${T('tasks.cancel')}</button>` : '',
         canDo('run_tasks') && x.failed_steps && !['queued', 'running'].includes(x.status) ? `<button class="btn warn" data-act="retry-task" data-id="${x.id}">${ico('refresh')} ${T('tasks.retry')}</button>` : '',

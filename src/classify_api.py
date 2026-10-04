@@ -269,11 +269,26 @@ def build_messages(packet: dict, error_feedback: str | None = None) -> list[dict
     ]
 
 
+def request_timeout_s() -> float:
+    """Seconds to wait for one model reply: LLM_TIMEOUT_S (10–3600), default 120.
+
+    A local model may first have to load into memory (another model is swapped
+    out), so the console sets this from its own step timeout."""
+    try:
+        value = float(os.environ.get("LLM_TIMEOUT_S") or 120)
+    except ValueError:
+        value = 120.0
+    return min(max(value, 10.0), 3600.0)
+
+
 def _default_http_post(url: str, headers: dict[str, str], body: bytes) -> bytes:
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    timeout = request_timeout_s()
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read()
+    except TimeoutError as e:
+        raise ClassifyError(f"timed out: no model reply within {timeout:.0f} s") from e
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", errors="replace")[:500]
         raise ClassifyError(f"HTTP {e.code}: {detail}") from e

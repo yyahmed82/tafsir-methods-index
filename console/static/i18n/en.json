@@ -449,5 +449,9 @@
  "viewas.note": "read-only, nothing can be changed under this account",
  "viewas.return": "Return to my account",
  "viewas.search": "Search by name or email",
- "viewas.title": "View as another user"
+ "viewas.title": "View as another user",
+ "tasks.skip.no_verifier": "Skipped: no verifier result",
+ "tasks.skip.no_classifier": "Skipped: no classifier result",
+ "tasks.skip.no_both": "Skipped: no classifier or verifier result",
+ "tasks.skip.already": "Already verified for this model"
 }
