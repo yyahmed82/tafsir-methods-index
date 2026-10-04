@@ -1,4 +1,4 @@
-# حزمة الفرع `build/ui-mirqat`
+# حزمة الفرع `build/ui-polish`
 
 واجهة الفريق «مِرْقاة» على فهرس مناهج التفسير: علامة ووسم منفصلان، وصفّ مصدر واحد فيه قرآنبيديا بعد التحقق، وإصلاح بوابة الوصول. لا وسم جديد ولا اعتماد آلي.
 
@@ -36,7 +36,7 @@ python src/build_fahras.py
 python src/build_methods.py
 python src/build_reconcile.py
 python -m pytest -q
-python docs/branches/build-ui-mirqat/shots/audit.py
+python docs/branches/build-ui-polish/shots/audit.py
 git status --porcelain data/
 ```
 
@@ -49,3 +49,4 @@ git status --porcelain data/
 ## من نفّذ ومن راجع
 
 بناه Cursor grok-4.6-high. بوابة UX: Codex (9 ملاحظات، أُغلقت). المراجعة البصرية وتحقق عناوين قرآنبيديا: Claude.
+
