@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>معاينة مفتاح حواشي المحقق — وضع القراءة</title>
+  <style>
+    :root {
+      --base: #F6F7FC;
+      --surface: #FFFFFF;
+      --surface-2: #EBEEFA;
+      --line: #E3E6F2;
+      --ink: #161B3D;
+      --sub: #4A5175;
+      --muted: #7E86A8;
+      --accent: #5B3FD9;
+      --accent-bg: #EEEAFE;
+      --teal: #0C5C52;
+      --teal-bg: rgba(12, 92, 82, 0.08);
+      --warn: #9A6A12;
+      --warn-bg: #FBF1DC;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 1px 3px rgba(22, 27, 61, 0.05);
+      --shadow-md: 0 6px 20px rgba(22, 27, 61, 0.08);
+      --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Readex Pro", "IBM Plex Sans Arabic", "Noto Sans Arabic", Tahoma, sans-serif;
+      --font-text: "Noto Naskh Arabic", "Amiri", "Traditional Arabic", serif;
+      --font-quran: "Amiri", "Noto Naskh Arabic", serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--base);
+      color: var(--ink);
+      font-family: var(--font-ui);
+      width: 1440px;
+      height: 500px;
+      overflow: hidden;
+      direction: rtl;
+      text-align: right;
+      line-height: 1.6;
+      padding: 20px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Top control toolbar */
+    .reader-toolbar {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: var(--shadow-sm);
+      flex-shrink: 0;
+    }
+    .toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .reader-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .meta-tag {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--sub);
+      background: var(--surface-2);
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+    }
+    .meta-ayah {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    /* Switch control (UX-4 improvement) */
+    .switch-control-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--base);
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+    }
+    .switch-title {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .switch-btn {
+      width: 44px;
+      height: 24px;
+      background: #D5DAE8;
+      border-radius: 999px;
+      position: relative;
+      cursor: pointer;
+      border: none;
+      transition: background-color 0.2s;
+    }
+    .switch-btn.is-active {
+      background: var(--accent);
+    }
+    .switch-knob {
+      width: 18px;
+      height: 18px;
+      background: #FFFFFF;
+      border-radius: 50%;
+      position: absolute;
+      top: 3px;
+      right: 3px;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .switch-btn.is-active .switch-knob {
+      transform: translateX(-20px);
+    }
+    .switch-state-badge {
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+    .badge-off {
+      background: #EAEFF7;
+      color: var(--sub);
+    }
+    .badge-on {
+      background: var(--accent-bg);
+      color: var(--accent);
+    }
+
+    /* Layout: Main Reader Text + Inset Preview */
+    .content-grid {
+      display: grid;
+      grid-template-columns: 1fr 390px;
+      gap: 20px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* Main article: OFF state, clean text with NO chips */
+    .main-reader-panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+    .panel-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--sub);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: var(--ok);
+      font-weight: 600;
+    }
+    .status-indicator-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--ok);
+    }
+
+    .tafsir-article {
+      font-family: var(--font-text);
+      font-size: 1.25rem;
+      line-height: 2.2;
+      color: var(--ink);
+      overflow-y: auto;
+    }
+    .tafsir-article p {
+      margin-bottom: 12px;
+    }
+    .quran-quote {
+      color: var(--teal);
+      font-weight: 700;
+      background: var(--teal-bg);
+      padding: 0 4px;
+      border-radius: 4px;
+    }
+    .hl-evidence {
+      background: rgba(91, 63, 217, 0.08);
+      border-bottom: 2px solid var(--accent);
+      padding: 1px 3px;
+      border-radius: 2px;
+    }
+
+    /* Inset Box: ON state preview */
+    .inset-panel {
+      background: var(--surface);
+      border: 2px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      box-shadow: var(--shadow-md);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: linear-gradient(180deg, #FFFFFF 0%, #F9F8FE 100%);
+    }
+    .inset-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #EAE5FD;
+    }
+    .inset-title {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .inset-switch-preview {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+    }
+    .inset-text {
+      font-family: var(--font-text);
+      font-size: 1.05rem;
+      line-height: 2.0;
+      color: var(--ink);
+    }
+    .fn-chip {
+      display: inline-flex;
+      align-items: center;
+      font-family: var(--font-ui);
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-bg);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      border-radius: 4px;
+      padding: 1px 7px;
+      margin: 0 4px;
+      vertical-align: middle;
+      box-shadow: 0 1px 2px rgba(91, 63, 217, 0.1);
+    }
+    .inset-annotation {
+      margin-top: auto;
+      background: #F3F0FE;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 0.78rem;
+      color: var(--sub);
+      line-height: 1.45;
+      border-right: 3px solid var(--accent);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Controls Toolbar -->
+  <header class="reader-toolbar">
+    <div class="toolbar-left">
+      <div class="reader-meta">
+        <span class="meta-tag">تفسير الطبري</span>
+        <span class="meta-ayah">سورة البقرة: آية الكرسي (٢٥٥)</span>
+      </div>
+    </div>
+
+    <!-- UX-4 Improvement: Explicit labelled switch with state text -->
+    <div class="switch-control-wrap">
+      <span class="switch-title">إظهار حواشي المحقق:</span>
+      <div class="switch-btn" role="switch" aria-checked="false" aria-label="إظهار حواشي المحقق">
+        <div class="switch-knob"></div>
+      </div>
+      <span class="switch-state-badge badge-off">معطّل (مخفية)</span>
+    </div>
+  </header>
+
+  <!-- Content Grid -->
+  <div class="content-grid">
+    <!-- Main Panel: OFF State (No footnote chips inside text) -->
+    <section class="main-reader-panel">
+      <div class="panel-header-row">
+        <span class="panel-title">
+          <span>نص التفسير الصافي (الحالة الحالية: الحواشي مخفية)</span>
+        </span>
+        <span class="status-indicator">
+          <span class="status-indicator-dot"></span>
+          المتن خالٍ تماماً من شارات وهوامش التحقيق
+        </span>
+      </div>
+
+      <article class="tafsir-article">
+        <p>
+          القولُ في تأويل قولِ اللهِ جلّ ثناؤه: <span class="quran-quote">{اللَّهُ لَا إِلَهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ}</span>.
+        </p>
+        <p>
+          <span class="hl-evidence">قد دلَّلْنا فيما مضى على تأويلِ قولِ اللهِ جلّ ثناؤه: {اللَّهُ}</span>
+          وأما تأويلُ قولِه: <span class="quran-quote">{لَا إِلَهَ إِلَّا هُوَ}</span>. فإن معناه النَّهيُ عن أن يُعبدَ شيءٌ غيرُ اللهِ الحيِّ القَيُّومِ، الذي صفَتُه ما وصَف به نفسَه تعالى ذكرُه في هذه الآيةِ، يقولُ: اللهُ الذي له عبادةُ الخلقِ، الحيُّ القيومُ، لا إلهَ سواه، لا معبودَ سواه.
+        </p>
+      </article>
+    </section>
+
+    <!-- Inset Panel: ON State preview -->
+    <aside class="inset-panel">
+      <div class="inset-head">
+        <span class="inset-title">
+          <span>🔍 معاينة عند التفعيل (ON)</span>
+        </span>
+        <div class="inset-switch-preview">
+          <div class="switch-btn is-active" style="width: 32px; height: 18px;">
+            <div class="switch-knob" style="width: 12px; height: 12px; transform: translateX(-14px);"></div>
+          </div>
+          <span class="switch-state-badge badge-on">ظاهرة</span>
+        </div>
+      </div>
+
+      <div class="inset-text">
+        <p>
+          قد دلَّلْنا فيما مضى على تأويلِ قولِ اللهِ جلّ ثناؤه: {اللَّهُ}
+          <span class="fn-chip">¬ينظر ما تقدم في 1/ 121.¥</span>
+          وأما تأويلُ قولِه: {لَا إِلَهَ إِلَّا هُوَ}.
+        </p>
+      </div>
+
+      <div class="inset-annotation">
+        <strong>الضمان البصري:</strong> عند إطفاء المفتاح تختفي الحواشي النصية وشاراتها كلياً من المتن لضمان صفاء القراءة؛ وتظهر فقط عند التفعيل الصريح.
+      </div>
+    </aside>
+  </div>
+
+</body>
+</html>

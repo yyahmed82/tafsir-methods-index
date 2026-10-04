@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>فهرس مناهج التفسير</title>
+  <style>
+    :root {
+      --bg: #F6F7FC;
+      --surface: #FFFFFF;
+      --surface-2: #EBEEFA;
+      --line: #E3E6F2;
+      --ink: #161B3D;
+      --sub: #4A5175;
+      --muted: #7E86A8;
+      --accent: #5B3FD9;
+      --accent-bg: #EEEAFE;
+      --accent-hover: #482ec4;
+      --ok: #0C7A5C;
+      --ok-bg: #E3F5EE;
+      --warn: #9A6A12;
+      --warn-bg: #FBF1DC;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 1px 3px rgba(22, 27, 61, 0.05);
+      --shadow-md: 0 8px 24px rgba(22, 27, 61, 0.08);
+      --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Readex Pro", "IBM Plex Sans Arabic", "Noto Sans Arabic", Tahoma, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font-ui);
+      min-height: 100vh;
+      direction: rtl;
+      text-align: right;
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .container {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 24px;
+      width: 100%;
+    }
+
+    /* Header */
+    header.site-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      padding: 16px 0;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .header-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .brand-logo {
+      height: 42px;
+      width: auto;
+      display: block;
+    }
+    .brand-divider {
+      width: 1px;
+      height: 24px;
+      background: var(--line);
+    }
+    .brand-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -0.01em;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 0.8rem;
+      color: var(--sub);
+      font-weight: 500;
+    }
+    .badge-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warn);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 44px 0 32px;
+      text-align: center;
+    }
+    .hero-eyebrow {
+      display: inline-block;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-bg);
+      padding: 4px 14px;
+      border-radius: 999px;
+      margin-bottom: 16px;
+    }
+    .hero h1 {
+      font-size: 2.6rem;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+      margin-bottom: 12px;
+    }
+    .hero p.subtitle {
+      font-size: 1.25rem;
+      color: var(--sub);
+      max-width: 720px;
+      margin: 0 auto 28px;
+      line-height: 1.5;
+    }
+
+    /* Actions */
+    .cta-group {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+      min-width: 210px;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #FFFFFF;
+      box-shadow: 0 4px 14px rgba(91, 63, 217, 0.25);
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--ink);
+      border-color: var(--line);
+      box-shadow: var(--shadow-sm);
+    }
+    .btn-secondary:hover {
+      background: var(--surface-2);
+      border-color: #ccd3eb;
+      transform: translateY(-1px);
+    }
+    .btn-icon {
+      font-size: 1.2rem;
+      line-height: 1;
+    }
+
+    /* Trust Line */
+    .trust-banner {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      padding: 10px 20px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      color: var(--sub);
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 36px;
+    }
+    .trust-shield {
+      color: var(--ok);
+      font-size: 1rem;
+    }
+
+    /* 4-Step Strip */
+    .pipeline-section {
+      margin-bottom: 36px;
+    }
+    .section-title-wrap {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    .section-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .section-caption {
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .pipeline-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      position: relative;
+    }
+    .step-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px 16px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+    }
+    .step-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .step-num {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-title {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .step-desc {
+      font-size: 0.84rem;
+      color: var(--sub);
+      line-height: 1.5;
+    }
+    .step-card::after {
+      content: "←";
+      position: absolute;
+      left: -11px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 20px;
+      height: 20px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+      z-index: 2;
+    }
+    .step-card:last-child::after {
+      display: none;
+    }
+
+    /* Counts Block */
+    .counts-section {
+      margin-bottom: 40px;
+    }
+    .counts-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    .count-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      box-shadow: var(--shadow-sm);
+      text-align: right;
+    }
+    .count-num {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--accent);
+      line-height: 1.1;
+      margin-bottom: 6px;
+      letter-spacing: -0.02em;
+    }
+    .count-label {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--ink);
+      margin-bottom: 4px;
+    }
+    .count-sub {
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    /* Footer */
+    footer.site-footer {
+      margin-top: auto;
+      border-top: 1px solid var(--line);
+      background: var(--surface);
+      padding: 18px 0;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .footer-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="brand-group">
+        <img src="../../../../web/assets/brand/mirqah-wordmark.svg" alt="مِرْقاة" class="brand-logo">
+        <span class="brand-divider"></span>
+        <span class="brand-title">فهرس مناهج التفسير</span>
+      </div>
+      <div class="header-actions">
+        <span class="badge-status">
+          <span class="badge-status-dot"></span>
+          نموذج تجريبي بحثي
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <span class="hero-eyebrow">نموذج بحثي تجريبي</span>
+      <h1>فهرس مناهج التفسير</h1>
+      <p class="subtitle">منهج المفسّر ظاهراً على نصّه — أربعة تفاسير على سورة النور</p>
+
+      <div class="cta-group">
+        <a href="reader.html" class="btn btn-primary">
+          <span class="btn-icon">📖</span>
+          افتح وضع القراءة
+        </a>
+        <a href="review.html" class="btn btn-secondary">
+          <span class="btn-icon">🔍</span>
+          افتح وضع المختص
+        </a>
+      </div>
+
+      <div class="trust-banner">
+        <span class="trust-shield">🛡️</span>
+        <span>الوسوم مقترحة آلياً ولم يعتمدها متخصص بعد · النص مطابق للمصدر حرفاً بحرف</span>
+      </div>
+    </section>
+
+    <section class="pipeline-section">
+      <div class="section-title-wrap">
+        <h2 class="section-title">مسار المعالجة الصارم</h2>
+        <span class="section-caption">خطوات مسار الفهرسة الآلية وضبطها الصارم</span>
+      </div>
+      <div class="pipeline-strip">
+        <div class="step-card">
+          <div class="step-badge">
+            <span class="step-num">١</span>
+            <span class="step-title">نص مثبّت</span>
+          </div>
+          <p class="step-desc">نص المصدر موثق ومقفل بالبصمة الحرفية، مفصول عن حواشي المحقق، لا يُكتب يدويًا ولا يُحرر.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-badge">
+            <span class="step-num">٢</span>
+            <span class="step-title">اقتراح آلي</span>
+          </div>
+          <p class="step-desc">النموذج يقترح حدود الشواهد ونوع المنهج بمعرّفات الأجزاء فقط دون أن يلمس حرفاً من النص.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-badge">
+            <span class="step-num">٣</span>
+            <span class="step-title">فحص حتمي</span>
+          </div>
+          <p class="step-desc">مدقق برمجي حتمي يطابق النص حرفاً بحرف، ويتحقق من اتساق الأجزاء وخلوها من أي انحراف.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-badge">
+            <span class="step-num">٤</span>
+            <span class="step-title">قرار المختص</span>
+          </div>
+          <p class="step-desc">المتخصص وحده يملك صلاحية الاعتماد؛ لا يُعتمد وسم أو تقسيم دون مراجعة وقرار نهائي من عالم بالتفسير.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="counts-section">
+      <div class="section-title-wrap">
+        <h2 class="section-title">نطاق التجربة</h2>
+        <span class="section-caption">أعداد توجيه وليست دقة</span>
+      </div>
+      <div class="counts-grid">
+        <div class="count-card">
+          <div class="count-num">[ن]</div>
+          <div class="count-label">موضع مفهرس</div>
+          <div class="count-sub">شواهد مقترحة آلياً جاهزة للمراجعة</div>
+        </div>
+        <div class="count-card">
+          <div class="count-num">[ن]</div>
+          <div class="count-label">تفاسير مقارنة</div>
+          <div class="count-sub">الطبري، ابن كثير، البغوي، السعدي</div>
+        </div>
+        <div class="count-card">
+          <div class="count-num">[ن]</div>
+          <div class="count-label">آيات من سورة النور</div>
+          <div class="count-sub">نوافذ نصية معالجة بكامل طبقاتها</div>
+        </div>
+        <div class="count-card">
+          <div class="count-num">[ن]</div>
+          <div class="count-label">مقترحات بانتظار المختص</div>
+          <div class="count-sub">تتطلب فحصاً واعتماداً تخصصياً</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <span>فهرس مناهج التفسير — فريق مِرْقاة (مسابقة الذكاء الاصطناعي الإسلامي)</span>
+      <span>جميع النصوص مطابقة لمصادرها الأصلية حرفاً بحرف دون توليد ديني</span>
+    </div>
+  </footer>
+
+</body>
+</html>
