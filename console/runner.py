@@ -25,7 +25,9 @@ from . import config, db, mailer, mailtpl, pipeline, settings
 log = logging.getLogger("mirqah.console")
 
 KINDS = {
-    "committee": ("classifier", "verifier", "chair"),
+    # method_specialist runs only for the profile arm (arm B), right after the
+    # classifier while the same model is still in memory
+    "committee": ("classifier", "method_specialist", "verifier", "chair"),
     "classifier": ("classifier",),
     "verifier": ("verifier",),
     "chair": ("chair",),
@@ -47,6 +49,9 @@ VARIANT_TITLES_AR = {"baseline": "", "profile": " · بملف المفسر",
 
 _VERIFIER_RE = re.compile(
     r"verifier: moves=(\d+) auto=(\d+) specialist=(\d+) flags=(\d+)")
+_SPEC_RE = re.compile(
+    r"specialist: moves=(\d+) confirm=(\d+) reject=(\d+) reframe=(\d+) abstain=(\d+)"
+    r" invalid=(\d+)")
 _CHAIR_RE = re.compile(
     r"processed (\d+) window\(s\), (\d+) move\(s\): (\d+) auto_candidate, (\d+) specialist")
 _REASON_RE = re.compile(r'"reason_code":\s*"([A-Z_]+)"')
@@ -103,7 +108,11 @@ def plan_steps(kind: str, scope: str, ayat: str, tafsirs: list[str],
     for agent in KINDS[kind]:
         model = m["classifier"] if agent == "classifier" else (
             m["verifier"] if agent == "verifier" else None)
+        if agent == "method_specialist":
+            model = m["classifier"]
         for arm in TASK_VARIANTS[variant]:
+            if agent == "method_specialist" and not arm:
+                continue  # the baseline arm has no specialists
             for tafsir, window in pairs:
                 steps.append({"agent": agent, "tafsir": tafsir, "window": window,
                               "model": model, "variant": arm})
@@ -182,7 +191,8 @@ def retry_failed(task_id: int, user: dict) -> int:
                      " AND result LIKE '%\"agent_missing\"%')) ORDER BY seq", (task_id,))
     if not failed:
         raise TaskError("nothing_to_retry")
-    order = {"packet_check": 0, "classifier": 1, "verifier": 2, "chair": 3}
+    order = {"packet_check": 0, "classifier": 1, "method_specialist": 2, "verifier": 3,
+             "chair": 4}
     failed.sort(key=lambda s: (order.get(s["agent"], 9), s["seq"]))  # one model at a time
     p = db.loads(t["params"], {})
     p["retry_of"] = task_id
@@ -232,6 +242,18 @@ def _step_command(step: dict) -> tuple[list[str], dict[str, str]]:
                "--window", step["window"], "--proposer-tag", m["classifier"],
                "--reviewer-tag", m["verifier"]] + arm
         return cmd, env
+    if step["agent"] == "method_specialist":
+        if not variant:
+            raise TaskError("bad_step")
+        base = llm["base_url"].rstrip("/")
+        cmd = [llm["python_bin"], "src/specialist.py", "--tafsir", step["tafsir"],
+               "--base", f"{root}/{step['tafsir']}", "--window", step["window"],
+               "--classifier", pipeline.models()["classifier_slug"], "--model", step["model"],
+               "--base-url", base if llm["runtime"] == "hosted" else f"{base}/v1"] + arm
+        if llm["runtime"] == "ollama-local":
+            env["LLM_API_KEY"] = env.get("LLM_API_KEY") or "ollama"
+        env["LLM_TIMEOUT_S"] = str(max(30, int(llm["step_timeout_s"]) - 15))
+        return cmd, env
     cmd = [llm["python_bin"], "src/run_window.py", "--tafsir", step["tafsir"],
            "--base", f"{root}/{step['tafsir']}", "--window", step["window"]] + arm
     if step["agent"] == "packet_check":
@@ -270,6 +292,8 @@ def _run_step(task: dict, step: dict) -> None:
         variant = step.get("variant") or None
         if step["agent"] == "chair":
             done = pipeline.committee_is_current(step["tafsir"], step["window"], variant)
+        elif step["agent"] == "method_specialist":
+            done = pipeline.specialist_is_current(step["tafsir"], step["window"], variant)
         else:
             slug = pipeline.variant_annotator(pipeline.model_slug(step["model"]), variant)
             done = pipeline.verified_path(step["tafsir"], slug, step["window"]).is_file()
@@ -325,7 +349,11 @@ def _run_step(task: dict, step: dict) -> None:
     result = None
     m = _VERIFIER_RE.search(output or "")
     cm = _CHAIR_RE.search(output or "")
-    if m:
+    sm = _SPEC_RE.search(output or "")
+    if sm and step["agent"] == "method_specialist":
+        result = dict(zip(("moves", "confirm", "reject", "reframe", "abstain", "invalid"),
+                          (int(x) for x in sm.groups())))
+    elif m:
         result = {"moves": int(m.group(1)), "auto_candidate": int(m.group(2)),
                   "specialist": int(m.group(3)), "flags": int(m.group(4))}
     elif cm and step["agent"] == "chair":
@@ -548,6 +576,7 @@ REASON_AR = {
     "written_abstain": "امتناع مكتوب", "force_specialist": "إحالة الفاحص",
     "agent_disagree": "اختلاف الوكيلين", "unclear_bounds": "حدود غير متقاطعة",
     "weak_evidence": "دليل غير كافٍ", "agent_missing": "لم يعمل المدقّق بعد",
+    "specialist_block": "منع الأخصائي الآلي",
 }
 
 

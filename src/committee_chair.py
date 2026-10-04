@@ -38,6 +38,7 @@ DEFAULT_ABSTENTION_AR: dict[str, str] = {
     "agent_disagree": "اختلاف الوكلاء: اختلف المصنّف والمدقّق في تعيين المنهج الرئيسي للمقطع.",
     "unclear_bounds": "حدود غير واضحة: لا يوجد تقاطع كافٍ في حدود الأجزاء بين النموذجين أو رُصد عدم اتصال في الأجزاء.",
     "weak_evidence": "دليل ضعيف: درجة المصنّف دون عتبة اللجنة (85) أو اليقين ضعيف أو رُصدت أعلام على الدليل.",
+    "specialist_block": "منع الأخصائي الآلي: لم يؤكد أخصائي المنهج هذه الحركة، فتُحال إلى المتخصص البشري.",
 }
 
 
@@ -408,6 +409,17 @@ def evaluate_window(
     p_moves = p_verified.get("moves") or []
     r_moves = r_verified.get("moves") or []
 
+    # Arm B: method specialists may only block a candidate, never create one. A
+    # specialist file made for another packet (stale) is ignored.
+    spec_by_move: dict[str, dict] = {}
+    if variant:
+        import specialist as _specialist  # local import keeps the baseline chair unchanged
+
+        spec = _specialist.load_for(base_path, window_id, variant)
+        if spec and spec.get("packet_sha256") == p_verified.get("packet_sha256"):
+            spec_by_move = {v["move_id"]: v for v in spec.get("verdicts") or []
+                            if isinstance(v, dict) and v.get("move_id")}
+
     # Map each proposer move index to all overlapping reviewer moves
     p_to_r: dict[int, list[dict]] = {}
     r_to_p_count: dict[int, int] = {j: 0 for j in range(len(r_moves))}
@@ -438,6 +450,15 @@ def evaluate_window(
                 break
 
         m_eval = evaluate_move(p_m, overlaps, packet_issue=packet_issue, is_reused=is_reused)
+        sv = spec_by_move.get(p_m.get("move_id")) if isinstance(p_m, dict) else None
+        if sv is not None:
+            m_eval["method_specialist"] = sv
+            agrees = sv.get("verdict") == "confirm" and sv.get("primary") == p_m.get("primary")
+            if m_eval["committee_route"] == ROUTE_AUTO and not agrees:
+                m_eval["committee_route"] = ROUTE_SPECIALIST
+                m_eval["outcome"] = "بانتظار المتخصص"
+                m_eval["abstention_reasons"] = ["specialist_block"]
+                m_eval["abstention_ar"] = format_abstention_ar("specialist_block")
         evaluated_moves.append(m_eval)
 
         # Build verified move for verified/committee
@@ -454,6 +475,8 @@ def evaluate_window(
         )
         m_copy["committee_abstention_ar"] = m_eval.get("abstention_ar")
         m_copy["outcome"] = m_eval["outcome"]
+        if sv is not None:
+            m_copy["method_specialist"] = sv
         verified_moves.append(m_copy)
 
     # P1-1: Emit every unmatched reviewer move as specialist

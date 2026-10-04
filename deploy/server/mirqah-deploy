@@ -191,11 +191,11 @@ sync_work() {
   local src=$1 d
   command -v rsync >/dev/null 2>&1 || { log "rsync is missing (apt-get install -y rsync); run workspace not updated"; return 1; }
   mkdir -p "$WORK"
-  # committee_*/ = arm B (methodology profile) chair outputs; gold/ = reviewers'
+  # committee_*/, specialist_*/ = arm B (methodology profile) outputs; gold/ = reviewers'
   # teaching examples; markers_*/ and packets_*/ are rebuilt by each arm B run.
   rsync -a --delete --exclude='/.release-sha' \
     --filter='- data/**/moves/' --filter='- data/**/verified/' --filter='- data/**/committee/' \
-    --filter='- data/**/committee_*/' --filter='- data/**/gold/' \
+    --filter='- data/**/committee_*/' --filter='- data/**/specialist_*/' --filter='- data/**/gold/' \
     --filter='- data/**/markers_*/' --filter='- data/**/packets_*/' \
     "$src"/ "$WORK"/
   while IFS= read -r d; do
@@ -203,7 +203,7 @@ sync_work() {
     mkdir -p "$WORK/$d"
     rsync -a --update "$src/$d/" "$WORK/$d/"
   done < <(cd "$src" && find data -type d \( -name moves -o -name verified -o -name committee \
-    -o -name 'committee_*' -o -name gold \) -prune -print 2>/dev/null)
+    -o -name 'committee_*' -o -name 'specialist_*' -o -name gold \) -prune -print 2>/dev/null)
   chown -R "$APP_USER:$APP_USER" "$WORK" 2>/dev/null || true
   chmod 0750 "$WORK" 2>/dev/null || true
 }

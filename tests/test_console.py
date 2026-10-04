@@ -496,7 +496,8 @@ class _FakeOllama(BaseHTTPRequestHandler):
     def do_POST(self):
         data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         user = data["messages"][-1]["content"]
-        wid = re.search(r"window_id: (\S+)", user).group(1)
+        found = re.search(r"window_id: (\S+)", user)  # method specialists send no window id
+        wid = found.group(1) if found else "none"
         ids = re.findall(r"\b(s\d{3})\b", user.split("## مخطط")[0])
         sid = ids[-1] if ids else "s001"
         reply = {"window": wid, "moves": [{
@@ -724,8 +725,12 @@ def test_ab_task_runs_both_arms_blind_review_and_teaching(env, tmp_path, monkeyp
             time.sleep(0.5)
         assert t["task"]["status"] == "done", json.dumps(t, ensure_ascii=False)[:2000]
         assert [(s["agent"], s["variant"]) for s in t["steps"]] == [
-            ("classifier", ""), ("classifier", "profile"), ("verifier", ""),
-            ("verifier", "profile"), ("chair", ""), ("chair", "profile")]
+            ("classifier", ""), ("classifier", "profile"), ("method_specialist", "profile"),
+            ("verifier", ""), ("verifier", "profile"), ("chair", ""), ("chair", "profile")]
+        # the fake model does not answer as a specialist: an untrusted reply never confirms
+        assert t["steps"][2]["result"] == {"moves": 1, "confirm": 0, "reject": 0, "reframe": 0,
+                                           "abstain": 0, "invalid": 1}
+        assert (dst_base / "specialist_profile" / "24_35.json").is_file()
         assert "ملف المفسر" in t["task"]["title_ar"]
         # each arm writes its own outputs; arm B packets are rebuilt in the workspace copy
         assert (dst_base / "committee" / "24_35.json").is_file()
@@ -802,12 +807,17 @@ def test_ab_steps_and_variant_flags_in_commands(env, monkeypatch):
     monkeypatch.setattr(pipeline, "resolve_scope", lambda scope, ayat, tafsirs: [("al_tabari", "24_2_p01")])
     steps = runner.plan_steps("committee", "ayat", "2", ["al_tabari"], "ab")
     assert [(s["agent"], s["variant"]) for s in steps] == [
-        ("classifier", ""), ("classifier", "profile"), ("verifier", ""), ("verifier", "profile"),
-        ("chair", ""), ("chair", "profile")]
+        ("classifier", ""), ("classifier", "profile"), ("method_specialist", "profile"),
+        ("verifier", ""), ("verifier", "profile"), ("chair", ""), ("chair", "profile")]
+    assert steps[2]["model"] == "qwen2.5:14b"            # same model as the classifier
+    assert [s["agent"] for s in runner.plan_steps("committee", "ayat", "2", ["al_tabari"])] == [
+        "classifier", "verifier", "chair"]               # baseline arm: no specialists
     monkeypatch.setattr(pipeline, "window_ids", lambda tafsir: ["24_2_p01"])
     cmd, _ = runner._step_command({**steps[1]})
     assert cmd[cmd.index("--variant") + 1] == "profile" and "--api" in cmd
-    cmd, _ = runner._step_command({**steps[5]})
+    cmd, _ = runner._step_command({**steps[2]})
+    assert "src/specialist.py" in cmd and cmd[cmd.index("--classifier") + 1] == "qwen2_5_14b"
+    cmd, _ = runner._step_command({**steps[6]})
     assert cmd[-2:] == ["--variant", "profile"] and "src/committee_chair.py" in cmd
     cmd, _ = runner._step_command({**steps[0]})
     assert "--variant" not in cmd
@@ -819,7 +829,7 @@ def test_ab_steps_and_variant_flags_in_commands(env, monkeypatch):
 
 def test_deploy_sync_keeps_arm_b_outputs_and_lessons():
     script = (ROOT / "deploy" / "server" / "mirqah-deploy").read_text(encoding="utf-8")
-    for pat in ("committee_*/", "data/**/gold/", "markers_*/", "packets_*/"):
+    for pat in ("committee_*/", "specialist_*/", "data/**/gold/", "markers_*/", "packets_*/"):
         assert pat in script, pat
     pull = (ROOT / "deploy" / "mac" / "pull-runs.sh").read_text(encoding="utf-8")
     assert "committee_profile" in pull and "gold" in pull

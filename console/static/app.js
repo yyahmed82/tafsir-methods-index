@@ -562,6 +562,7 @@
       const agentName = (a) => T('agent.' + a);
       const stepNote = (r) => {
         if (!r) return '';
+        if (r.confirm != null) return ['confirm', 'reject', 'reframe', 'abstain', 'invalid'].filter((k) => r[k]).map((k) => `<span class="chip ${k === 'confirm' ? 'ok' : k === 'invalid' ? 'bad' : 'warn'}">${T('spec.verdict.' + k)} ${r[k]}</span>`).join(' ') || `<span class="faint">${T('dash.moves')} 0</span>`;
         if (r.moves != null) return `${T('dash.moves')} ${r.moves} · ${T('dash.candidates')} ${r.auto_candidate} · ${T('dash.specialist')} ${r.specialist}`;
         if (r.spans != null) return `spans ${r.spans}`;
         if (r.reason === 'agent_missing') {
@@ -719,6 +720,7 @@
           <div class="row">${dec ? `<span class="chip ${dec.decision === 'approve' ? 'ok' : dec.decision === 'reject' ? 'bad' : 'warn'}">${T('review.decision.' + dec.decision)} · ${esc(dec.user_name)} · ${esc(fDT(dec.created_at))}</span>` : ''}${lessonChip(dec)}</div></div>
         ${agents}
         ${c && c.abstention_ar ? `<p class="faint mb" dir="rtl">${esc(c.abstention_ar)}</p>` : ''}
+        ${m.method_specialist ? (() => { const sv = m.method_specialist; return `<div class="spec-note"><span class="chip ${sv.verdict === 'confirm' ? 'ok' : sv.verdict === 'invalid' ? 'bad' : 'warn'}">${ico('flask')} ${T('spec.title', { f: T('learn.family.' + sv.family) })}: ${T('spec.verdict.' + sv.verdict)}${sv.primary ? ` · <span class="mono">${esc(sv.primary)}</span>` : ''}</span>${sv.reason_code && sv.reason_code !== 'ok' ? ` <span class="chip">${esc(errTypes[sv.reason_code] || sv.reason_code)}</span>` : ''}${sv.note_ar ? `<span class="faint" dir="rtl">${esc(sv.note_ar)}</span>` : ''}</div>`; })() : ''}
         <div class="label mb">${T('review.text')} <span class="faint mono">${esc((m.span_ids || []).join(' '))}</span></div>
         ${d.simulated ? `<div class="move-text sim">${ico('flask')} ${T('demo.text_hidden')}</div>` : `<div class="move-text">${esc(m.text || '')}</div>`}
         ${m.rationale_ar ? `<p class="faint mt-s"><b>${T('review.rationale')}</b> (${T('review.rationale_note')}): <span dir="rtl">${esc(m.rationale_ar)}</span></p>` : ''}

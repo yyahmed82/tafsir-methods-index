@@ -750,7 +750,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                 "move_id", "span_ids", "start", "end", "text", "primary", "secondary",
                 "content_tags", "certainty", "evidence_span_ids", "flags", "score", "route",
                 "rationale_ar", "alternatives", "reason_code", "committee_reason_code",
-                "committee_abstention_ar", "outcome")}
+                "committee_abstention_ar", "outcome", "method_specialist")}
             row["key"] = key
             row["decision"] = latest.get(key)
             if c:

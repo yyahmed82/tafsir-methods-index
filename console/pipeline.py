@@ -141,6 +141,15 @@ def committee_is_current(tafsir: str, window: str, variant: str | None = None) -
     return c.stat().st_mtime >= max(p.stat().st_mtime for p in paths)
 
 
+def specialist_is_current(tafsir: str, window: str, variant: str | None) -> bool:
+    """The method specialists' file exists and is newer than the arm's classifier output."""
+    if not variant:
+        return False
+    sp = variant_dir(base_dir(tafsir), "specialist", variant) / f"{window}.json"
+    cv = verified_path(tafsir, variant_annotator(models()["classifier_slug"], variant), window)
+    return sp.is_file() and cv.is_file() and sp.stat().st_mtime >= cv.stat().st_mtime
+
+
 def _committee_summaries(tafsir: str, variant: str | None = None) -> dict[str, dict]:
     d = variant_dir(base_dir(tafsir), "committee", variant)
     out: dict[str, dict] = {}

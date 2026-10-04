@@ -281,10 +281,12 @@ def welcome(name: str, email: str, role_name: str, role_desc: str, inviter: str 
 
 
 AGENT_AR = {"classifier": "المصنّف", "verifier": "المدقّق", "chair": "رئيس اللجنة",
-            "packet_check": "فحص الحزم", "checker": "الفاحص الحتمي"}
+            "packet_check": "فحص الحزم", "checker": "الفاحص الحتمي",
+            "method_specialist": "أخصائي المنهج"}
 REASON_AR = {"written_abstain": "امتناع مكتوب", "force_specialist": "إحالة الفاحص",
              "agent_disagree": "اختلاف الوكيلين", "unclear_bounds": "حدود غير متقاطعة",
-             "weak_evidence": "دليل غير كافٍ", "agent_missing": "لم يعمل المدقّق بعد"}
+             "weak_evidence": "دليل غير كافٍ", "agent_missing": "لم يعمل المدقّق بعد",
+             "specialist_block": "منع الأخصائي الآلي"}
 
 
 def report(c: dict, text: str) -> Mail:
