@@ -24,6 +24,15 @@ python -m console                         # http://127.0.0.1:8800
   `MIRQAH_SMTP_PASSWORD` environment variable.
 - Hosted models: the key comes only from `LLM_API_KEY` in the server's terminal. Nothing is stored.
 
+## النشر / Production
+
+للنشر على خادم (Cloudflare Tunnel + نشر تلقائي من `main` بعد نجاح CI + رجوع تلقائي): `deploy/README.md`.
+In production set `MIRQAH_ENV=production`, `MIRQAH_PROXY=cloudflare` and `MIRQAH_ALLOWED_HOSTS`;
+the server tools (`mirqah`, `mirqah-deploy`, `mirqah-backup`) are in `deploy/server/`.
+Command-line settings: `python -m console settings-show [section]`,
+`python -m console settings-set smtp mode=smtp host=… port=587`, `python -m console mail-test --to …`.
+**Judges:** Settings → Security → «دخول المحكّمين والزوّار» adds a view-only button to the sign-in page (off by default).
+
 ## ما بداخلها / What is inside
 
 | الصفحة | ما تعرضه |

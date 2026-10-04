@@ -20,11 +20,13 @@ def _write_eml(msg: EmailMessage) -> None:
     (config.VAR_DIR / "outbox" / name).write_bytes(bytes(msg))
 
 
-def send(to_addr: str, subject: str, body: str) -> dict:
+def send(to_addr: str, subject: str, body: str, outbox_body: str | None = None) -> dict:
     """Send one plain-text UTF-8 message. Returns {"mode", "status"}.
 
     In mock mode nothing leaves the machine: the message is stored in the
     outbox table and as an .eml file under console/var/outbox/.
+    ``outbox_body`` is what the outbox table keeps for real (SMTP) mail, e.g.
+    the sign-in message with its code masked.
     """
     cfg = settings.get("smtp")
     msg = EmailMessage()
@@ -59,7 +61,8 @@ def send(to_addr: str, subject: str, body: str) -> dict:
             status, error = "failed", f"{type(e).__name__}: {e}"[:300]
     db.execute(
         "INSERT INTO outbox(at,to_addr,subject,body,mode,status,error) VALUES (?,?,?,?,?,?,?)",
-        (db.now(), to_addr, subject, body, mode, status, error),
+        (db.now(), to_addr, subject,
+         body if mode == "mock" or outbox_body is None else outbox_body, mode, status, error),
     )
     if status == "failed":
         raise MailError(error or "send failed")

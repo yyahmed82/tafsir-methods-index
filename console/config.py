@@ -14,6 +14,25 @@ I18N_DIR = STATIC_DIR / "i18n"
 SESSION_COOKIE = "mirqah_session"
 CSRF_HEADER = "x-mirqah"  # custom header required on every state-changing request
 
+# ---- production switches (set in the server's environment file, never in git)
+# MIRQAH_ENV=production    never show mock codes on screen; HTTPS-only cookies
+# MIRQAH_PROXY=cloudflare  the console sits behind Cloudflare Tunnel on 127.0.0.1:
+#                          take the visitor's IP from CF-Connecting-IP
+# MIRQAH_ALLOWED_HOSTS     comma list of public host names (localhost always allowed)
+ENV = (os.environ.get("MIRQAH_ENV") or "development").strip().lower()
+PRODUCTION = ENV == "production"
+PROXY = (os.environ.get("MIRQAH_PROXY") or "").strip().lower()
+TRUST_CF_IP = PROXY == "cloudflare"
+SECURE_COOKIES = PRODUCTION or TRUST_CF_IP or os.environ.get("MIRQAH_SECURE_COOKIES") == "1"
+ALLOWED_HOSTS = tuple(h.strip().lower() for h in
+                      (os.environ.get("MIRQAH_ALLOWED_HOSTS") or "").split(",") if h.strip())
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+# Judges/guests: a read-only session without e-mail (Settings → Security, off by default).
+GUEST_EMAIL = "guest@mirqah.invalid"
+GUEST_PERMISSIONS = ("view_dashboard", "view_tasks", "view_reports")
+GUEST_SESSION_HOURS = 4
+
 TAFSIRS = ("al_tabari", "ibn_kathir", "al_baghawi", "al_saadi")
 TAFSIR_NAMES_AR = {
     "al_tabari": "الطبري",

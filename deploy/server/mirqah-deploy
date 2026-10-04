@@ -1,0 +1,409 @@
+#!/usr/bin/env bash
+# mirqah-deploy — pull-based, CI-gated deploys for the Mirqah console.
+#
+# Every 2 minutes (systemd timer) it fetches $BRANCH from GitHub. When the branch
+# head is new AND its CI check ("test") passed, it unpacks that commit into a new
+# release folder, checks the app imports, switches /opt/mirqah/current to it,
+# restarts the console and checks /api/public. If the check fails it switches back.
+# The server only reads from GitHub: no inbound ports, no deploy keys, no secrets in CI.
+#
+#   mirqah-deploy run [--force] [--wait SECONDS]   deploy the branch head if it is new and green
+#   mirqah-deploy status                           what is live, what is waiting, recent history
+#   mirqah-deploy rollback [RELEASE]               go back to the previous (or named) release
+#   mirqah-deploy releases                         list release folders
+set -euo pipefail
+
+PREFIX=${MIRQAH_PREFIX:-/opt/mirqah}
+ETC=${MIRQAH_ETC:-/etc/mirqah}
+STATE=${MIRQAH_STATE:-/var/lib/mirqah-deploy}
+SYSTEMCTL=${MIRQAH_SYSTEMCTL:-systemctl}
+PYTHON=${MIRQAH_PYTHON:-python3}
+VENV_ARGS=${MIRQAH_VENV_ARGS:-}
+SERVICE=mirqah-console
+
+REPO_URL="https://github.com/yyahmed82/tafsir-methods-index.git"
+BRANCH="main"
+GH_REPO="yyahmed82/tafsir-methods-index"
+GH_API="https://api.github.com"
+REQUIRED_CHECK="test"
+KEEP_RELEASES="5"
+HEALTH_URL="http://127.0.0.1:8800/api/public"
+HEALTH_TRIES="25"
+DISCORD_WEBHOOK_URL=""
+
+load_conf() {
+  local f=$1 line k v
+  [ -f "$f" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in '' | \#*) continue ;; esac
+    k=${line%%=*}
+    v=${line#*=}
+    v=${v#\"}
+    v=${v%\"}
+    case "$k" in
+      REPO_URL | BRANCH | GH_REPO | GH_API | REQUIRED_CHECK | KEEP_RELEASES | HEALTH_URL | HEALTH_TRIES | DISCORD_WEBHOOK_URL)
+        printf -v "$k" '%s' "$v" ;;
+    esac
+  done <"$f"
+}
+load_conf "$ETC/deploy.env"
+
+log() { printf '%s %s\n' "$(date '+%F %T')" "$*"; }
+die() { log "ERROR: $*"; exit 1; }
+short() { printf '%s' "${1:0:7}"; }
+
+notify() {
+  [ -n "$DISCORD_WEBHOOK_URL" ] || return 0
+  local payload
+  payload=$(MSG="$1" "$PYTHON" -c 'import json, os; print(json.dumps({"content": os.environ["MSG"][:1900]}))')
+  curl -fsS --max-time 10 -H 'Content-Type: application/json' -d "$payload" \
+    "$DISCORD_WEBHOOK_URL" >/dev/null 2>&1 || log "discord notify failed"
+}
+
+need_root() {
+  if [ -z "${MIRQAH_PREFIX:-}" ] && [ "$(id -u)" -ne 0 ]; then
+    exec sudo -- "$0" "$@"
+  fi
+}
+
+lock() {
+  mkdir -p "$STATE"
+  exec 9>"$STATE/lock"
+  if ! flock -n 9; then
+    log "another deploy is running"
+    exit 0
+  fi
+}
+
+repo() { git -C "$PREFIX/repo.git" "$@"; }
+
+ensure_repo() {
+  if [ ! -d "$PREFIX/repo.git" ]; then
+    git init --quiet --bare "$PREFIX/repo.git"
+    repo remote add origin "$REPO_URL"
+  fi
+  repo remote set-url origin "$REPO_URL"
+}
+
+fetch_head() {
+  repo fetch --quiet --depth 1 origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+  repo rev-parse "refs/remotes/origin/$BRANCH"
+}
+
+current_dir() {
+  if [ -e "$PREFIX/current" ]; then readlink -f "$PREFIX/current"; fi
+}
+current_sha() {
+  local d
+  d=$(current_dir)
+  if [ -n "$d" ] && [ -f "$d/.release-sha" ]; then cat "$d/.release-sha"; fi
+}
+
+is_bad() { [ -f "$STATE/bad" ] && grep -q "^$1 " "$STATE/bad"; }
+mark_bad() {
+  is_bad "$1" || printf '%s %s %s\n' "$1" "$(date -Is)" "$2" >>"$STATE/bad"
+}
+record() { printf '%s %-8s %s %s\n' "$(date -Is)" "$1" "$(short "$2")" "${3:-}" >>"$STATE/history"; }
+
+# success | pending | failure | unknown
+ci_state() {
+  local sha=$1 json
+  if [ -z "$REQUIRED_CHECK" ]; then
+    echo success
+    return
+  fi
+  if ! json=$(curl -fsS --max-time 20 -H 'Accept: application/vnd.github+json' \
+    -H 'User-Agent: mirqah-deploy' \
+    "$GH_API/repos/$GH_REPO/commits/$sha/check-runs?check_name=$REQUIRED_CHECK&per_page=50" 2>/dev/null); then
+    echo unknown
+    return
+  fi
+  printf '%s' "$json" | "$PYTHON" -c '
+import json, sys
+try:
+    runs = json.load(sys.stdin).get("check_runs") or []
+except ValueError:
+    print("unknown"); raise SystemExit
+if not runs or any(r.get("status") != "completed" for r in runs):
+    print("pending"); raise SystemExit
+c = [r.get("conclusion") for r in runs]
+ok = all(x in ("success", "neutral", "skipped") for x in c) and "success" in c
+print("success" if ok else "failure")'
+}
+
+build_release() {
+  local sha=$1 dir
+  dir="$PREFIX/releases/$(date +%Y%m%d-%H%M%S)-$(short "$sha")"
+  mkdir -p "$dir"
+  repo archive --format=tar "$sha" | tar -x -C "$dir"
+  printf '%s\n' "$sha" >"$dir/.release-sha"
+  chmod -R a+rX,go-w "$dir"
+  printf '%s' "$dir"
+}
+
+ensure_venv() {
+  local dir=$1 req hash
+  req=$(mktemp)
+  {
+    cat "$dir/console/requirements.txt"
+    if [ -f "$dir/requirements.txt" ]; then grep -viE '^[[:space:]]*playwright' "$dir/requirements.txt" || true; fi
+  } >"$req"
+  hash=$(sha256sum "$req" | cut -d' ' -f1)
+  if [ -x "$PREFIX/venv/bin/python" ] && [ "$(cat "$PREFIX/venv/.req-hash" 2>/dev/null)" = "$hash" ]; then
+    rm -f "$req"
+    return 0
+  fi
+  log "installing python packages"
+  if [ ! -x "$PREFIX/venv/bin/python" ]; then
+    # shellcheck disable=SC2086  # VENV_ARGS is an optional list of flags
+    "$PYTHON" -m venv $VENV_ARGS "$PREFIX/venv"
+  fi
+  if ! "$PREFIX/venv/bin/python" -m pip install --quiet --disable-pip-version-check -r "$req"; then
+    rm -f "$req"
+    return 1
+  fi
+  printf '%s\n' "$hash" >"$PREFIX/venv/.req-hash"
+  rm -f "$req"
+}
+
+smoke() {
+  local dir=$1 tmp rc=0
+  tmp=$(mktemp -d)
+  (cd "$dir" && MIRQAH_VAR_DIR="$tmp" MIRQAH_REPO_ROOT="$dir" MIRQAH_ENV=production \
+    PYTHONDONTWRITEBYTECODE=1 "$PREFIX/venv/bin/python" -c \
+    'from console.app import create_app; create_app(start_worker=False)') >"$tmp/out" 2>&1 || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    log "import check failed:"
+    tail -n 15 "$tmp/out" | sed 's/^/    /'
+  fi
+  rm -rf "$tmp"
+  return "$rc"
+}
+
+switch_to() {
+  ln -sfn "$1" "$PREFIX/current.new"
+  mv -Tf "$PREFIX/current.new" "$PREFIX/current"
+}
+
+# healthy [SHA]: /api/public answers and (when it reports one) runs release SHA
+healthy() {
+  local want=${1:-} i body
+  for ((i = 1; i <= HEALTH_TRIES; i++)); do
+    if body=$(curl -fsS --max-time 3 "$HEALTH_URL" 2>/dev/null); then
+      if [ -z "$want" ] || ! printf '%s' "$body" | grep -q '"release"' ||
+        printf '%s' "$body" | grep -q "\"release\": *\"${want:0:12}\""; then
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+restart_console() { "$SYSTEMCTL" restart "$SERVICE" 9>&- || log "restart returned an error"; }
+
+sync_tools() {
+  # keep the operator scripts in /opt/mirqah/bin in step with the release
+  local src="$1/deploy/server" f tmp
+  [ -d "$src" ] || return 0
+  for f in mirqah mirqah-deploy mirqah-backup envfile.py; do
+    [ -f "$src/$f" ] || continue
+    cmp -s "$src/$f" "$PREFIX/bin/$f" 2>/dev/null && continue
+    case "$f" in
+      *.py) "$PYTHON" -m py_compile "$src/$f" 2>/dev/null || { log "skip $f (does not compile)"; continue; } ;;
+      *) bash -n "$src/$f" 2>/dev/null || { log "skip $f (syntax error)"; continue; } ;;
+    esac
+    tmp="$PREFIX/bin/.$f.new"
+    install -m 755 "$src/$f" "$tmp"
+    mv -f "$tmp" "$PREFIX/bin/$f"
+    log "updated tool $f"
+  done
+}
+
+cleanup() {
+  local cur prev d n=0
+  cur=$(current_dir)
+  prev=$(cat "$STATE/previous" 2>/dev/null || true)
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    n=$((n + 1))
+    [ "$n" -le "$KEEP_RELEASES" ] && continue
+    if [ "$d" = "$cur" ] || [ "$d" = "$prev" ]; then continue; fi
+    rm -rf "$d"
+  done < <(find "$PREFIX/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | sort -rn | cut -d' ' -f2-)
+}
+
+deploy() {
+  local sha=$1 dir prev
+  log "deploying $(short "$sha") from $BRANCH"
+  dir=$(build_release "$sha")
+  if [ ! -f "$dir/console/__main__.py" ]; then
+    log "commit $(short "$sha") has no console/ folder; not deploying"
+    mark_bad "$sha" "no console folder"
+    rm -rf "$dir"
+    return 1
+  fi
+  if ! ensure_venv "$dir"; then
+    log "pip install failed (network?); will retry on the next run"
+    rm -rf "$dir"
+    return 1
+  fi
+  if ! smoke "$dir"; then
+    mark_bad "$sha" "import check failed"
+    record failed "$sha" "import check failed"
+    rm -rf "$dir"
+    notify "⛔ مِرْقاة: لم يُنشر $(short "$sha") — فشل فحص التشغيل. الموقع باقٍ على النسخة السابقة."
+    return 1
+  fi
+  prev=$(current_dir)
+  switch_to "$dir"
+  restart_console
+  if healthy "$sha"; then
+    if [ -n "$prev" ] && [ "$prev" != "$dir" ]; then printf '%s\n' "$prev" >"$STATE/previous"; fi
+    rm -f "$STATE/waiting"
+    record live "$sha" "$(basename "$dir")"
+    sync_tools "$dir"
+    cleanup
+    log "live: $(short "$sha") ($(basename "$dir"))"
+    notify "✅ مِرْقاة: نُشرت النسخة $(short "$sha") من $BRANCH على لوحة اللجنة."
+    return 0
+  fi
+  log "health check failed for $(short "$sha")"
+  mark_bad "$sha" "health check failed"
+  record failed "$sha" "health check failed"
+  if [ -n "$prev" ] && [ -d "$prev" ] && [ "$prev" != "$dir" ]; then
+    switch_to "$prev"
+    restart_console
+    if healthy "$(cat "$prev/.release-sha" 2>/dev/null)"; then
+      log "rolled back to $(basename "$prev")"
+    else
+      log "rollback is unhealthy too — check: journalctl -u $SERVICE -n 80"
+    fi
+  fi
+  notify "❌ مِرْقاة: فشل تشغيل $(short "$sha") بعد النشر، وأُعيدت النسخة السابقة تلقائياً."
+  return 1
+}
+
+cmd_run() {
+  local force=0 wait=0 sha cur st deadline
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force) force=1 ;;
+      --wait) wait=${2:?--wait needs seconds}; shift ;;
+      *) die "unknown option $1" ;;
+    esac
+    shift
+  done
+  lock
+  ensure_repo
+  sha=$(fetch_head) || die "git fetch of $BRANCH failed"
+  cur=$(current_sha)
+  if [ "$sha" = "$cur" ] && [ "$force" -eq 0 ]; then return 0; fi
+  if [ "$force" -eq 0 ] && is_bad "$sha"; then return 0; fi
+  if [ "$force" -eq 0 ]; then
+    deadline=$(($(date +%s) + wait))
+    while :; do
+      st=$(ci_state "$sha")
+      case "$st" in
+        success) break ;;
+        failure)
+          log "CI check '$REQUIRED_CHECK' failed for $(short "$sha"); not deploying"
+          mark_bad "$sha" "CI failed"
+          record skipped "$sha" "CI failed"
+          notify "⛔ مِرْقاة: فحص CI فشل على $(short "$sha")، فلم يُنشر. الموقع باقٍ على النسخة السابقة."
+          return 0
+          ;;
+        *)
+          if [ "$(date +%s)" -ge "$deadline" ]; then
+            if [ "$(cat "$STATE/waiting" 2>/dev/null)" != "$sha" ]; then
+              log "waiting for CI check '$REQUIRED_CHECK' on $(short "$sha") ($st)"
+              printf '%s' "$sha" >"$STATE/waiting"
+            fi
+            return 0
+          fi
+          sleep 30
+          ;;
+      esac
+    done
+  else
+    log "--force: skipping the CI gate"
+  fi
+  deploy "$sha"
+}
+
+cmd_status() {
+  local cur sha st=""
+  cur=$(current_dir)
+  echo "live release : ${cur:-none}"
+  echo "live commit  : $(current_sha)"
+  echo "previous     : $(cat "$STATE/previous" 2>/dev/null || echo none)"
+  if [ -d "$PREFIX/repo.git" ] && sha=$(fetch_head 2>/dev/null); then
+    st=$(ci_state "$sha")
+    printf '%-13s: %s (CI: %s)%s\n' "$BRANCH head" "$sha" "$st" \
+      "$(is_bad "$sha" && echo ' — marked bad, use run --force to override')"
+  fi
+  echo "console      : $("$SYSTEMCTL" is-active "$SERVICE" 2>/dev/null || true)"
+  local body
+  if body=$(curl -fsS --max-time 3 "$HEALTH_URL" 2>/dev/null); then
+    echo "health       : ok (serving $(printf '%s' "$body" | "$PYTHON" -c 'import json, sys; print(json.load(sys.stdin).get("release") or "?")' 2>/dev/null))"
+  else
+    echo "health       : FAILING"
+  fi
+  if [ -f "$STATE/history" ]; then
+    echo "recent deploys:"
+    tail -n 6 "$STATE/history" | sed 's/^/  /'
+  fi
+}
+
+cmd_rollback() {
+  local target=${1:-} cur cur_sha
+  lock
+  if [ -n "$target" ]; then
+    case "$target" in /*) ;; *) target="$PREFIX/releases/$target" ;; esac
+  else
+    target=$(cat "$STATE/previous" 2>/dev/null || true)
+  fi
+  [ -n "$target" ] && [ -d "$target" ] || die "no previous release to roll back to (see: mirqah-deploy releases)"
+  cur=$(current_dir)
+  cur_sha=$(current_sha)
+  [ "$target" != "$cur" ] || die "$(basename "$target") is already live"
+  switch_to "$target"
+  restart_console
+  if healthy "$(cat "$target/.release-sha" 2>/dev/null)"; then
+    # keep the timer from re-deploying the commit we just left
+    if [ -n "$cur_sha" ]; then mark_bad "$cur_sha" "rolled back by operator"; fi
+    record rollback "$(cat "$target/.release-sha" 2>/dev/null || echo unknown)" "$(basename "$target")"
+    rm -f "$STATE/previous"
+    log "live: $(basename "$target"). New commits on $BRANCH will deploy as usual."
+    notify "↩️ مِرْقاة: أُعيدت اللوحة يدوياً إلى $(basename "$target")."
+  else
+    log "the release we rolled back to is unhealthy; switching back"
+    switch_to "$cur"
+    restart_console
+    exit 1
+  fi
+}
+
+cmd_releases() {
+  local cur d
+  cur=$(current_dir)
+  find "$PREFIX/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | sort -rn | cut -d' ' -f2- |
+    while IFS= read -r d; do
+      if [ "$d" = "$cur" ]; then echo "* $(basename "$d")  (live)"; else echo "  $(basename "$d")"; fi
+    done
+}
+
+main() {
+  local cmd=${1:-help}
+  [ $# -gt 0 ] && shift
+  case "$cmd" in
+    run) need_root run "$@"; cmd_run "$@" ;;
+    status) need_root status "$@"; cmd_status ;;
+    rollback) need_root rollback "$@"; cmd_rollback "$@" ;;
+    releases) cmd_releases ;;
+    help | -h | --help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
+    *) die "unknown command $cmd (try: mirqah-deploy help)" ;;
+  esac
+}
+
+main "$@"

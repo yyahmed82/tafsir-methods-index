@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
@@ -39,6 +40,9 @@ def create_app(start_worker: bool = True) -> FastAPI:
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
+        if config.ALLOWED_HOSTS and _host(request) not in config.ALLOWED_HOSTS \
+                and _host(request) not in config.LOCAL_HOSTS:
+            return PlainTextResponse("unknown host", status_code=421)
         if request.url.path.startswith("/api/") and request.method in (
                 "POST", "PUT", "PATCH", "DELETE"):
             if request.headers.get(config.CSRF_HEADER) != "1":
@@ -52,6 +56,8 @@ def create_app(start_worker: bool = True) -> FastAPI:
             "https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; "
             "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
             "base-uri 'self'; form-action 'self'")
+        if config.SECURE_COOKIES:
+            resp.headers["Strict-Transport-Security"] = "max-age=31536000"
         if request.url.path.startswith("/api/"):
             resp.headers["Cache-Control"] = "no-store"
         return resp
@@ -68,7 +74,37 @@ def create_app(start_worker: bool = True) -> FastAPI:
 
 
 def _ip(request: Request) -> str | None:
+    """Visitor IP. Behind Cloudflare Tunnel every request comes from 127.0.0.1, so the
+    real address is taken from CF-Connecting-IP (only when MIRQAH_PROXY=cloudflare and
+    the console listens on localhost, so nobody else can set that header)."""
+    if config.TRUST_CF_IP:
+        raw = (request.headers.get("cf-connecting-ip") or "").strip()
+        try:
+            return str(ipaddress.ip_address(raw))
+        except ValueError:
+            pass
     return request.client.host if request.client else None
+
+
+def _release() -> str:
+    """Commit of the running release (written by deploy/server/mirqah-deploy), or ""."""
+    try:
+        return (config.REPO_ROOT / ".release-sha").read_text(encoding="utf-8").strip()[:12]
+    except OSError:
+        return ""
+
+
+def _host(request: Request) -> str:
+    host = (request.headers.get("host") or "").strip().lower()
+    if host.startswith("["):  # [::1]:8800
+        return host[1:host.find("]")] if "]" in host else host
+    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+
+
+def _set_session_cookie(request: Request, response: Response, token: str, hours: float) -> None:
+    response.set_cookie(config.SESSION_COOKIE, token, max_age=int(hours * 3600), httponly=True,
+                        samesite="strict",
+                        secure=config.SECURE_COOKIES or request.url.scheme == "https", path="/")
 
 
 def current_user(request: Request) -> dict:
@@ -243,7 +279,9 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
             "languages": languages(enabled_only=True), "default_lang": default_lang(),
             "mail_mode": settings.get("smtp")["mode"],
             "has_users": bool(db.scalar("SELECT COUNT(*) FROM users")),
+            "guest_access": bool(settings.get("security").get("guest_access")),
             "version": __version__,
+            "release": _release(),
         }
 
     @app.get("/api/i18n/{code}")
@@ -274,11 +312,21 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                                        request.headers.get("user-agent"))
         except PermissionError as e:
             raise _err(401, str(e)) from e
-        hours = settings.get("security")["session_hours"]
-        response.set_cookie(config.SESSION_COOKIE, token, max_age=hours * 3600, httponly=True,
-                            samesite="strict", secure=request.url.scheme == "https", path="/")
+        _set_session_cookie(request, response, token, settings.get("security")["session_hours"])
         user = auth.session_user(token)
         return {"ok": True, "user": auth.public_user(user)}
+
+    @app.post("/api/auth/guest")
+    def guest_login(request: Request, response: Response) -> dict:
+        ip = _ip(request) or "?"
+        if auth.rate_limited(f"guest-ip:{ip}", 10, 600):
+            raise _err(429, "rate_limited")
+        try:
+            token, _ = auth.guest_session(ip, request.headers.get("user-agent"))
+        except PermissionError as e:
+            raise _err(403, str(e)) from e
+        _set_session_cookie(request, response, token, config.GUEST_SESSION_HOURS)
+        return {"ok": True, "user": auth.public_user(auth.session_user(token))}
 
     @app.post("/api/auth/logout")
     def logout(request: Request, response: Response) -> dict:

@@ -94,7 +94,9 @@ def request_otp(email: str, ip: str | None) -> dict:
         f"Your sign-in code: {code} (valid {sec['otp_ttl_min']} min).\n"
     )
     try:
-        res = mailer.send(email, f"رمز الدخول — {gen['team_name']}", body)
+        # the outbox keeps a copy of real mail with the code masked; mock mail keeps it
+        res = mailer.send(email, f"رمز الدخول — {gen['team_name']}", body,
+                          outbox_body=body.replace(code, "•" * len(code)))
     except mailer.MailError as e:
         log.error("otp mail failed for %s: %s", email, e)
         db.audit("auth.otp_mail_failed", user_id=user["id"], ip=ip, detail={"error": str(e)})
@@ -103,9 +105,48 @@ def request_otp(email: str, ip: str | None) -> dict:
     db.audit("auth.otp_sent", user_id=user["id"], ip=ip, detail={"mode": res["mode"]})
     if res["mode"] == "mock":
         log.warning("MOCK OTP for %s: %s", email, code)
-        if sec["show_mock_code"]:
+        if sec["show_mock_code"] and not config.PRODUCTION:
             out["mock_code"] = code
     return out
+
+
+def _new_session(user: dict, ip: str | None, user_agent: str | None, hours: float) -> str:
+    token = secrets.token_urlsafe(32)
+    db.execute(
+        "INSERT INTO sessions(token_hash,user_id,created_at,expires_at,ip,user_agent)"
+        " VALUES (?,?,?,?,?,?)",
+        (_h(token), user["id"], db.now(), db.now() + int(hours * 3600), ip,
+         (user_agent or "")[:200]),
+    )
+    db.execute("UPDATE users SET last_login_at=? WHERE id=?", (db.now(), user["id"]))
+    return token
+
+
+def guest_session(ip: str | None, user_agent: str | None) -> tuple[str, dict]:
+    """Open a read-only session for judges and guests (no e-mail).
+
+    Only when Settings → Security → guest access is on. The guest user is a
+    normal row (role viewer) so admins can see it and deactivate it; whatever
+    its role says, its permissions are capped to ``config.GUEST_PERMISSIONS``.
+    """
+    sec = settings.get("security")
+    if not sec.get("guest_access"):
+        raise PermissionError("guest_disabled")
+    role = db.row("SELECT id FROM roles WHERE key='viewer'")
+    if role is None:
+        raise PermissionError("guest_disabled")
+    user = db.row("SELECT * FROM users WHERE email=?", (config.GUEST_EMAIL,))
+    if user is None:
+        uid = db.execute(
+            "INSERT INTO users(email,name,role_id,lang,active,created_at) VALUES (?,?,?,?,1,?)",
+            (config.GUEST_EMAIL, "زائر · Guest", role["id"], "", db.now()))
+        user = db.row("SELECT * FROM users WHERE id=?", (uid,))
+    elif not user["active"]:
+        raise PermissionError("guest_disabled")
+    hours = min(float(sec["session_hours"]), float(config.GUEST_SESSION_HOURS))
+    token = _new_session(user, ip, user_agent, hours)
+    db.audit("auth.guest_login", user_id=user["id"], ip=ip)
+    return token, user
 
 
 def verify_otp(email: str, code: str, ip: str | None, user_agent: str | None) -> tuple[str, dict]:
@@ -130,14 +171,7 @@ def verify_otp(email: str, code: str, ip: str | None, user_agent: str | None) ->
     if user is None:
         raise PermissionError("otp_wrong")
     db.execute("UPDATE otp_codes SET used=1 WHERE id=?", (rec["id"],))
-    token = secrets.token_urlsafe(32)
-    db.execute(
-        "INSERT INTO sessions(token_hash,user_id,created_at,expires_at,ip,user_agent)"
-        " VALUES (?,?,?,?,?,?)",
-        (_h(token), user["id"], db.now(), db.now() + sec["session_hours"] * 3600, ip,
-         (user_agent or "")[:200]),
-    )
-    db.execute("UPDATE users SET last_login_at=? WHERE id=?", (db.now(), user["id"]))
+    token = _new_session(user, ip, user_agent, sec["session_hours"])
     db.audit("auth.login", user_id=user["id"], ip=ip)
     return token, user
 
@@ -154,7 +188,11 @@ def session_user(token: str | None) -> dict | None:
     )
     if s is None or s["expires_at"] < db.now() or not s["active"]:
         return None
-    s["permissions"] = sorted(set(db.loads(s.pop("role_permissions"), [])))
+    perms = set(db.loads(s.pop("role_permissions"), []))
+    if s["email"] == config.GUEST_EMAIL:
+        perms &= set(config.GUEST_PERMISSIONS)  # guests stay read-only whatever the role says
+    s["permissions"] = sorted(perms)
+    s["is_guest"] = s["email"] == config.GUEST_EMAIL
     return s
 
 
@@ -173,4 +211,5 @@ def public_user(u: dict) -> dict:
         "role": {"key": u.get("role_key"), "name_ar": u.get("role_name_ar"),
                  "name_en": u.get("role_name_en")},
         "permissions": u.get("permissions", []),
+        "is_guest": u.get("email") == config.GUEST_EMAIL,
     }

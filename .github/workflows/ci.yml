@@ -21,6 +21,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest
+          pip install -r console/requirements.txt httpx  # console tests (deploy gate)
 
       - name: v2 selftest
         run: python src/v2_selftest.py

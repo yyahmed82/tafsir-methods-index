@@ -261,7 +261,10 @@
         <div class="field"><label for="email">${T('auth.email')}</label>
           <input class="input ltr" id="email" type="email" autocomplete="email" inputmode="email" required placeholder="${T('auth.email_ph')}" value="${esc(S.loginEmail)}"></div>
         <button class="btn primary block" type="submit">${ico('mail')} ${T('auth.send_code')}</button>
-        <p class="faint" id="login-msg"></p></form>`;
+        <p class="faint" id="login-msg"></p></form>
+        ${S.pub.guest_access ? `<div class="auth-or"><span>${T('auth.or')}</span></div>
+        <button class="btn outline-accent block" type="button" data-act="guest">${ico('user')} ${T('auth.guest_btn')}</button>
+        <p class="faint mt-s">${T('auth.guest_note')}</p>` : ''}`;
     } else {
       body = `<form id="f-code" class="stack" novalidate>
         <p class="muted">${T('auth.sent_generic')}</p>
@@ -811,7 +814,8 @@
     } else if (sec === 'security') {
       fields = fieldFor(sec, 'otp_length', v.otp_length) + fieldFor(sec, 'otp_ttl_min', v.otp_ttl_min) + fieldFor(sec, 'otp_max_attempts', v.otp_max_attempts)
         + fieldFor(sec, 'otp_resend_s', v.otp_resend_s) + fieldFor(sec, 'session_hours', v.session_hours)
-        + fieldFor(sec, 'show_mock_code', v.show_mock_code, { full: true, hint: T('set.security.show_mock_code_note') });
+        + fieldFor(sec, 'show_mock_code', v.show_mock_code, { full: true, hint: T('set.security.show_mock_code_note') })
+        + fieldFor(sec, 'guest_access', v.guest_access, { full: true, hint: T('set.security.guest_access_note') });
     } else if (sec === 'gates') {
       fields = `<div class="notice full">${ico('shield')}<span>${T('set.gates.note')}</span></div>` + fieldFor(sec, 'phase0_merged', v.phase0_merged, { full: true })
         + fieldFor(sec, 'phase0_note', v.phase0_note, { full: true, ltr: true, ph: 'https://github.com/…/pull/…' }) + fieldFor(sec, 'sample_reviewed', v.sample_reviewed, { full: true })
@@ -952,6 +956,12 @@
         case 'logout': await api('/auth/logout', { method: 'POST' }); S.me = null; location.hash = ''; render(); break;
         case 'login-back': S.loginStep = 'email'; S.mockCode = ''; $('#app').innerHTML = loginView(); bindLogin(); break;
         case 'resend': sendCode(S.loginEmail); break;
+        case 'guest': {
+          const r = await api('/auth/guest', { method: 'POST' });
+          S.me = r.user; S.loginStep = 'email';
+          if (!location.hash || location.hash === '#/') location.hash = '#/dashboard';
+          render(); break;
+        }
         case 'probe': await api('/llm/probe'); viewDashboard(); break;
         case 'sel-agent': S.selAgent = el.dataset.k; { const d = await api('/dashboard'); setPage(dashHTML(d)); } break;
         case 'run-sample': newTaskModal({ kind: 'committee', scope: 'sample' }); break;

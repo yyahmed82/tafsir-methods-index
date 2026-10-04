@@ -122,6 +122,121 @@ def test_viewer_cannot_change_settings_or_users(env):
                     headers=H).status_code == 403
 
 
+def test_production_hides_mock_code_and_masks_real_mail(env, monkeypatch):
+    from console import mailer
+    add_user("p@example.com", "viewer")
+    monkeypatch.setattr(config, "PRODUCTION", True)
+    r = env.post("/api/auth/request-otp", json={"email": "p@example.com"}, headers=H)
+    assert r.status_code == 200 and "mock_code" not in r.json()
+
+    sent = []
+
+    class FakeSMTP:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def starttls(self, **k):
+            pass
+
+        def login(self, *a):
+            pass
+
+        def send_message(self, msg):
+            sent.append(msg.get_content())
+
+    monkeypatch.setattr(mailer.smtplib, "SMTP", FakeSMTP)
+    settings.update("smtp", {"mode": "smtp", "host": "smtp.example.com",
+                             "from_email": "no-reply@example.com"}, None)
+    settings.update("security", {"otp_resend_s": 0}, None)
+    r = env.post("/api/auth/request-otp", json={"email": "p@example.com"}, headers=H)
+    assert r.status_code == 200 and "mock_code" not in r.json()
+    code = re.search(r"\b(\d{6})\b", sent[-1]).group(1)
+    stored = db.scalar("SELECT body FROM outbox WHERE mode='smtp' ORDER BY id DESC LIMIT 1")
+    assert code not in stored and "••••••" in stored
+
+
+def test_cloudflare_proxy_ip_secure_cookie_and_allowed_hosts(env, monkeypatch):
+    add_user("cf@example.com", "viewer")
+    monkeypatch.setattr(config, "TRUST_CF_IP", True)
+    monkeypatch.setattr(config, "SECURE_COOKIES", True)
+    monkeypatch.setattr(config, "ALLOWED_HOSTS", ("console.example.com",))
+    assert env.get("/api/public").status_code == 421  # Host: testserver
+    ok = env.get("/api/public", headers={"host": "console.example.com"})
+    assert ok.status_code == 200
+    assert ok.headers["strict-transport-security"].startswith("max-age=")
+    assert env.get("/api/public", headers={"host": "127.0.0.1:8800"}).status_code == 200
+    hh = {**H, "host": "console.example.com", "cf-connecting-ip": "203.0.113.7"}
+    r = env.post("/api/auth/request-otp", json={"email": "cf@example.com"}, headers=hh)
+    code = r.json()["mock_code"]
+    r = env.post("/api/auth/verify-otp", json={"email": "cf@example.com", "code": code},
+                 headers=hh)
+    assert r.status_code == 200
+    cookie = r.headers["set-cookie"].lower()
+    assert "secure" in cookie and "httponly" in cookie and "samesite=strict" in cookie
+    assert db.scalar("SELECT ip FROM audit WHERE action='auth.login' ORDER BY id DESC"
+                     " LIMIT 1") == "203.0.113.7"
+    # a forged header is ignored when the console is not behind Cloudflare
+    monkeypatch.setattr(config, "TRUST_CF_IP", False)
+    env.post("/api/auth/request-otp", json={"email": "nobody@example.com"},
+             headers={**hh, "cf-connecting-ip": "198.51.100.9"})
+    assert db.scalar("SELECT ip FROM audit WHERE action='auth.otp_unknown' ORDER BY id DESC"
+                     " LIMIT 1") != "198.51.100.9"
+
+
+def test_guest_access_is_off_by_default_and_read_only(env):
+    add_user("boss@example.com", "super_admin")
+    assert env.get("/api/public").json()["guest_access"] is False
+    r = env.post("/api/auth/guest", headers=H)
+    assert r.status_code == 403 and r.json()["detail"]["error"] == "guest_disabled"
+    settings.update("security", {"guest_access": True}, None)
+    assert env.get("/api/public").json()["guest_access"] is True
+    r = env.post("/api/auth/guest", headers=H)
+    assert r.status_code == 200, r.text
+    me = env.get("/api/me").json()["user"]
+    assert me["is_guest"] and set(me["permissions"]) <= set(config.GUEST_PERMISSIONS)
+    assert env.get("/api/dashboard").status_code == 200
+    assert env.patch("/api/settings/security", json={"guest_access": False},
+                     headers=H).status_code == 403
+    assert env.post("/api/tasks", json={"kind": "dryrun", "scope": "sample"},
+                    headers=H).status_code == 403
+    # even if someone gives the guest row a powerful role, guests stay read-only
+    admin_role = db.scalar("SELECT id FROM roles WHERE key='super_admin'")
+    db.execute("UPDATE users SET role_id=? WHERE email=?", (admin_role, config.GUEST_EMAIL))
+    me = env.get("/api/me").json()["user"]
+    assert "manage_settings" not in me["permissions"]
+    assert env.get("/api/users").status_code == 403
+    # deactivating the guest row ends guest sessions and blocks new ones
+    db.execute("UPDATE users SET active=0 WHERE email=?", (config.GUEST_EMAIL,))
+    assert env.get("/api/me").status_code == 401
+    assert env.post("/api/auth/guest", headers=H).status_code == 403
+
+
+def test_cli_settings_set_show_and_mail_test(env, capsys):
+    from console.__main__ import main as cli
+    assert cli(["settings-set", "smtp", "mode=smtp", "host=smtp-relay.brevo.com", "port=587",
+                "security=starttls", "from_email=no-reply@example.com"]) == 0
+    s = settings.get("smtp")
+    assert (s["mode"], s["host"], s["port"]) == ("smtp", "smtp-relay.brevo.com", 587)
+    assert cli(["settings-set", "security", "show_mock_code=false", "guest_access=on"]) == 0
+    sec = settings.get("security")
+    assert sec["show_mock_code"] is False and sec["guest_access"] is True
+    assert cli(["settings-set", "smtp", "password=hunter2"]) == 2  # secrets stay in env
+    assert cli(["settings-set", "smtp", "mode=carrier-pigeon"]) == 2
+    assert cli(["settings-set", "nope", "a=b"]) == 2
+    capsys.readouterr()
+    assert cli(["settings-show", "smtp"]) == 0
+    assert "smtp-relay.brevo.com" in capsys.readouterr().out
+    assert cli(["settings-set", "smtp", "mode=mock"]) == 0
+    assert cli(["mail-test", "--to", "x@example.com"]) == 0
+    assert db.scalar("SELECT COUNT(*) FROM outbox WHERE to_addr='x@example.com'") == 1
+
+
 def test_no_privilege_escalation_and_last_super_admin(env):
     sa = add_user("sa@example.com", "super_admin")
     rid = db.execute("INSERT INTO roles(key,name_ar,name_en,system,permissions) VALUES"

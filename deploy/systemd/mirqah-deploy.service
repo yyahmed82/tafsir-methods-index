@@ -1,0 +1,10 @@
+[Unit]
+Description=Mirqah auto-deploy (fetch main, wait for green CI, switch release, health check)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mirqah/bin/mirqah-deploy run
+TimeoutStartSec=20min
+Nice=5

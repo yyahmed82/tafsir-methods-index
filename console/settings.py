@@ -46,6 +46,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "otp_resend_s": 60,
         "session_hours": 12,
         "show_mock_code": True,
+        "guest_access": False,
     },
     "gates": {
         "phase0_merged": False,
