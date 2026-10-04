@@ -9,6 +9,8 @@
   color-scheme: light;
   --navy: #12183F;
   --violet: #6150EA;
+  --mirqat-brand: var(--violet);
+  --mirqat-rule: var(--glass-line);
   --violet-safe: #3C2BB8;
   --turquoise: #2EF2C2;
   --paper: #F2F4FF;
@@ -79,6 +81,8 @@
   --sub: #C8CFE8;
   --muted: #9AA3C8;
   --lilac: #C4B6FF;
+  --mirqat-brand: var(--lilac);
+  --mirqat-rule: var(--glass-line);
   --blue: #9ECAF5;
   --teal: #5EEAD4;
   --amber: #E2B15A;
@@ -127,7 +131,76 @@ button, input, select, textarea { font: inherit; color: inherit; }
   outline-offset: 2px;
 }
 
+html { overflow-x: clip; }
 .shell { min-height: 100vh; background: var(--base); overflow-x: clip; }
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.brand-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.brand-heading {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.brand-rule {
+  width: 1px;
+  height: 18px;
+  margin-inline: 12px;
+  background: var(--mirqat-rule);
+  flex: 0 0 auto;
+  align-self: center;
+}
+.mirqat-mark {
+  width: 22px;
+  height: 28px;
+  flex: 0 0 auto;
+  color: var(--mirqat-brand);
+  display: block;
+}
+.mirqat-wordmark {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--mirqat-brand);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.brand-product,
+.brand-lockup h1 {
+  min-width: 0;
+  font-weight: 700;
+}
+.source-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  margin: 8px 0 0;
+  font-size: .8rem;
+  line-height: 1.6;
+  color: var(--muted);
+  font-family: var(--font-ui);
+}
+.source-row a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding-block: 2px;
+  color: var(--violet-safe);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 500;
+}
+:root[data-theme="dark"] .source-row a { color: var(--lilac); }
 .frame {
   width: min(var(--max), 100%);
   margin-inline: auto;
@@ -1811,10 +1884,14 @@ select optgroup {
     display: flex;
     flex-wrap: wrap;
   }
-  .hero h1 {
+  .brand-lockup {
     flex: 1 1 100%;
+  }
+  .hero h1 {
+    flex: 1 1 auto;
     font-size: 1.02rem;
     margin: 0;
+    white-space: normal;
   }
   .toolbar-field,
   .ann-wrap {
@@ -1867,7 +1944,16 @@ select optgroup {
     <div class="frame hero-frame">
       <div class="toolbar" aria-label="أدوات الصفحة">
         <div class="toolbar-row" aria-label="القراءة">
-          <h1>فهرس مناهج التفسير</h1>
+          <div class="brand-lockup">
+            <span class="brand-team">
+            <svg class="mirqat-mark" viewBox="0 0 24 32" width="22" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true" focusable="false"><path d="M7 30L5 3"/><path d="M17 30L19 3"/><path d="M6.2 8.5h11.6"/><path d="M6.5 15h11"/><path d="M6.8 21.5h10.4"/><path d="M7 28h10"/></svg>
+            <span class="mirqat-wordmark">مِرْقاة</span>
+            </span>
+            <span class="brand-heading">
+            <span class="brand-rule" aria-hidden="true"></span>
+            <h1 class="brand-product">فهرس مناهج التفسير</h1>
+            </span>
+          </div>
           <label class="toolbar-field" for="tafsir-select" title="اختر كتاب التفسير المعروض">التفسير
             <select id="tafsir-select" class="win-select" aria-label="التفسير" title="اختر كتاب التفسير المعروض"></select>
           </label>
@@ -1883,7 +1969,7 @@ select optgroup {
           <button type="button" class="btn primary" id="start-review-btn" aria-pressed="false" title="يفتح أدوات تصحيح الحدود والوسوم والاعتماد">ابدأ المراجعة</button>
           <a href="reader.html" class="btn" style="text-decoration:none" title="الواجهة الجديدة">جرّب الواجهة الجديدة</a>
           <button type="button" class="btn help-compact" id="help-btn" title="يفتح دليل الواجهة وشرح كل زر" aria-label="دليل الواجهة">؟</button>
-          <button type="button" class="theme-btn" id="theme-btn" aria-label="فاتح/داكن" title="بدّل بين المظهر الفاتح والداكن">◐</button>
+          <button type="button" class="theme-btn" id="theme-btn" aria-pressed="false" aria-label="فاتح/داكن" title="بدّل بين المظهر الفاتح والداكن">◐</button>
           <div class="export-menu">
             <button type="button" class="btn" id="export-menu-btn" aria-expanded="false" aria-haspopup="true" title="قائمة ملفات التصدير">تصدير ▾</button>
             <div class="export-menu-list" id="export-menu" hidden role="menu" aria-label="خيارات التصدير">
@@ -2023,11 +2109,16 @@ select optgroup {
         </div>
         <p class="verse-text" id="verse-text" lang="ar"></p>
       </div>
-      <p class="verse-dorar"><a id="dorar-link" href="https://dorar.net/tafseer/2" target="_blank" rel="noopener">موسوعة التفسير — الدرر السنية (صفحة السورة)</a></p>
+      <p class="source-row" id="source-row">اقرأ في المصدر:
+        <a id="dorar-link" href="https://dorar.net/tafseer/2" target="_blank" rel="noopener">الدرر السنية</a>
+        ·
+        <a class="tafsir-link" id="tafsir-net-link" href="https://quran.com" target="_blank" rel="noopener" dir="ltr" translate="no" title="منصة القرآن الكريم (quran.com)"><bdi dir="ltr" translate="no">quran.com</bdi></a>
+        ·
+        <a id="quranpedia-link" class="js-quranpedia-link" target="_blank" rel="noopener noreferrer" hidden title="نص التفسير في قرآنبيديا — لا يستضيفون تمييزات المنهج">قرآنبيديا</a>
+      </p>
       <div id="empty-banner" class="banner" hidden>لم يُصنَّف بعد</div>
       <p id="filter-empty" class="filter-empty" hidden>لا توجد مواضع لهذا المنهج في هذه الآية لدى هذا المفسِّر</p>
       <div id="match-banner" class="match-banner" hidden></div>
-      <a class="tafsir-link" id="tafsir-net-link" href="https://quran.com" target="_blank" rel="noopener" title="اقرأ هذه الآية في منصة القرآن الكريم (quran.com)">اقرأ هذه الآية في تفسير الطبري — منصة القرآن الكريم (quran.com)</a>
       <details class="disclose" id="results-disclose">
         <summary id="results-summary">ملخص النتائج</summary>
         <div class="disclose-body">
@@ -2314,6 +2405,7 @@ select optgroup {
 <div class="toast" id="toast" hidden></div>
 
 <script type="application/json" id="methods-data">__METHODS_DATA_JSON__</script>
+<script src="assets/brand/quranpedia-books.js"></script>
 <script>
 (function () {
   "use strict";
@@ -2562,6 +2654,7 @@ select optgroup {
     if (!btn) return;
     var dark = document.documentElement.getAttribute("data-theme") === "dark";
     btn.textContent = dark ? "☼" : "◐";
+    btn.setAttribute("aria-pressed", dark ? "true" : "false");
     btn.setAttribute("aria-label", dark ? "وضع فاتح" : "وضع داكن");
     btn.title = dark ? "التبديل إلى المظهر الفاتح" : "التبديل إلى المظهر الداكن";
   }
@@ -2984,18 +3077,41 @@ select optgroup {
     var dorar = document.getElementById("dorar-link") || document.querySelector(".verse-dorar a");
     if (dorar && parts.surah != null && !isNaN(parts.surah)) {
       dorar.href = "https://dorar.net/tafseer/" + parts.surah;
-      dorar.textContent = "موسوعة التفسير — الدرر السنية (صفحة السورة)";
+      dorar.textContent = "الدرر السنية";
     }
     var link = document.getElementById("tafsir-net-link");
     if (link && parts.surah != null && !isNaN(parts.surah) && parts.ayah != null && !isNaN(parts.ayah)) {
       var tid = state.tafsirId || (tafsirMeta().id);
       var slug = QURAN_TAFSIR_SLUGS[tid] || ("ar-tafsir-" + String(tid).replace(/_/g, "-"));
       var tName = (activeTafsir() && activeTafsir().name) || tafsirMeta().name || "التفسير";
-      var label = "اقرأ هذه الآية في " + tName + " — منصة القرآن الكريم (quran.com)";
       link.href = "https://quran.com/ar/" + parts.surah + ":" + parts.ayah + "/tafsirs/" + slug;
-      link.textContent = label;
-      link.title = label;
+      link.setAttribute("dir", "ltr");
+      link.setAttribute("translate", "no");
+      if (!link.querySelector("bdi")) {
+        var bdi = document.createElement("bdi");
+        bdi.setAttribute("dir", "ltr");
+        bdi.setAttribute("translate", "no");
+        bdi.textContent = "quran.com";
+        link.textContent = "";
+        link.appendChild(bdi);
+      }
+      link.title = "اقرأ هذه الآية في " + tName + " — منصة القرآن الكريم (quran.com)";
     }
+    var qpTid = state.tafsirId || (tafsirMeta().id);
+    var qpUrl = (typeof quranpediaSourceUrl === "function")
+      ? quranpediaSourceUrl(qpTid, parts.surah, parts.ayah)
+      : "";
+    Array.prototype.forEach.call(document.querySelectorAll(".js-quranpedia-link"), function (a) {
+      if (!qpUrl) {
+        a.hidden = true;
+        a.removeAttribute("href");
+        return;
+      }
+      a.hidden = false;
+      a.href = qpUrl;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+    });
   }
 
   function sourceIdFor(w) {

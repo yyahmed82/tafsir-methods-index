@@ -13,6 +13,8 @@
   --glass-shine: rgba(255, 255, 255, .16);
   --violet: #6251eb;
   --lilac: #9b82ff;
+  --mirqat-brand: var(--lilac);
+  --mirqat-rule: var(--glass-line);
   --blue: #39a0fd;
   --teal: #2feec3;
   --ink: #f2f4ff;
@@ -63,6 +65,8 @@
     --ink: #12183f;
     --sub: #2c3775;
     --muted: #4a5590;
+    --mirqat-brand: var(--violet);
+    --mirqat-rule: var(--glass-line);
     --teal: #0f9e7e;
     --amber: #9a6b00;
     --red: #c23b3b;
@@ -93,6 +97,8 @@
   --ink: #12183f;
   --sub: #2c3775;
   --muted: #4a5590;
+  --mirqat-brand: var(--violet);
+  --mirqat-rule: var(--glass-line);
   --teal: #0f9e7e;
   --amber: #9a6b00;
   --red: #c23b3b;
@@ -112,7 +118,7 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { text-size-adjust: 100%; }
+html { text-size-adjust: 100%; overflow-x: clip; }
 body {
   margin: 0;
   background: var(--base);
@@ -147,6 +153,46 @@ button, input, select, textarea { font: inherit; color: inherit; }
   flex-direction: column;
   align-items: flex-start;
   gap: 12px;
+}
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.brand-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.brand-heading {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.brand-rule {
+  width: 1px;
+  height: 18px;
+  margin-inline: 12px;
+  background: var(--mirqat-rule);
+  flex: 0 0 auto;
+  align-self: center;
+}
+.mirqat-mark {
+  width: 22px;
+  height: 28px;
+  flex: 0 0 auto;
+  color: var(--mirqat-brand);
+  display: block;
+}
+.mirqat-wordmark {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--mirqat-brand);
+  line-height: 1.2;
+  white-space: nowrap;
 }
 .hero h1 {
   margin: 0;
@@ -802,12 +848,21 @@ button, input, select, textarea { font: inherit; color: inherit; }
 <div class="shell" dir="rtl">
   <div class="hero" role="banner">
     <div class="frame hero-frame">
-      <h1>فهرس مناهج التفسير — تفسير ابن كثير</h1>
+      <div class="brand-lockup">
+        <span class="brand-team">
+        <svg class="mirqat-mark" viewBox="0 0 24 32" width="22" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true" focusable="false"><path d="M7 30L5 3"/><path d="M17 30L19 3"/><path d="M6.2 8.5h11.6"/><path d="M6.5 15h11"/><path d="M6.8 21.5h10.4"/><path d="M7 28h10"/></svg>
+        <span class="mirqat-wordmark">مِرْقاة</span>
+        </span>
+        <span class="brand-heading">
+        <span class="brand-rule" aria-hidden="true"></span>
+        <h1 class="brand-product">فهرس مناهج التفسير — تفسير ابن كثير</h1>
+        </span>
+      </div>
       <p class="lede">صفحة التفسير يميناً ولوحة المناهج يساراً؛ الذكاء يقترح تمييزاً بدليله، والمتخصص يصحّحه دون أن يتغيّر حرف من المصدر.</p>
       <div class="toolbar">
         <label class="note" for="win-select" style="margin:0;color:var(--hero-sub)">النافذة</label>
         <select id="win-select" class="win-select" aria-label="اختيار النافذة"></select>
-        <button type="button" class="theme-btn" id="theme-btn" aria-label="تبديل المظهر">المظهر</button>
+        <button type="button" class="theme-btn" id="theme-btn" aria-pressed="true" aria-label="تبديل المظهر" title="بدّل بين المظهر الفاتح والداكن">المظهر</button>
         <button type="button" class="btn" id="spec-toggle" aria-pressed="false">وضع المتخصص</button>
         <button type="button" class="btn" id="markers-only-toggle" aria-pressed="false">العلامات الآلية فقط</button>
         <button type="button" class="btn" id="export-current-btn">تصدير الموضع الحالي</button>
@@ -1123,6 +1178,21 @@ button, input, select, textarea { font: inherit; color: inherit; }
       var t = localStorage.getItem(THEME_KEY);
       if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
     } catch (e) { /* ignore */ }
+    syncThemeBtn();
+  }
+  function themeIsDark() {
+    var t = document.documentElement.getAttribute("data-theme");
+    if (t === "light") return false;
+    if (t === "dark") return true;
+    return !(window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches);
+  }
+  function syncThemeBtn() {
+    var btn = document.getElementById("theme-btn");
+    if (!btn) return;
+    var dark = themeIsDark();
+    btn.setAttribute("aria-pressed", dark ? "true" : "false");
+    btn.setAttribute("aria-label", dark ? "وضع فاتح" : "وضع داكن");
+    btn.title = dark ? "التبديل إلى المظهر الفاتح" : "التبديل إلى المظهر الداكن";
   }
 
   function currentWindow() { return DATA.windows[state.windowId]; }
@@ -2784,11 +2854,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   el.win.addEventListener("change", function () { loadWindow(el.win.value); });
 
   document.getElementById("theme-btn").addEventListener("click", function () {
-    var cur = document.documentElement.getAttribute("data-theme");
-    var next = cur === "light" ? "dark" : cur === "dark" ? "light" :
-      (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "dark" : "light");
+    var next = themeIsDark() ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
     try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* ignore */ }
+    syncThemeBtn();
   });
 
   document.getElementById("spec-toggle").addEventListener("click", function () {
