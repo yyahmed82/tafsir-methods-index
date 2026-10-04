@@ -37,3 +37,7 @@ deck/pitch/_check_*/
 deck/qa/shots/
 deck/qa/gallery/
 deck/qa/qa_raw_results.json
+
+# python package files are never scratch scripts
+!__init__.py
+!__main__.py
