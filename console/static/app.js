@@ -353,7 +353,6 @@
         bubble = `<span class="faint mono">${esc(fTime(r.finished_at))}</span> ${esc(tafsirName(r.tafsir))} <span class="mono">${esc(r.window)}</span> · ${statusChip(r.status)}`;
         if (r.result && r.result.moves != null) bubble += `<br>${T('dash.moves')} ${r.result.moves} · ${T('dash.candidates')} ${r.result.auto_candidate}`;
       } else if (a.key === 'checker') bubble = `${T('dash.today')}: ${fNum(a.today.ok)} ${T('dash.ok')}`;
-      else if (a.key === 'chair') bubble = `${T('dash.both')}: ${fNum(a.today.both)}`;
       else if (a.key === 'specialist') bubble = `${T('dash.today')}: ${fNum(a.today.n)} ${T('dash.decisions')} · ✓${fNum(a.today.approve)} ✎${fNum(a.today.needs_edit)} ✕${fNum(a.today.reject)}`;
       else bubble = `<span class="faint">${T('dash.nothing_running')}</span>`;
       return `<button class="agent ${a.key === sel.key ? 'sel' : ''}" data-act="sel-agent" data-k="${a.key}">${robot(a.color, st === 'running')}
@@ -368,7 +367,7 @@
     const tot = p.totals;
     const tafRows = p.tafsirs.map((r) => `<div class="tafsir-row"><b>${esc(r.name_ar)}</b>
         <div><div class="bar lg" title="${r.both}/${r.windows}"><i style="width:${pct(r.both, r.windows)}%"></i><i class="b" style="width:${pct(r.classifier - r.both, r.windows)}%"></i></div>
-        <div class="faint mt-s">${T('dash.classified')} ${fNum(r.classifier)} · ${T('dash.both')} ${fNum(r.both)} · ${T('dash.candidates')} ${fNum(r.auto_candidate)} · ${T('dash.specialist')} ${fNum(r.specialist)}</div></div>
+        <div class="faint mt-s">${T('dash.classified')} ${fNum(r.classifier)} · ${T('dash.both')} ${fNum(r.both)} · ${T('dash.committee')} ${fNum(r.committee)} · ${T('dash.candidates')} ${fNum(r.committee_candidates)} · ${T('dash.specialist')} ${fNum(r.committee_specialist)}</div></div>
         <span class="mono faint">${fNum(r.both)}/${fNum(r.windows)}</span></div>`).join('');
     const g = d.gates;
     const gate = (k, on) => `<div class="gate"><span>${T(k)}</span><span class="chip ${on ? 'ok' : 'warn'}">${ico(on ? 'check' : 'lock')} ${T(on ? 'gate.open' : 'gate.closed')}</span></div>`;
@@ -395,7 +394,7 @@
             <div><div class="kicker">${T('dash.windows')}</div><div class="stat">${fNum(tot.windows)}</div></div>
             <div><div class="kicker">${T('dash.classified')}</div><div class="stat">${fNum(tot.classifier)}<small> / ${fNum(tot.windows)}</small></div></div>
             <div><div class="kicker">${T('dash.both')}</div><div class="stat">${fNum(tot.both)}</div></div>
-            <div><div class="kicker">${T('dash.candidates')} · ${T('dash.specialist')}</div><div class="stat">${fNum(tot.auto_candidate)}<small> · ${fNum(tot.specialist)}</small></div></div>
+            <div><div class="kicker">${T('dash.committee')}: ${T('dash.candidates')} · ${T('dash.specialist')}</div><div class="stat">${fNum(tot.committee_candidates)}<small> · ${fNum(tot.committee_specialist)}</small></div></div>
           </div>${tafRows}</section>
         <section class="card"><div class="card-h"><h2>${T('dash.gates')}</h2>${has('manage_settings') ? `<a class="btn sm" href="#/settings/gates">${ico('gear')}</a>` : ''}</div>
           ${gate('gate.phase0', g.phase0_merged)}${gate('gate.sample', g.sample_reviewed)}
@@ -413,17 +412,15 @@
       <span class="faint">· ${fDur(r.duration_ms)}</span></span></div>`).join('') || `<p class="faint">—</p>`;
     let now = `<p class="big-next" style="font-size:20px">${T('dash.nothing_running')}</p>`;
     if (a.now) now = `<p class="big-next" style="font-size:20px;color:var(--accent-text)">${esc(tafsirName(a.now.tafsir))} · <span class="mono">${esc(a.now.window)}</span></p><p class="faint">${esc(a.now.title_ar || '')}</p><p class="faint">${T('dash.model')}: <span class="mono">${esc(a.now.model || '')}</span></p>`;
-    else if (!['classifier', 'verifier'].includes(a.key)) now = `<p class="muted">${T('agent.' + a.key + '.desc')}</p>`;
+    else if (!['classifier', 'verifier', 'chair'].includes(a.key)) now = `<p class="muted">${T('agent.' + a.key + '.desc')}</p>`;
     let next;
     if (a.next) next = `<p class="big-next">${T('dash.queue_steps', { n: a.next })}</p>`;
     else if (a.key === 'specialist') next = `<a class="btn outline-accent" href="#/review">${ico('review')} ${T('nav.review')}</a>`;
-    else if (a.key === 'chair') next = `<p class="muted">${T('review.chair_note')}</p>`;
     else next = has('run_tasks') ? `<button class="btn outline-accent" data-act="new-task">${ico('plus')} ${T('tasks.new')}</button>` : '<p class="faint">—</p>';
     const td = a.today || {};
     let today = '';
-    if (['classifier', 'verifier'].includes(a.key)) today = `${T('dash.today')}: ${fNum(td.ok)} ${T('dash.ok')} · ${fNum(td.bad)} ${T('dash.failed')}`;
+    if (['classifier', 'verifier', 'chair'].includes(a.key)) today = `${T('dash.today')}: ${fNum(td.ok)} ${T('dash.ok')} · ${fNum(td.bad)} ${T('dash.failed')}`;
     else if (a.key === 'checker') today = `${T('dash.today')}: ${fNum(td.ok)} ${T('dash.ok')}`;
-    else if (a.key === 'chair') today = `${T('dash.both')}: ${fNum(td.both)}`;
     else if (a.key === 'specialist') today = `${T('dash.today')}: ${fNum(td.n)} ${T('dash.decisions')}`;
     return `<div class="card-h"><div class="row">${robot(a.color, a.status === 'running').replace('class="robot', 'style="width:40px;height:40px" class="robot')}
         <div><h2>${T('agent.' + a.key)}</h2><div class="faint">${T('agent.' + a.key + '.desc')}</div></div></div>
@@ -452,7 +449,7 @@
 
   function newTaskModal(preset = {}) {
     const sample = '24:35';
-    const kinds = ['committee', 'classifier', 'verifier', 'dryrun'];
+    const kinds = ['committee', 'classifier', 'verifier', 'chair', 'dryrun'];
     const taf = ['al_tabari', 'ibn_kathir', 'al_baghawi', 'al_saadi'];
     const m = modal(`${modalHead(t('tasks.new'))}
       <form id="f-task" class="stack">
@@ -548,7 +545,7 @@
     const sampleN = 35;
     const cells = d.matrix.rows.map((r) => `<div class="ma">${r.ayah_number}</div>` + cols.map((c) => {
       const x = r.cells[c.tafsir] || { status: 'none', windows: 0 };
-      return `<div class="cell ${x.status} ${r.ayah_number === sampleN ? 'sample' : ''}" title="${esc(c.name_ar)} ${r.ayah_number} · ${x.both}/${x.windows}">${x.windows > 1 ? x.windows : ''}</div>`;
+      return `<div class="cell ${x.status} ${r.ayah_number === sampleN ? 'sample' : ''}" title="${esc(c.name_ar)} ${r.ayah_number} · ${x.committee || 0}/${x.windows}">${x.windows > 1 ? x.windows : ''}</div>`;
     }).join('')).join('');
     const p = d.progress;
     const cards = p.tafsirs.map((r) => `<div class="card"><div class="kicker">${esc(r.name_ar)}</div><div class="stat">${fNum(r.both)}<small> / ${fNum(r.windows)}</small></div>
@@ -556,7 +553,7 @@
       <p class="faint mt-s">${fNum(r.ayat)} ${T('dash.ayat')} · ${T('dash.moves')} ${fNum(r.moves)} · ${T('dash.flags')} ${fNum(r.flags)}</p></div>`).join('');
     setPage(`${head('progress.title', 'progress.subtitle')}<div class="grid g4 mb">${cards}</div>
       <section class="card"><div class="card-h"><div><h2>${T('progress.matrix')}</h2><div class="faint">${T('dash.caption_counts')} · <span class="mono">${esc(p.models.classifier)}</span> + <span class="mono">${esc(p.models.verifier)}</span></div></div>
-        <div class="legend">${['none', 'partial', 'classifier', 'both'].map((k) => `<span><i class="cell ${k}"></i>${T('progress.legend.' + k)}</span>`).join('')}</div></div>
+        <div class="legend">${['none', 'partial', 'classifier', 'both', 'committee'].map((k) => `<span><i class="cell ${k}"></i>${T('progress.legend.' + k)}</span>`).join('')}</div></div>
         <div class="matrix"><div class="mh">${T('progress.ayah')}</div>${cols.map((c) => `<div class="mh">${esc(c.name_ar)}</div>`).join('')}${cells}</div></section>`);
   }
 
@@ -593,6 +590,9 @@
       </div>
       <section class="card mb"><div class="card-h"><h2>${T('reports.agents')}</h2></div><div class="table-wrap"><table class="t"><thead><tr><th>${T('tasks.agent')}</th><th>${T('dash.ok')}</th><th>${T('dash.failed')}</th><th>${T('tasks.status.skipped')}</th><th>${T('tasks.model')}</th><th>${T('dash.avg')}</th></tr></thead><tbody>${agents}</tbody></table></div>
         <div class="mt"><div class="kicker mb">${T('reports.windows_today')}</div><div class="row">${wins}</div></div></section>
+      ${c.committee && c.committee.windows ? `<section class="card mb"><h2>${T('review.committee')}</h2><p class="mt-s">${T('dash.windows')} ${fNum(c.committee.windows)} · ${T('dash.moves')} ${fNum(c.committee.moves)} · ${T('dash.candidates')} ${fNum(c.committee.auto_candidate)} · ${T('dash.specialist')} ${fNum(c.committee.specialist)}</p>
+        <div class="row mt-s">${Object.entries(c.committee.reasons || {}).filter(([, v]) => v).map(([k, v]) => `<span class="chip violet">${T('review.reason.' + k)} ${fNum(v)}</span>`).join('')}</div></section>` : ''}
+      ${c.perf ? perfHTML(c.perf) : ''}
       <div class="grid g2">
         <section class="card"><h2>${T('reports.next')}</h2><ul class="mt-s">${(c.next_ar || []).map((x) => `<li dir="rtl">${esc(x)}</li>`).join('') || '<li>—</li>'}</ul></section>
         <section class="card"><h2>${T('reports.failures')}</h2>${fails || '<p class="faint mt-s">—</p>'}</section></div>`);
@@ -602,8 +602,8 @@
   async function viewReview() {
     const d = await api('/review/units');
     const rows = d.units.length ? d.units.map((u) => `<tr class="click" data-href="#/review/${u.tafsir}/${u.window}"><td class="mono">${esc(u.ayah)}</td><td>${esc(u.name_ar)}</td>
-      <td class="mono">${esc(u.window)}</td><td class="num">${fNum(u.moves)}</td><td class="num">${fNum(u.auto_candidate)}</td><td class="num">${fNum(u.specialist)}</td>
-      <td class="num hide-sm">${fNum(u.flags)}</td><td class="num">${u.decided ? `<span class="chip ok">${fNum(u.decided)}/${fNum(u.moves)}</span>` : `<span class="chip">0/${fNum(u.moves)}</span>`}</td></tr>`).join('')
+      <td class="mono">${esc(u.window)} ${u.committee ? `<span class="chip violet">${T('dash.committee')}</span>` : ''}</td><td class="num">${fNum(u.moves)}</td><td class="num">${fNum(u.auto_candidate)}</td><td class="num">${fNum(u.specialist)}</td>
+      <td class="num hide-sm">${u.flags == null ? '—' : fNum(u.flags)}</td><td class="num">${u.decided ? `<span class="chip ok">${fNum(u.decided)}/${fNum(u.moves)}</span>` : `<span class="chip">0/${fNum(u.moves)}</span>`}</td></tr>`).join('')
       : `<tr><td colspan="8" class="empty">${T('review.empty')}</td></tr>`;
     setPage(`${head('review.title', 'review.subtitle', has('review_units') ? `<a class="btn" href="/api/review/export">${ico('download')} ${T('review.export')}</a>` : '')}
       <p class="faint mb">${T('agent.classifier')}: <span class="mono">${esc(d.models.classifier)}</span> · ${T('dash.caption_counts')}</p>
@@ -611,21 +611,32 @@
   }
   async function viewReviewWindow(tafsir, win) {
     const d = await api(`/review/${encodeURIComponent(tafsir)}/${encodeURIComponent(win)}`);
-    const chair = {};
-    (d.chair ? d.chair.moves : []).forEach((c) => { chair[c.move_id] = c; });
+    const preview = {};
+    (d.chair ? d.chair.moves : []).forEach((c) => { preview[c.move_id] = c; });
     const canDecide = has('review_units');
+    const reasonChip = (code) => code ? `<span class="chip warn mono" title="${T('review.verifier_reason')}">${esc(code)}</span>` : '';
     const moves = d.moves.map((m) => {
-      const c = chair[m.move_id];
+      const c = m.committee;
+      const p = preview[m.move_id];
       const dec = m.decision;
       const score = (m.score || {}).total;
-      return `<article class="move" data-move="${esc(m.move_id)}">
-        <div class="row between"><div class="row"><b class="mono">${esc(m.move_id)}</b><span class="chip ${m.route === 'auto_candidate' ? 'ok' : 'warn'}">${T('route.' + m.route)}</span>
-          ${c ? `<span class="chip ${c.committee_route === 'auto_candidate' ? 'ok' : 'violet'}" title="${T('review.chair_note')}">${T('review.chair')}: ${c.reason ? T('review.reason.' + c.reason) : T('route.auto_candidate')}</span>` : ''}</div>
-          ${dec ? `<span class="chip ${dec.decision === 'approve' ? 'ok' : dec.decision === 'reject' ? 'bad' : 'warn'}">${T('review.decision.' + dec.decision)} · ${esc(dec.user_name)} · ${esc(fDT(dec.created_at))}</span>` : ''}</div>
-        <div class="kv"><div><div class="k">${T('review.primary')}</div><div class="v mono">${esc(m.primary || '—')}</div></div>
+      let chairChip = '';
+      if (c) chairChip = `<span class="chip ${c.committee_route === 'auto_candidate' ? 'ok' : 'violet'}">${T('review.committee')}: ${c.committee_route === 'auto_candidate' ? T('route.auto_candidate') : T('review.reason.' + ((c.abstention_reasons || [])[0] || 'weak_evidence'))}</span>`;
+      else if (p) chairChip = `<span class="chip ${p.committee_route === 'auto_candidate' ? 'ok' : 'violet'}" title="${T('review.chair_note')}">${T('review.chair')}: ${p.reason ? T('review.reason.' + p.reason) : T('route.auto_candidate')}</span>`;
+      const agents = c ? `<div class="kv"><div><div class="k">${T('agent.classifier')}</div><div class="v mono">${esc(c.primary_proposer || '—')} · ${c.score_proposer ?? '—'}</div></div>
+          <div><div class="k">${T('agent.verifier')}</div><div class="v mono">${esc(c.primary_reviewer || '—')} · ${c.score_reviewer ?? '—'}</div></div>
+          <div><div class="k">${T('review.certainty')}</div><div class="v">${esc(m.certainty || '—')}</div></div>
+          <div><div class="k">${T('review.flags')}</div><div class="v mono" style="font-size:12px">${esc((m.flags || []).join(', ') || '—')}</div></div></div>`
+        : `<div class="kv"><div><div class="k">${T('review.primary')}</div><div class="v mono">${esc(m.primary || '—')}</div></div>
           <div><div class="k">${T('review.certainty')}</div><div class="v">${esc(m.certainty || '—')}</div></div>
           <div><div class="k">${T('review.score')}</div><div class="v">${score ?? '—'}</div></div>
-          <div><div class="k">${T('review.flags')}</div><div class="v mono" style="font-size:12px">${esc((m.flags || []).join(', ') || '—')}</div></div></div>
+          <div><div class="k">${T('review.flags')}</div><div class="v mono" style="font-size:12px">${esc((m.flags || []).join(', ') || '—')}</div></div></div>`;
+      return `<article class="move" data-move="${esc(m.key)}">
+        <div class="row between"><div class="row"><b class="mono">${esc(m.key)}</b><span class="chip ${m.route === 'auto_candidate' ? 'ok' : 'warn'}">${T('route.' + (m.route || 'specialist'))}</span>
+          ${chairChip}${reasonChip(m.reason_code)}</div>
+          ${dec ? `<span class="chip ${dec.decision === 'approve' ? 'ok' : dec.decision === 'reject' ? 'bad' : 'warn'}">${T('review.decision.' + dec.decision)} · ${esc(dec.user_name)} · ${esc(fDT(dec.created_at))}</span>` : ''}</div>
+        ${agents}
+        ${c && c.abstention_ar ? `<p class="faint mb" dir="rtl">${esc(c.abstention_ar)}</p>` : ''}
         <div class="label mb">${T('review.text')} <span class="faint mono">${esc((m.span_ids || []).join(' '))}</span></div>
         <div class="move-text">${esc(m.text || '')}</div>
         ${m.rationale_ar ? `<p class="faint mt-s"><b>${T('review.rationale')}</b> (${T('review.rationale_note')}): <span dir="rtl">${esc(m.rationale_ar)}</span></p>` : ''}
@@ -636,23 +647,40 @@
             <button class="btn danger" data-act="decide" data-d="reject">${ico('x')} ${T('review.reject')}</button></div></div>` : ''}
       </article>`;
     }).join('') || `<div class="empty">${T('common.empty')}</div>`;
+    const sum = d.summary || {};
+    const reasons = Object.entries(sum.by_abstention_reason || {}).filter(([, v]) => v).map(([k, v]) => `<span class="chip violet">${T('review.reason.' + k)} ${fNum(v)}</span>`).join(' ');
+    const mdl = d.models ? `${T('agent.classifier')}: <span class="mono">${esc((d.models.proposer || {}).tag || '')}</span> · ${T('agent.verifier')}: <span class="mono">${esc((d.models.reviewer || {}).tag || '')}</span>` : '';
     S.reviewCtx = { tafsir, win };
     setPage(`<div class="page-head"><div><div class="kicker">${T('review.title')}</div><h1>${esc(d.name_ar)} · <span class="mono">${esc(d.window)}</span></h1>
         <p class="muted">${T('progress.ayah')} <span class="mono">${esc(d.ayah)}</span> · ${T('review.source')}: <span class="mono">${esc(d.source_file)}</span> · sha256 <span class="mono">${esc((d.source_sha256 || '').slice(0, 12))}…</span></p></div>
         <div class="head-actions"><a class="btn" href="#/review">${T('common.back')}</a></div></div>
       ${canDecide ? '' : `<div class="notice mb">${ico('info')}<span>${T('review.read_only')}</span></div>`}
-      <div class="notice mb">${ico('shield')}<span>${T('review.subtitle')} ${T('review.chair_note')}</span></div>
+      <div class="notice mb">${ico('shield')}<span>${T('review.subtitle')} ${d.is_committee ? T('review.committee_note') : T('review.chair_note')}</span></div>
+      ${d.is_committee ? `<section class="card mb"><div class="row between"><div class="row"><b>${T('review.committee')}</b> ${mdl}</div>
+        <span class="faint">${T('dash.moves')} ${fNum(sum.move_count)} · ${T('dash.candidates')} ${fNum(sum.auto_candidate)} · ${T('dash.specialist')} ${fNum(sum.specialist)} · ${esc(sum.caption || '')}</span></div>
+        ${reasons ? `<div class="row mt-s">${reasons}</div>` : ''}</section>` : ''}
       ${moves}`);
   }
 
   // ------------------------------------------------------------ calls & audit
+  function perfHTML(pf) {
+    if (!pf.agents.length) return '';
+    const cards = pf.agents.map((a) => `<div class="card"><div class="kicker">${T('agent.' + a.agent)}${a.model ? ` · <span class="mono">${esc(a.model)}</span>` : ''}</div>
+      <div class="stat">${a.median_s ?? '—'}<small> ${T('common.seconds')} · ${T('perf.median')}</small></div>
+      <p class="faint mt-s">${T('perf.p95')} ${a.p95_s ?? '—'} · ${T('perf.max')} ${a.max_s ?? '—'} ${T('common.seconds')}</p>
+      <p class="faint">${fNum(a.ok)}/${fNum(a.n)} ${T('dash.ok')}${a.failed ? ` · <span style="color:var(--danger)">${fNum(a.failed)} ${T('dash.failed')}</span>` : ''}${a.chars_per_s ? ` · ${fNum(a.chars_per_s)} ${T('perf.chars_per_s')}` : ''}</p>
+      <p class="faint">${a.moves_per_window != null ? `${T('perf.moves_per_window')} ${a.moves_per_window} · ` : ''}${T('dash.candidates')} ${fNum(a.auto_candidate)}</p>
+      ${Object.keys(a.failure_codes || {}).length ? `<div class="row mt-s">${Object.entries(a.failure_codes).map(([k, v]) => `<span class="chip bad mono">${esc(k)} ${v}</span>`).join('')}</div>` : ''}
+      ${a.eta_min != null ? `<p class="mt-s"><b>${T('perf.eta', { n: fNum(a.remaining_windows), m: fNum(a.eta_min) })}</b></p>` : ''}</div>`).join('');
+    return `<section class="mb"><div class="card-h"><div><h2>${T('perf.title')}</h2><div class="faint">${esc(pf.caption_ar)} · ${T('perf.eta_note')}</div></div></div><div class="grid g3">${cards}</div></section>`;
+  }
   async function viewCalls() {
-    const d = await api('/llm/calls');
+    const [d, pf] = await Promise.all([api('/llm/calls'), api('/llm/perf')]);
     const rows = d.calls.length ? d.calls.map((c) => `<tr><td class="num">${esc(fDT(c.finished_at))}</td><td>${T('agent.' + c.agent)}</td><td class="mono">${esc(c.model || '')}</td>
       <td>${esc(tafsirName(c.tafsir))} <span class="mono">${esc(c.window)}</span></td><td>${statusChip(c.status)}</td><td class="num">${fDur(c.duration_ms)}</td>
-      <td class="hide-sm">${c.result && c.result.moves != null ? `${c.result.moves} · ${c.result.auto_candidate} · ${c.result.specialist} · ${c.result.flags}` : '—'}</td><td class="num"><a href="#/tasks/${c.task_id}">#${c.task_id}</a></td></tr>`).join('')
+      <td class="hide-sm">${c.result && c.result.moves != null ? `${c.result.moves} · ${c.result.auto_candidate} · ${c.result.specialist} · ${c.result.flags ?? '—'}` : c.result && c.result.reason_code ? `<span class="chip bad mono">${esc(c.result.reason_code)}</span>` : '—'}</td><td class="num"><a href="#/tasks/${c.task_id}">#${c.task_id}</a></td></tr>`).join('')
       : `<tr><td colspan="8" class="empty">${T('common.empty')}</td></tr>`;
-    setPage(`${head('calls.title', 'calls.subtitle')}<div class="table-wrap"><table class="t"><thead><tr><th>${T('audit.when')}</th><th>${T('tasks.agent')}</th><th>${T('tasks.model')}</th><th>${T('tasks.window')}</th><th>${T('common.status')}</th><th>${T('tasks.duration')}</th><th class="hide-sm">${T('dash.moves')} · ${T('dash.candidates')} · ${T('dash.specialist')} · ${T('dash.flags')}</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`);
+    setPage(`${head('calls.title', 'calls.subtitle')}${perfHTML(pf)}<div class="table-wrap"><table class="t"><thead><tr><th>${T('audit.when')}</th><th>${T('tasks.agent')}</th><th>${T('tasks.model')}</th><th>${T('tasks.window')}</th><th>${T('common.status')}</th><th>${T('tasks.duration')}</th><th class="hide-sm">${T('dash.moves')} · ${T('dash.candidates')} · ${T('dash.specialist')} · ${T('dash.flags')}</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`);
   }
   async function viewAudit() {
     const d = await api('/audit');

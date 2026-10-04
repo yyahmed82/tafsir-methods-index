@@ -25,13 +25,15 @@ from . import config, db, mailer, pipeline, settings
 log = logging.getLogger("mirqah.console")
 
 KINDS = {
-    "committee": ("classifier", "verifier"),
+    "committee": ("classifier", "verifier", "chair"),
     "classifier": ("classifier",),
     "verifier": ("verifier",),
+    "chair": ("chair",),
     "dryrun": ("packet_check",),
 }
 KIND_TITLES_AR = {
-    "committee": "تشغيل اللجنة (المصنّف ثم المدقّق)",
+    "committee": "تشغيل اللجنة (المصنّف ثم المدقّق ثم الرئيس)",
+    "chair": "رئيس اللجنة على المخرجات الموجودة",
     "classifier": "تشغيل المصنّف",
     "verifier": "تشغيل المدقّق",
     "dryrun": "فحص الحزم دون نموذج",
@@ -40,6 +42,9 @@ SCOPE_TITLES_AR = {"sample": "العيّنة", "ayat": "آيات", "surah": "ا�
 
 _VERIFIER_RE = re.compile(
     r"verifier: moves=(\d+) auto=(\d+) specialist=(\d+) flags=(\d+)")
+_CHAIR_RE = re.compile(
+    r"processed (\d+) window\(s\), (\d+) move\(s\): (\d+) auto_candidate, (\d+) specialist")
+_REASON_RE = re.compile(r'"reason_code":\s*"([A-Z_]+)"')
 _stop = threading.Event()
 _threads: list[threading.Thread] = []
 _current: dict[str, Any] = {"proc": None, "step_id": None}
@@ -191,10 +196,17 @@ def _step_command(step: dict) -> tuple[list[str], dict[str, str]]:
         raise TaskError("bad_step")
     if step["window"] not in pipeline.window_ids(step["tafsir"]):
         raise TaskError("window_missing")
-    cmd = [llm["python_bin"], "src/run_window.py", "--tafsir", step["tafsir"],
-           "--base", f"{root}/{step['tafsir']}", "--window", step["window"]]
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
+    if step["agent"] == "chair":
+        m = pipeline.models()
+        cmd = [llm["python_bin"], "src/committee_chair.py", "--base", f"{root}/{step['tafsir']}",
+               "--proposer", m["classifier_slug"], "--reviewer", m["verifier_slug"],
+               "--window", step["window"], "--proposer-tag", m["classifier"],
+               "--reviewer-tag", m["verifier"]]
+        return cmd, env
+    cmd = [llm["python_bin"], "src/run_window.py", "--tafsir", step["tafsir"],
+           "--base", f"{root}/{step['tafsir']}", "--window", step["window"]]
     if step["agent"] == "packet_check":
         cmd.append("--dry-run")
     else:
@@ -213,9 +225,13 @@ def _run_step(task: dict, step: dict) -> None:
     started = db.now()
     db.execute("UPDATE task_steps SET status='running', started_at=? WHERE id=?",
                (started, step["id"]))
-    if step["agent"] in ("classifier", "verifier") and params.get("skip_done"):
-        slug = pipeline.model_slug(step["model"])
-        if pipeline.verified_path(step["tafsir"], slug, step["window"]).is_file():
+    if params.get("skip_done") and step["agent"] in ("classifier", "verifier", "chair"):
+        if step["agent"] == "chair":
+            done = pipeline.committee_is_current(step["tafsir"], step["window"])
+        else:
+            slug = pipeline.model_slug(step["model"])
+            done = pipeline.verified_path(step["tafsir"], slug, step["window"]).is_file()
+        if done:
             db.execute("UPDATE task_steps SET status='skipped', finished_at=?, duration_ms=0,"
                        " result=? WHERE id=?",
                        (db.now(), db.dumps({"reason": "already_verified"}), step["id"]))
@@ -257,9 +273,20 @@ def _run_step(task: dict, step: dict) -> None:
         _current.update(proc=None, step_id=None)
     result = None
     m = _VERIFIER_RE.search(output or "")
+    cm = _CHAIR_RE.search(output or "")
     if m:
         result = {"moves": int(m.group(1)), "auto_candidate": int(m.group(2)),
                   "specialist": int(m.group(3)), "flags": int(m.group(4))}
+    elif cm and step["agent"] == "chair":
+        result = {"moves": int(cm.group(2)), "auto_candidate": int(cm.group(3)),
+                  "specialist": int(cm.group(4))}
+        com = pipeline.load_committee(step["tafsir"], step["window"])
+        if com:
+            result["reasons"] = (com.get("summary") or {}).get("by_abstention_reason")
+    elif proc.returncode != 0:
+        rc = _REASON_RE.search(output or "")
+        if rc:
+            result = {"reason_code": rc.group(1)}
     elif step["agent"] == "packet_check" and proc.returncode == 0:
         sm = re.search(r"spans: (\d+)", output or "")
         result = {"spans": int(sm.group(1)) if sm else None}
@@ -329,7 +356,7 @@ AGENTS = [
     {"key": "checker", "name_ar": "الفاحص الحتمي", "color": "green",
      "desc_ar": "برنامج بلا ذكاء: يعيد بناء النص حرفاً بحرف ويرفض المعرّفات المجهولة."},
     {"key": "chair", "name_ar": "رئيس اللجنة", "color": "amber",
-     "desc_ar": "يحسب التوافق: مرشّح للمراجعة أو امتناع برمز سبب. معاينة للقراءة فقط الآن."},
+     "desc_ar": "src/committee_chair.py: يحسب التوافق (عتبة ٨٥): مرشّح للمراجعة أو امتناع برمز سبب."},
     {"key": "specialist", "name_ar": "المتخصص البشري", "color": "red",
      "desc_ar": "صاحب القرار: يعتمد أو يطلب تعديلاً أو يرفض. لا اعتماد آلي."},
 ]
@@ -346,9 +373,12 @@ def agents_state() -> dict:
     for a in AGENTS:
         key = a["key"]
         info: dict[str, Any] = dict(a)
-        if key in ("classifier", "verifier"):
-            info["model"] = m[key]
-            info["annotator"] = m[f"{key}_slug"]
+        if key in ("classifier", "verifier", "chair"):
+            if key == "chair":
+                info["model"] = f"{m['classifier']} + {m['verifier']}"
+            else:
+                info["model"] = m[key]
+                info["annotator"] = m[f"{key}_slug"]
             recent = db.rows("SELECT * FROM task_steps WHERE agent=? AND finished_at IS NOT NULL"
                              " ORDER BY finished_at DESC LIMIT 6", (key,))
             today = db.row(
@@ -371,11 +401,6 @@ def agents_state() -> dict:
             info["today"] = {"n": (today or {}).get("n") or 0, "ok": (today or {}).get("ok") or 0}
             info["status"] = "running" if running and running["agent"] in (
                 "classifier", "verifier") else "idle"
-            info["recent"] = []
-        elif key == "chair":
-            prog = pipeline.progress()
-            info["today"] = {"both": prog["totals"]["both"]}
-            info["status"] = "preview"
             info["recent"] = []
         else:
             d = db.row("SELECT COUNT(*) n, SUM(decision='approve') approve,"
@@ -400,10 +425,76 @@ def _event(s: dict | None) -> dict | None:
             "title_ar": s.get("title_ar")}
 
 
+# ------------------------------------------------------------------ performance
+
+def _pct(values: list[float], q: float) -> float | None:
+    if not values:
+        return None
+    v = sorted(values)
+    i = min(len(v) - 1, max(0, int(round(q * (len(v) - 1)))))
+    return v[i]
+
+
+def perf_summary(start: float | None = None, end: float | None = None) -> dict:
+    """Latency, failures and throughput per agent/model from recorded steps.
+
+    Counts are routing and timing facts, not accuracy.
+    """
+    q = ("SELECT agent, model, tafsir, window, status, duration_ms, result FROM task_steps"
+         " WHERE agent IN ('classifier','verifier','chair') AND finished_at IS NOT NULL")
+    params: list = []
+    if start is not None:
+        q += " AND finished_at BETWEEN ? AND ?"
+        params += [start, end]
+    rows = db.rows(q, params)
+    chars = {}
+    for t in config.TAFSIRS:
+        for w in pipeline.windows(t):
+            chars[(t, w["window"])] = w["chars"]
+    groups: dict[tuple, list[dict]] = {}
+    for r in rows:
+        if r["status"] == "skipped":
+            continue
+        groups.setdefault((r["agent"], r["model"] or ""), []).append(r)
+    agents = []
+    m = pipeline.models()
+    prog = pipeline.progress()["totals"]
+    for (agent, model), rs in sorted(groups.items()):
+        ok = [r for r in rs if r["status"] == "done"]
+        secs = [r["duration_ms"] / 1000 for r in ok if r["duration_ms"] is not None]
+        tot_chars = sum(chars.get((r["tafsir"], r["window"]), 0) for r in ok)
+        reasons: dict[str, int] = {}
+        moves = auto = 0
+        for r in rs:
+            res = db.loads(r["result"], {}) or {}
+            if res.get("reason_code"):
+                reasons[res["reason_code"]] = reasons.get(res["reason_code"], 0) + 1
+            moves += int(res.get("moves") or 0)
+            auto += int(res.get("auto_candidate") or 0)
+        median = _pct(secs, 0.5)
+        done_windows = prog["classifier"] if agent == "classifier" else (
+            prog["verifier"] if agent == "verifier" else prog["committee"])
+        remaining = max(0, prog["windows"] - done_windows)
+        is_current = (agent == "chair") or model in (m["classifier"], m["verifier"])
+        agents.append({
+            "agent": agent, "model": model if agent != "chair" else "", "n": len(rs),
+            "ok": len(ok), "failed": len(rs) - len(ok),
+            "median_s": round(median, 1) if median is not None else None,
+            "p95_s": round(_pct(secs, 0.95), 1) if secs else None,
+            "max_s": round(max(secs), 1) if secs else None,
+            "chars_per_s": round(tot_chars / sum(secs)) if secs and sum(secs) else None,
+            "moves_per_window": round(moves / len(ok), 1) if ok else None,
+            "auto_candidate": auto, "moves": moves, "failure_codes": reasons,
+            "remaining_windows": remaining if is_current else None,
+            "eta_min": round(remaining * median / 60) if (is_current and median) else None,
+        })
+    return {"agents": agents, "caption_ar": "أعداد توجيه وتوقيت وليست دقة"}
+
+
 # ------------------------------------------------------------------ reports
 
 REASON_AR = {
-    "written_abstain": "امتناع مكتوب", "force_specialist": "إحالة إلزامية",
+    "written_abstain": "امتناع مكتوب", "force_specialist": "إحالة الفاحص",
     "agent_disagree": "اختلاف الوكيلين", "unclear_bounds": "حدود غير متقاطعة",
     "weak_evidence": "دليل غير كافٍ", "agent_missing": "لم يعمل المدقّق بعد",
 }
@@ -416,6 +507,7 @@ def build_report(day: str) -> dict:
     failed = [s for s in steps if s["status"] in ("failed", "interrupted")]
     by_agent: dict[str, dict] = {}
     routes = {"moves": 0, "auto_candidate": 0, "specialist": 0, "flags": 0}
+    committee = {"windows": 0, "moves": 0, "auto_candidate": 0, "specialist": 0, "reasons": {}}
     for s in steps:
         a = by_agent.setdefault(s["agent"], {"done": 0, "failed": 0, "skipped": 0,
                                              "models": set(), "ms": []})
@@ -433,6 +525,12 @@ def build_report(day: str) -> dict:
         if s["agent"] == "classifier" and s["status"] == "done":
             for k in routes:
                 routes[k] += int(r.get(k) or 0)
+        if s["agent"] == "chair" and s["status"] == "done":
+            committee["windows"] += 1
+            for k in ("moves", "auto_candidate", "specialist"):
+                committee[k] += int(r.get(k) or 0)
+            for k, v in (r.get("reasons") or {}).items():
+                committee["reasons"][k] = committee["reasons"].get(k, 0) + int(v or 0)
     agents = {k: {"done": v["done"], "failed": v["failed"], "skipped": v["skipped"],
                   "models": sorted(v["models"]),
                   "avg_s": round(sum(v["ms"]) / len(v["ms"]) / 1000, 1) if v["ms"] else None}
@@ -469,6 +567,8 @@ def build_report(day: str) -> dict:
         "agents": agents,
         "windows_by_tafsir": windows_by_tafsir,
         "routes": routes, "routes_caption_ar": "أعداد توجيه وليست دقة",
+        "committee": committee,
+        "perf": perf_summary(start, end),
         "tasks": tasks,
         "decisions": {k: dec.get(k) or 0 for k in ("n", "approve", "needs_edit", "reject")},
         "failures": [{"task_id": s["task_id"], "agent": s["agent"], "tafsir": s["tafsir"],
@@ -516,6 +616,20 @@ def report_markdown(c: dict) -> str:
     lines += ["", f"## التوجيه ({c['routes_caption_ar']})",
               f"- حركات: {r['moves']} · مرشّح للمراجعة: {r['auto_candidate']} · "
               f"بانتظار المتخصص: {r['specialist']} · أعلام: {r['flags']}"]
+    cm = c.get("committee") or {}
+    if cm.get("windows"):
+        reasons = " · ".join(f"{REASON_AR.get(k, k)} {v}" for k, v in cm["reasons"].items() if v)
+        lines += ["", "## قرار رئيس اللجنة",
+                  f"- نوافذ: {cm['windows']} · حركات: {cm['moves']} · مرشّح للمراجعة: "
+                  f"{cm['auto_candidate']} · بانتظار المتخصص: {cm['specialist']}",
+                  f"- أسباب الامتناع: {reasons or '—'}"]
+    pf = c.get("perf") or {}
+    if pf.get("agents"):
+        lines += ["", "## أداء الوكلاء"]
+        for a in pf["agents"]:
+            lines.append(f"- {agent_ar.get(a['agent'], a['agent'])} ({a['model'] or '—'}): "
+                         f"{a['ok']}/{a['n']} نجحت · وسيط {a['median_s']} ث · "
+                         f"أبطأ ٩٥٪ {a['p95_s']} ث · {a['chars_per_s']} حرف/ث")
     d = c["decisions"]
     lines += ["", "## قرارات المتخصص",
               f"- المجموع {d['n']} · اعتماد {d['approve']} · يحتاج تعديلاً {d['needs_edit']}"

@@ -195,7 +195,7 @@ def test_sample_preview_and_bulk_gate(env):
     login(env, "sa@example.com")
     p = env.post("/api/tasks/preview", json={"kind": "committee", "scope": "sample"},
                  headers=H).json()
-    assert p["windows"] == 9 and p["steps"] == 18 and not p["bulk"]
+    assert p["windows"] == 9 and p["steps"] == 27 and not p["bulk"]
     p = env.post("/api/tasks/preview", json={"kind": "committee", "scope": "surah"},
                  headers=H).json()
     assert p["windows"] == 296 and p["blocked"] == "bulk_gate_phase0"
@@ -281,23 +281,29 @@ def test_committee_runs_pipeline_end_to_end(env, tmp_path, monkeypatch):
                 break
             time.sleep(0.5)
         assert t["task"]["status"] == "done", json.dumps(t, ensure_ascii=False)[:2000]
-        assert [s["agent"] for s in t["steps"]] == ["classifier", "verifier"]
-        assert all(s["result"]["moves"] == 1 for s in t["steps"])
+        assert [s["agent"] for s in t["steps"]] == ["classifier", "verifier", "chair"]
+        assert all(s["result"]["moves"] == 1 for s in t["steps"][:2])
+        assert t["steps"][2]["result"]["moves"] >= 1
         # outputs exist only in the temp copy, written by the pipeline
         assert (dst_base / "verified" / "qwen2_5_14b" / "24_35.json").is_file()
         assert (dst_base / "verified" / "gemma3_12b" / "24_35.json").is_file()
+        assert (dst_base / "committee" / "24_35.json").is_file()
+        assert (dst_base / "verified" / "committee" / "24_35.json").is_file()
         assert not (ROOT / "data" / "nur" / "al_saadi" / "moves").exists()
 
         # dashboard, progress, chair preview
         dash = env.get("/api/dashboard").json()
         saadi = next(x for x in dash["progress"]["tafsirs"] if x["tafsir"] == "al_saadi")
-        assert saadi["classifier"] == 1 and saadi["both"] == 1
+        assert saadi["classifier"] == 1 and saadi["both"] == 1 and saadi["committee"] == 1
         rv = env.get("/api/review/al_saadi/24_35").json()
-        assert rv["chair"]["moves"][0]["committee_route"] == "specialist"
-        assert rv["chair"]["moves"][0]["reason"] == "weak_evidence"
+        assert rv["is_committee"] and rv["annotator"] == "committee"
+        first = rv["moves"][0]
+        assert first["key"] == "P-m01" and first["committee"]["committee_route"] == "specialist"
+        units = env.get("/api/review/units").json()["units"]
+        assert units and units[0]["committee"] is True
 
-        # specialist decision rules
-        body = {"tafsir": "al_saadi", "window": "24_35", "move_id": "m01", "decision": "approve"}
+        # specialist decision rules (keyed by committee row, not bare move_id)
+        body = {"tafsir": "al_saadi", "window": "24_35", "move_id": "P-m01", "decision": "approve"}
         assert env.post("/api/review/decision", json=body, headers=H).json()["detail"][
             "error"] == "compare_first"
         body["compared_with_source"] = True
@@ -314,12 +320,16 @@ def test_committee_runs_pipeline_end_to_end(env, tmp_path, monkeypatch):
             if t2["task"]["status"] in ("done", "failed"):
                 break
             time.sleep(0.3)
-        assert t2["task"]["skipped_steps"] == 2
+        assert t2["task"]["skipped_steps"] == 3
 
         # daily report
         day = runner.local_now().date().isoformat()
         rep = env.post(f"/api/reports/{day}/generate", headers=H).json()["content"]
         assert rep["agents"]["classifier"]["done"] == 1
+        assert rep["agents"]["chair"]["done"] == 1 and rep["committee"]["windows"] == 1
+        perf = env.get("/api/llm/perf").json()["agents"]
+        assert {a["agent"] for a in perf} == {"classifier", "verifier", "chair"}
+        assert all(a["median_s"] is not None for a in perf)
         assert rep["decisions"]["approve"] == 1
         md = env.get(f"/api/reports/{day}/markdown").text
         assert "التقرير اليومي" in md

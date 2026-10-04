@@ -67,6 +67,7 @@ def windows(tafsir: str) -> list[dict]:
             "ayah": w.get("ayah"),
             "ayah_number": int(w.get("ayah_number") or p.stem.split("_")[1]),
             "span_count": int(w.get("span_count") or len(w.get("spans") or [])),
+            "chars": max(0, int(w.get("window_end") or 0) - int(w.get("window_start") or 0)),
         })
     out.sort(key=lambda x: (x["ayah_number"], x["window"]))
     with _CACHE_LOCK:
@@ -89,6 +90,53 @@ def moves_path(tafsir: str, annotator: str, window: str) -> Path:
 def load_verified(tafsir: str, annotator: str, window: str) -> dict | None:
     p = verified_path(tafsir, annotator, window)
     return _read_json(p) if p.is_file() else None
+
+
+def committee_path(tafsir: str, window: str) -> Path:
+    """Chair decision written by src/committee_chair.py."""
+    return base_dir(tafsir) / "committee" / f"{window}.json"
+
+
+def load_committee(tafsir: str, window: str) -> dict | None:
+    p = committee_path(tafsir, window)
+    return _read_json(p) if p.is_file() else None
+
+
+def committee_is_current(tafsir: str, window: str) -> bool:
+    """True when committee/<window>.json is newer than both agents' verified files."""
+    m = models()
+    c = committee_path(tafsir, window)
+    paths = [verified_path(tafsir, m["classifier_slug"], window),
+             verified_path(tafsir, m["verifier_slug"], window)]
+    if not c.is_file() or not all(p.is_file() for p in paths):
+        return False
+    return c.stat().st_mtime >= max(p.stat().st_mtime for p in paths)
+
+
+def _committee_summaries(tafsir: str) -> dict[str, dict]:
+    d = base_dir(tafsir) / "committee"
+    out: dict[str, dict] = {}
+    if d.is_dir():
+        for p in d.glob("*.json"):
+            try:
+                out[p.stem] = _read_json(p).get("summary") or {}
+            except (OSError, ValueError):
+                out[p.stem] = {"error": "unreadable"}
+    return out
+
+
+def unit_key(committee_move: dict | None, index: int) -> str:
+    """Stable key for one committee row: P-<proposer move> or R-<reviewer-only move>.
+
+    verified/committee/<window>.json can hold two rows with the same move_id
+    (a proposer m01 and a reviewer-only m01), so move_id alone is not unique.
+    """
+    if committee_move:
+        if committee_move.get("proposer_move_id"):
+            return f"P-{committee_move['proposer_move_id']}"
+        if committee_move.get("reviewer_move_id"):
+            return f"R-{committee_move['reviewer_move_id']}"
+    return f"X-{index}"
 
 
 def models() -> dict[str, str]:
@@ -118,7 +166,8 @@ def progress() -> dict:
     m = models()
     per_tafsir = []
     totals = {"windows": 0, "classifier": 0, "verifier": 0, "both": 0,
-              "auto_candidate": 0, "specialist": 0, "moves": 0, "flags": 0}
+              "auto_candidate": 0, "specialist": 0, "moves": 0, "flags": 0,
+              "committee": 0, "committee_candidates": 0, "committee_specialist": 0}
     for t in config.TAFSIRS:
         wins = windows(t)
         ids = {w["window"] for w in wins}
@@ -128,15 +177,19 @@ def progress() -> dict:
         spec = sum(int(s.get("specialist") or 0) for s in c.values())
         mv = sum(int(s.get("move_count") or 0) for s in c.values())
         fl = sum(int(s.get("flag_count") or 0) for s in c.values())
+        cm = {k: v for k, v in _committee_summaries(t).items() if k in ids}
         row = {
             "tafsir": t, "name_ar": config.TAFSIR_NAMES_AR[t], "windows": len(ids),
             "ayat": len({w["ayah"] for w in wins}),
             "classifier": len(c), "verifier": len(v), "both": len(set(c) & set(v)),
             "auto_candidate": auto, "specialist": spec, "moves": mv, "flags": fl,
+            "committee": len(cm),
+            "committee_candidates": sum(int(s.get("auto_candidate") or 0) for s in cm.values()),
+            "committee_specialist": sum(int(s.get("specialist") or 0) for s in cm.values()),
         }
         per_tafsir.append(row)
         for k in totals:
-            totals[k] += row[k] if k != "windows" else len(ids)
+            totals[k] += row[k]
     return {"models": m, "tafsirs": per_tafsir, "totals": totals,
             "caption_ar": "أعداد توجيه وليست دقة"}
 
@@ -150,13 +203,17 @@ def ayah_matrix() -> dict:
         cols.append({"tafsir": t, "name_ar": config.TAFSIR_NAMES_AR[t]})
         c = set(_summaries(t, m["classifier_slug"]))
         v = set(_summaries(t, m["verifier_slug"]))
+        cm = set(_committee_summaries(t))
         groups: dict[int, list[str]] = {}
         for w in windows(t):
             groups.setdefault(w["ayah_number"], []).append(w["window"])
         for n, ws in groups.items():
             nc = sum(1 for w in ws if w in c)
             nb = sum(1 for w in ws if w in c and w in v)
-            if nb == len(ws):
+            ncm = sum(1 for w in ws if w in cm)
+            if ncm == len(ws):
+                st = "committee"
+            elif nb == len(ws):
                 st = "both"
             elif nc == len(ws):
                 st = "classifier"
@@ -165,7 +222,7 @@ def ayah_matrix() -> dict:
             else:
                 st = "none"
             ayat.setdefault(n, {"ayah_number": n, "cells": {}})["cells"][t] = {
-                "status": st, "windows": len(ws), "classified": nc, "both": nb}
+                "status": st, "windows": len(ws), "classified": nc, "both": nb, "committee": ncm}
     return {"columns": cols, "rows": [ayat[k] for k in sorted(ayat)]}
 
 
@@ -270,24 +327,29 @@ def chair_preview(tafsir: str, window: str) -> dict | None:
 
 
 def review_units(tafsir: str | None = None) -> list[dict]:
-    """Windows that have verified output from the configured classifier."""
+    """Windows ready for review: the chair's decision when it exists, else agent 1."""
     m = models()
     out = []
     for t in config.TAFSIRS:
         if tafsir and t != tafsir:
             continue
         sums = _summaries(t, m["classifier_slug"])
+        com = _committee_summaries(t)
         meta = {w["window"]: w for w in windows(t)}
-        for wid, s in sums.items():
+        for wid in sorted(set(sums) | set(com)):
             if wid not in meta:
                 continue
+            is_com = wid in com
+            s = com[wid] if is_com else sums[wid]
             out.append({"tafsir": t, "name_ar": config.TAFSIR_NAMES_AR[t], "window": wid,
                         "ayah": meta[wid]["ayah"], "ayah_number": meta[wid]["ayah_number"],
                         "moves": int(s.get("move_count") or 0),
                         "auto_candidate": int(s.get("auto_candidate") or 0),
                         "specialist": int(s.get("specialist") or 0),
-                        "flags": int(s.get("flag_count") or 0),
-                        "annotator": m["classifier_slug"]})
+                        "flags": int(s.get("flag_count") or 0) if not is_com else None,
+                        "reasons": s.get("by_abstention_reason") if is_com else None,
+                        "committee": is_com,
+                        "annotator": "committee" if is_com else m["classifier_slug"]})
     out.sort(key=lambda x: (x["ayah_number"], x["tafsir"], x["window"]))
     return out
 

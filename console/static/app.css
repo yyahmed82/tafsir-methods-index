@@ -309,6 +309,7 @@ table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
 .cell.partial { background: var(--cell-partial); }
 .cell.classifier { background: var(--cell-classifier); color: #fff; }
 .cell.both { background: var(--cell-both); color: #fff; }
+.cell.committee { background: var(--a-violet); color: #fff; }
 .cell.sample { outline: 2px solid var(--warn); outline-offset: 1px; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); }
 .legend i { width: 14px; height: 14px; border-radius: 4px; display: inline-block; vertical-align: -2px; margin-inline-end: 6px; }

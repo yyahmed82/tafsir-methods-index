@@ -466,33 +466,63 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
             u["decided"] = (counts.get((u["tafsir"], u["window"])) or {}).get("decided", 0)
         return {"units": units, "models": pipeline.models()}
 
+    def _review_source(tafsir: str, window: str) -> tuple[str, dict | None, dict | None]:
+        """(annotator, verified payload, committee payload): the chair's view when present."""
+        m = pipeline.models()
+        com_v = pipeline.load_verified(tafsir, "committee", window)
+        if com_v is not None:
+            return "committee", com_v, pipeline.load_committee(tafsir, window)
+        return m["classifier_slug"], pipeline.load_verified(tafsir, m["classifier_slug"],
+                                                             window), None
+
+    def _units(v: dict, com: dict | None) -> list[tuple[str, dict, dict | None]]:
+        rows = (com or {}).get("moves") or []
+        out = []
+        for i, mv in enumerate(v.get("moves") or []):
+            c = rows[i] if i < len(rows) else None
+            key = pipeline.unit_key(c, i) if com is not None else str(mv.get("move_id"))
+            out.append((key, mv, c))
+        return out
+
     @app.get("/api/review/{tafsir}/{window}")
     def review_window(tafsir: str, window: str,
                       user: dict = Depends(need("view_tasks"))) -> dict:
         if tafsir not in config.TAFSIRS or not pipeline.WINDOW_RE.match(window):
             raise _err(400, "bad_unit")
-        m = pipeline.models()
-        v = pipeline.load_verified(tafsir, m["classifier_slug"], window)
+        annotator, v, com = _review_source(tafsir, window)
         if v is None:
             raise _err(404, "unit_not_found")
         dec = db.rows("SELECT d.*, u.name AS user_name FROM decisions d JOIN users u"
                       " ON u.id=d.user_id WHERE tafsir=? AND window=? AND annotator=?"
-                      " ORDER BY d.id", (tafsir, window, m["classifier_slug"]))
+                      " ORDER BY d.id", (tafsir, window, annotator))
         latest = {}
         for d in dec:
             latest[d["move_id"]] = d
         moves = []
-        for mv in v.get("moves") or []:
-            moves.append({k: mv.get(k) for k in (
+        for key, mv, c in _units(v, com):
+            row = {k: mv.get(k) for k in (
                 "move_id", "span_ids", "start", "end", "text", "primary", "secondary",
                 "content_tags", "certainty", "evidence_span_ids", "flags", "score", "route",
-                "rationale_ar", "alternatives")}
-                | {"decision": latest.get(mv.get("move_id"))})
+                "rationale_ar", "alternatives", "reason_code", "committee_reason_code",
+                "committee_abstention_ar", "outcome")}
+            row["key"] = key
+            row["decision"] = latest.get(key)
+            if c:
+                row["committee"] = {k: c.get(k) for k in (
+                    "proposer_move_id", "reviewer_move_id", "primary_proposer",
+                    "primary_reviewer", "score_proposer", "score_reviewer", "route_proposer",
+                    "route_reviewer", "committee_route", "outcome", "abstention_reasons",
+                    "abstention_ar")}
+            moves.append(row)
         return {"tafsir": tafsir, "name_ar": config.TAFSIR_NAMES_AR[tafsir], "window": window,
-                "ayah": v.get("ayah"), "annotator": v.get("annotator"),
+                "ayah": v.get("ayah"), "annotator": annotator,
                 "source_file": v.get("source_file"), "source_sha256": v.get("source_sha256"),
-                "summary": v.get("summary"), "moves": moves,
-                "chair": pipeline.chair_preview(tafsir, window), "history": dec}
+                "packet_sha256": v.get("packet_sha256"),
+                "summary": (com or {}).get("summary") or v.get("summary"),
+                "models": (com or {}).get("models"), "is_committee": com is not None,
+                "moves": moves,
+                "chair": None if com is not None else pipeline.chair_preview(tafsir, window),
+                "history": dec}
 
     @app.post("/api/review/decision")
     def review_decide(body: DecisionIn, request: Request,
@@ -505,18 +535,17 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
             raise _err(400, "compare_first")
         if body.decision != "approve" and not body.note.strip():
             raise _err(400, "note_required")
-        m = pipeline.models()
-        v = pipeline.load_verified(body.tafsir, m["classifier_slug"], body.window)
-        if v is None or body.move_id not in {x.get("move_id") for x in v.get("moves") or []}:
+        annotator, v, com = _review_source(body.tafsir, body.window)
+        if v is None or body.move_id not in {k for k, _m, _c in _units(v, com)}:
             raise _err(404, "unit_not_found")
         db.execute(
             "INSERT INTO decisions(tafsir,window,annotator,move_id,decision,compared_with_source,"
             "note,user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-            (body.tafsir, body.window, m["classifier_slug"], body.move_id, body.decision,
+            (body.tafsir, body.window, annotator, body.move_id, body.decision,
              int(body.compared_with_source), body.note.strip(), user["id"], db.now()))
         db.audit("review.decision", user_id=user["id"], ip=_ip(request),
                  target=f"{body.tafsir}/{body.window}/{body.move_id}",
-                 detail={"decision": body.decision})
+                 detail={"decision": body.decision, "annotator": annotator})
         return {"ok": True}
 
     @app.get("/api/review/export")
@@ -812,11 +841,15 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
             r["detail"] = db.loads(r["detail"])
         return {"audit": rows}
 
+    @app.get("/api/llm/perf")
+    def llm_perf(user: dict = Depends(need("view_tasks"))) -> dict:
+        return runner.perf_summary()
+
     @app.get("/api/llm/calls")
     def llm_calls(user: dict = Depends(need("view_tasks")), limit: int = 100) -> dict:
         rows = db.rows("SELECT id,task_id,agent,tafsir,window,model,status,started_at,"
                        "finished_at,duration_ms,exit_code,result FROM task_steps WHERE"
-                       " finished_at IS NOT NULL AND agent IN ('classifier','verifier')"
+                       " finished_at IS NOT NULL AND agent IN ('classifier','verifier','chair')"
                        " ORDER BY finished_at DESC LIMIT ?", (min(limit, 500),))
         for r in rows:
             r["result"] = db.loads(r["result"])
