@@ -2,6 +2,8 @@
 <script>try{var __t=localStorage.getItem("tafsir-fahras-v1-theme");document.documentElement.setAttribute("data-theme",(__t==="dark"||__t==="light")?__t:"light");}catch(e){document.documentElement.setAttribute("data-theme","light");}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>فهرس مناهج التفسير</title>
+<link rel="icon" href="assets/brand/mirqah-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/brand/icon-180.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@300;400;500;600;700&display=swap">
 <style>
 /* Fahras visual system — challenge brand; light default; Operate+Read */
@@ -10,6 +12,8 @@
   --navy: #12183F;
   --violet: #6150EA;
   --mirqat-brand: var(--violet);
+  --mq-logo-light: inline-block;
+  --mq-logo-dark: none;
   --mirqat-rule: var(--glass-line);
   --violet-safe: #3C2BB8;
   --turquoise: #2EF2C2;
@@ -82,6 +86,8 @@
   --muted: #9AA3C8;
   --lilac: #C4B6FF;
   --mirqat-brand: var(--lilac);
+  --mq-logo-light: none;
+  --mq-logo-dark: inline-block;
   --mirqat-rule: var(--glass-line);
   --blue: #9ECAF5;
   --teal: #5EEAD4;
@@ -174,6 +180,14 @@ html { overflow-x: clip; }
   line-height: 1.2;
   white-space: nowrap;
 }
+.mq-logo {
+  height: 46px;
+  width: auto;
+  flex: 0 0 auto;
+}
+.mq-logo--light { display: var(--mq-logo-light, inline-block); }
+.mq-logo--dark { display: var(--mq-logo-dark, none); }
+@media (max-width: 640px) { .mq-logo { height: 38px; } }
 .brand-product,
 .brand-lockup h1 {
   min-width: 0;
@@ -2020,8 +2034,8 @@ select optgroup {
         <div class="toolbar-row" aria-label="القراءة">
           <div class="brand-lockup">
             <span class="brand-team">
-            <svg class="mirqat-mark" viewBox="0 0 24 32" width="22" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true" focusable="false"><path d="M7 30L5 3"/><path d="M17 30L19 3"/><path d="M6.2 8.5h11.6"/><path d="M6.5 15h11"/><path d="M6.8 21.5h10.4"/><path d="M7 28h10"/></svg>
-            <span class="mirqat-wordmark">مِرْقاة</span>
+            <img class="mq-logo mq-logo--light" src="assets/brand/mirqah-wordmark.svg" width="62" height="46" alt="مِرْقاة">
+            <img class="mq-logo mq-logo--dark" src="assets/brand/mirqah-wordmark-on-dark.svg" width="62" height="46" alt="مِرْقاة">
             </span>
             <span class="brand-heading">
             <span class="brand-rule" aria-hidden="true"></span>
