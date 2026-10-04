@@ -710,7 +710,7 @@ article.reading-article p {
   color: var(--sub);
   line-height: 1.55;
 }
-.g-reason.is-legacy { font-weight: 400; }
+.g-reason.is-legacy, .g-reason.is-unknown { font-weight: 400; }
 .g-committee { color: var(--ink); }
 .g-notes {
   margin: 10px 0 8px;
@@ -1771,6 +1771,7 @@ aside.reader-aside {
   var LABEL_WAIT = "بانتظار المتخصص";
   var LABEL_CANDIDATE = "مرشّح للمراجعة — ليس اعتماداً";
   var LABEL_LEGACY_REASON = "لا رمز سبب: تشغيل سابق لعقد الإسناد";
+  var LABEL_UNKNOWN_REASON = "رمز سبب غير معروف: ";
   var REASON_CODES = DATA.reason_codes || {};
   var COMMITTEE_REASON_CODES = DATA.committee_reason_codes || {};
 
@@ -1909,14 +1910,18 @@ aside.reader-aside {
     host.appendChild(row);
     if (!isAuto) {
       var code = move.reason_code;
-      var meaning = (code && REASON_CODES[code]) ? REASON_CODES[code] : "";
+      var missing = (code == null || code === "");
+      var meaning = (!missing && REASON_CODES[code]) ? REASON_CODES[code] : "";
       var p = document.createElement("p");
       if (meaning) {
         p.className = "g-reason";
         p.textContent = meaning;
-      } else {
+      } else if (missing) {
         p.className = "g-reason is-legacy";
         p.textContent = LABEL_LEGACY_REASON;
+      } else {
+        p.className = "g-reason is-unknown";
+        p.textContent = LABEL_UNKNOWN_REASON + String(code);
       }
       host.appendChild(p);
       var ccode = committeeCodeForMove(move);

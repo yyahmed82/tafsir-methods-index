@@ -31,6 +31,8 @@ LABEL_DISCLAIMER = (
     "وجود الشاهد لا يثبت صحة الاستنتاج؛ الاعتماد للمتخصص بعد فحص الدلالة"
 )
 LABEL_LEGACY = "لا رمز سبب: تشغيل سابق لعقد الإسناد"
+LABEL_UNKNOWN = "رمز سبب غير معروف: "
+UNKNOWN_CODE = "NEW_CODE"
 XSS_RATIONALE = "<img src=x onerror=alert(1)>"
 
 HIGHLIGHT_ALL_NEEDLES = (
@@ -106,6 +108,7 @@ class TestUiGroundingStatic(unittest.TestCase):
             self.assertIn(LABEL_NOTES, html, path.name)
             self.assertIn(LABEL_DISCLAIMER, html, path.name)
             self.assertIn(LABEL_LEGACY, html, path.name)
+            self.assertIn(LABEL_UNKNOWN, html, path.name)
 
     def test_highlight_uses_evidence_ids_without_all_fallback(self) -> None:
         for path in (TEMPLATE_FAHRAS, TEMPLATE_READER, BUILT_FAHRAS, BUILT_READER):
@@ -119,6 +122,14 @@ class TestUiGroundingStatic(unittest.TestCase):
                 self.assertNotIn(needle, joined, f"{path.name}: {needle}")
             self.assertNotIn('querySelectorAll(".hl, .mk")', src)
             self.assertNotIn("evidence_span_ids || curMove.span_ids", src)
+
+    def test_unknown_reason_uses_textcontent_not_innerhtml(self) -> None:
+        for path in (TEMPLATE_FAHRAS, TEMPLATE_READER):
+            body = _fn_body(path.read_text(encoding="utf-8"), "fillRouteStatus")
+            self.assertIn("is-unknown", body, path.name)
+            self.assertIn("LABEL_UNKNOWN_REASON", body, path.name)
+            self.assertIn("p.textContent = LABEL_UNKNOWN_REASON + String(code)", body, path.name)
+            self.assertNotIn("innerHTML", body, path.name)
 
 
 def _playwright_available() -> tuple[bool, str]:
@@ -141,6 +152,7 @@ def _fixture_moves(window: dict) -> list[dict]:
     spec_start, spec_end = rng("s007", "s008", "s009")
     auto_start, auto_end = rng("s012", "s013")
     legacy_start, legacy_end = rng("s014", "s015")
+    unknown_start, unknown_end = rng("s010", "s011")
     specialist = {
         "move_id": "g-spec",
         "span_ids": ["s007", "s008", "s009"],
@@ -188,6 +200,30 @@ def _fixture_moves(window: dict) -> list[dict]:
         "review_status": "pending",
         "origin": "ai",
     }
+    unknown = {
+        "move_id": "g-unknown",
+        "span_ids": ["s010", "s011"],
+        "start": unknown_start,
+        "end": unknown_end,
+        "text": slice_text(unknown_start, unknown_end),
+        "primary": "M_HADITH",
+        "secondary": [],
+        "certainty": "weak",
+        "route": "specialist",
+        "reason_code": UNKNOWN_CODE,
+        "evidence_span_ids": [],
+        "author_verdict_span_ids": [],
+        "rationale_ar": "رمز غير موجود في العقد",
+        "alternatives": [],
+        "unverified_model_notes": {
+            "rationale_ar": "رمز غير موجود في العقد",
+            "alternatives": [],
+        },
+        "score": {"total": 25, "parts": {}},
+        "flags": [],
+        "review_status": "pending",
+        "origin": "ai",
+    }
     auto = {
         "move_id": "g-auto",
         "span_ids": ["s012", "s013"],
@@ -208,7 +244,7 @@ def _fixture_moves(window: dict) -> list[dict]:
         "review_status": "pending",
         "origin": "ai",
     }
-    return [specialist, legacy, auto]
+    return [specialist, legacy, unknown, auto]
 
 
 def _patch_html(src: Path) -> str:
@@ -330,15 +366,27 @@ class TestUiGroundingPlaywright(unittest.TestCase):
                         if first:
                             first = False
                             items = page.locator(".q-it")
-                            self.assertGreaterEqual(items.count(), 2)
+                            self.assertGreaterEqual(items.count(), 3)
                             items.nth(1).click()
                             page.wait_for_selector("#dec-route-host .g-reason.is-legacy")
                             legacy_host = page.locator("#dec-route-host")
                             self.assertIn(LABEL_WAIT, legacy_host.inner_text())
                             self.assertIn(LABEL_LEGACY, legacy_host.inner_text())
+                            self.assertNotIn(LABEL_UNKNOWN, legacy_host.inner_text())
                             notes = page.locator("#dec-notes-body")
                             self.assertIn(XSS_RATIONALE, notes.inner_text())
                             self.assertEqual(page.locator("#dec-notes-body img").count(), 0)
+
+                            items.nth(2).click()
+                            page.wait_for_selector("#dec-route-host .g-reason.is-unknown")
+                            unk_host = page.locator("#dec-route-host")
+                            self.assertIn(LABEL_WAIT, unk_host.inner_text())
+                            self.assertIn(LABEL_UNKNOWN, unk_host.inner_text())
+                            self.assertIn(UNKNOWN_CODE, unk_host.inner_text())
+                            self.assertNotIn(LABEL_LEGACY, unk_host.inner_text())
+                            unk_line = page.locator("#dec-route-host .g-reason.is-unknown").inner_text()
+                            self.assertEqual(unk_line, LABEL_UNKNOWN + UNKNOWN_CODE)
+
                             page.locator(".q-it").first.click()
                             page.wait_for_selector("#dec-route-host .g-reason")
 
@@ -438,10 +486,21 @@ class TestUiGroundingPlaywright(unittest.TestCase):
                 legacy_host = page.locator("#g-route-host")
                 self.assertIn(LABEL_WAIT, legacy_host.inner_text())
                 self.assertIn(LABEL_LEGACY, legacy_host.inner_text())
+                self.assertNotIn(LABEL_UNKNOWN, legacy_host.inner_text())
                 notes = page.locator("#g-notes-body")
                 self.assertIn(XSS_RATIONALE, notes.inner_text())
                 self.assertEqual(page.locator("#g-notes-body img").count(), 0)
                 self.assertEqual(page.locator("#drawer img").count(), 0)
+
+                open_hid("ai-2_255-g-unknown")
+                page.wait_for_selector("#g-route-host .g-reason.is-unknown")
+                unk_host = page.locator("#g-route-host")
+                self.assertIn(LABEL_WAIT, unk_host.inner_text())
+                self.assertIn(LABEL_UNKNOWN, unk_host.inner_text())
+                self.assertIn(UNKNOWN_CODE, unk_host.inner_text())
+                self.assertNotIn(LABEL_LEGACY, unk_host.inner_text())
+                unk_line = page.locator("#g-route-host .g-reason.is-unknown").inner_text()
+                self.assertEqual(unk_line, LABEL_UNKNOWN + UNKNOWN_CODE)
 
                 open_hid("ai-2_255-g-auto")
                 page.wait_for_selector("#g-route-host .g-route.is-auto")
