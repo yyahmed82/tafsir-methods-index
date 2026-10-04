@@ -1,4 +1,6 @@
 <meta charset="utf-8">
+<script>try{var __t=localStorage.getItem("tafsir-fahras-v1-theme");if(__t==="dark"||__t==="light")document.documentElement.setAttribute("data-theme",__t);}catch(e){}</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>فهرس تفسير ابن كثير — نموذج تجريبي</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap">
 <style>
@@ -9,6 +11,8 @@
   --muted: #5b6b67;
   --line: #d9e0dd;
   --primary: #1f5f5b;
+  --mirqat-brand: var(--primary);
+  --mirqat-rule: var(--line);
   --agreed: #9a6b00;
   --agreed-bg: #fdf3d7;
   --review: #b4461f;
@@ -38,6 +42,8 @@
     --muted: #9aaba6;
     --line: #2a3633;
     --primary: #7eb6b1;
+    --mirqat-brand: var(--primary);
+    --mirqat-rule: var(--line);
     --agreed: #e0b45a;
     --agreed-bg: #3a2e14;
     --review: #e08a6a;
@@ -65,6 +71,8 @@
   --muted: #9aaba6;
   --line: #2a3633;
   --primary: #7eb6b1;
+  --mirqat-brand: var(--primary);
+  --mirqat-rule: var(--line);
   --agreed: #e0b45a;
   --agreed-bg: #3a2e14;
   --review: #e08a6a;
@@ -90,6 +98,7 @@
   box-sizing: border-box;
 }
 
+html { overflow-x: clip; }
 body {
   margin: 0;
   background: var(--bg);
@@ -98,6 +107,7 @@ body {
   line-height: 1.6;
   font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
+  overflow-x: clip;
 }
 
 img,
@@ -139,6 +149,55 @@ textarea {
   gap: 10px;
   padding-bottom: 4px;
   border-bottom: 1px solid var(--line);
+}
+
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.brand-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.brand-heading {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.brand-rule {
+  width: 1px;
+  height: 18px;
+  margin-inline: 12px;
+  background: var(--mirqat-rule);
+  flex: 0 0 auto;
+  align-self: center;
+}
+.mirqat-mark {
+  width: 22px;
+  height: 28px;
+  flex: 0 0 auto;
+  color: var(--mirqat-brand);
+  display: block;
+}
+.mirqat-wordmark {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--mirqat-brand);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.brand-product,
+.product-title {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--ink);
+  line-height: 1.25;
+  min-width: 0;
 }
 
 .site-header h1 {
@@ -792,6 +851,16 @@ details.why[open] > summary {
 
 <div class="page stack" id="app" dir="rtl" lang="ar">
   <div class="site-header">
+    <div class="brand-lockup">
+      <span class="brand-team">
+      <svg class="mirqat-mark" viewBox="0 0 24 32" width="22" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true" focusable="false"><path d="M7 30L5 3"/><path d="M17 30L19 3"/><path d="M6.2 8.5h11.6"/><path d="M6.5 15h11"/><path d="M6.8 21.5h10.4"/><path d="M7 28h10"/></svg>
+      <span class="mirqat-wordmark">مِرْقاة</span>
+      </span>
+      <span class="brand-heading">
+      <span class="brand-rule" aria-hidden="true"></span>
+      <span class="brand-product product-title">فهرس مناهج التفسير</span>
+      </span>
+    </div>
     <h1>فهرس تفسير ابن كثير — نموذج تجريبي</h1>
     <p class="subtitle">نصّ ابن كثير كما هو، مقسّم إلى وحدات موسومة، مع بيان حالة كل وحدة ومطابقتها للأصل.</p>
     <div class="top-bar">
@@ -799,6 +868,7 @@ details.why[open] > summary {
         <input type="checkbox" id="reviewerMode" />
         <span>وضع المراجع</span>
       </label>
+      <button type="button" class="btn" id="theme-btn" aria-pressed="false" aria-label="فاتح/داكن" title="بدّل بين المظهر الفاتح والداكن">◐</button>
       <button type="button" class="btn" id="exportBtn" hidden>تصدير قرارات المراجع</button>
     </div>
   </div>
@@ -1485,6 +1555,31 @@ details.why[open] > summary {
     if (!btn) return;
     setExample(btn.getAttribute("data-example"));
   });
+
+  var THEME_KEY = "tafsir-fahras-v1-theme";
+  var themeBtn = document.getElementById("theme-btn");
+  function themeIsDark() {
+    var t = document.documentElement.getAttribute("data-theme");
+    if (t === "dark") return true;
+    if (t === "light") return false;
+    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+  function syncThemeBtn() {
+    if (!themeBtn) return;
+    var dark = themeIsDark();
+    themeBtn.setAttribute("aria-pressed", dark ? "true" : "false");
+    themeBtn.setAttribute("aria-label", dark ? "وضع فاتح" : "وضع داكن");
+    themeBtn.title = dark ? "التبديل إلى المظهر الفاتح" : "التبديل إلى المظهر الداكن";
+  }
+  if (themeBtn) {
+    syncThemeBtn();
+    themeBtn.addEventListener("click", function () {
+      var next = themeIsDark() ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* ignore */ }
+      syncThemeBtn();
+    });
+  }
 
   loadDecisions();
   renderFacts();
