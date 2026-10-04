@@ -485,14 +485,14 @@ def collect_data() -> dict:
         "sources": sources,
         "coverage": coverage,
         "integrity_rule": "لم يُغيَّر حرف من النص",
+        "reason_codes": dict(REASON_CODES),
+        "committee_reason_codes": dict(COMMITTEE_REASON_CODES),
     }
     # Version stamps the payload *before* embedding the stamps themselves.
+    # reason_codes / committee_reason_codes are inside the hash (maps change ⇒ version).
     core = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     payload["data_version"] = hashlib.sha256(core.encode("utf-8")).hexdigest()[:12]
     payload["build_date"] = _stable_build_date(payload["data_version"])
-    # Injected from grounding_contract — the only source of reason Arabic.
-    payload["reason_codes"] = dict(REASON_CODES)
-    payload["committee_reason_codes"] = dict(COMMITTEE_REASON_CODES)
     return payload
 
 

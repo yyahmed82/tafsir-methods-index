@@ -1239,6 +1239,7 @@ html { overflow-x: clip; }
   color: var(--sub);
   line-height: 1.55;
 }
+.g-reason.is-legacy { font-weight: 400; }
 .g-committee { color: var(--ink); }
 .g-notes {
   margin: 14px 0 10px;
@@ -2554,6 +2555,7 @@ select optgroup {
   };
   var LABEL_WAIT = "بانتظار المتخصص";
   var LABEL_CANDIDATE = "مرشّح للمراجعة — ليس اعتماداً";
+  var LABEL_LEGACY_REASON = "لا رمز سبب: تشغيل سابق لعقد الإسناد";
   var REASON_CODES = DATA.reason_codes || {};
   var COMMITTEE_REASON_CODES = DATA.committee_reason_codes || {};
 
@@ -2692,13 +2694,16 @@ select optgroup {
     host.appendChild(row);
     if (!isAuto) {
       var code = move.reason_code;
-      var meaning = code ? (REASON_CODES[code] || "") : "";
+      var meaning = (code && REASON_CODES[code]) ? REASON_CODES[code] : "";
+      var p = document.createElement("p");
       if (meaning) {
-        var p = document.createElement("p");
         p.className = "g-reason";
         p.textContent = meaning;
-        host.appendChild(p);
+      } else {
+        p.className = "g-reason is-legacy";
+        p.textContent = LABEL_LEGACY_REASON;
       }
+      host.appendChild(p);
       var ccode = committeeCodeForMove(move);
       var cmean = ccode ? (COMMITTEE_REASON_CODES[ccode] || "") : "";
       if (cmean) {
