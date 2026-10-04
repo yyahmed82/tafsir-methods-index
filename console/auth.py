@@ -10,7 +10,7 @@ import threading
 import time
 from collections import defaultdict, deque
 
-from . import config, db, mailer, settings
+from . import config, db, mailer, mailtpl, settings
 
 log = logging.getLogger("mirqah.console")
 
@@ -86,17 +86,10 @@ def request_otp(email: str, ip: str | None) -> dict:
         "INSERT INTO otp_codes(email,code_hash,created_at,expires_at,ip) VALUES (?,?,?,?,?)",
         (email, _h(f"{email}:{code}"), db.now(), db.now() + sec["otp_ttl_min"] * 60, ip),
     )
-    gen = settings.get("general")
-    body = (
-        f"السلام عليكم {user['name']}،\n\n"
-        f"رمز الدخول إلى لوحة لجنة {gen['team_name']}: {code}\n"
-        f"صالح لمدة {sec['otp_ttl_min']} دقائق. لا تشاركه مع أحد.\n\n"
-        f"Your sign-in code: {code} (valid {sec['otp_ttl_min']} min).\n"
-    )
+    mail = mailtpl.otp(user["name"], email, code, sec["otp_ttl_min"], ip)
     try:
         # the outbox keeps a copy of real mail with the code masked; mock mail keeps it
-        res = mailer.send(email, f"رمز الدخول — {gen['team_name']}", body,
-                          outbox_body=body.replace(code, "•" * len(code)))
+        res = mailer.send_mail(email, mail)
     except mailer.MailError as e:
         log.error("otp mail failed for %s: %s", email, e)
         db.audit("auth.otp_mail_failed", user_id=user["id"], ip=ip, detail={"error": str(e)})
@@ -176,24 +169,39 @@ def verify_otp(email: str, code: str, ip: str | None, user_agent: str | None) ->
     return token, user
 
 
-def session_user(token: str | None) -> dict | None:
-    if not token:
-        return None
-    s = db.row(
-        "SELECT s.id AS sid, s.expires_at, u.*, r.key AS role_key, r.name_ar AS role_name_ar,"
-        " r.name_en AS role_name_en, r.permissions AS role_permissions"
-        " FROM sessions s JOIN users u ON u.id=s.user_id JOIN roles r ON r.id=u.role_id"
-        " WHERE s.token_hash=? AND s.revoked=0",
-        (_h(token),),
-    )
-    if s is None or s["expires_at"] < db.now() or not s["active"]:
-        return None
+def _with_permissions(s: dict) -> dict:
     perms = set(db.loads(s.pop("role_permissions"), []))
     if s["email"] == config.GUEST_EMAIL:
         perms &= set(config.GUEST_PERMISSIONS)  # guests stay read-only whatever the role says
     s["permissions"] = sorted(perms)
     s["is_guest"] = s["email"] == config.GUEST_EMAIL
     return s
+
+
+def session_user(token: str | None) -> dict | None:
+    if not token:
+        return None
+    with db.use("live"):
+        s = db.row(
+            "SELECT s.id AS sid, s.expires_at, u.*, r.key AS role_key, r.name_ar AS role_name_ar,"
+            " r.name_en AS role_name_en, r.permissions AS role_permissions"
+            " FROM sessions s JOIN users u ON u.id=s.user_id JOIN roles r ON r.id=u.role_id"
+            " WHERE s.token_hash=? AND s.revoked=0",
+            (_h(token),),
+        )
+    if s is None or s["expires_at"] < db.now() or not s["active"]:
+        return None
+    return _with_permissions(s)
+
+
+def user_by_email(email: str) -> dict | None:
+    """An active user with role and permissions, as session_user returns it (view-as)."""
+    with db.use("live"):
+        u = db.row(
+            "SELECT u.*, r.key AS role_key, r.name_ar AS role_name_ar, r.name_en AS role_name_en,"
+            " r.permissions AS role_permissions FROM users u JOIN roles r ON r.id=u.role_id"
+            " WHERE u.email=? AND u.active=1", (normalize_email(email),))
+    return _with_permissions(u) if u else None
 
 
 def revoke(token: str | None) -> None:
@@ -206,10 +214,16 @@ def revoke_user_sessions(user_id: int) -> None:
 
 
 def public_user(u: dict) -> dict:
+    real = u.get("real_user")
     return {
         "id": u["id"], "email": u["email"], "name": u["name"], "lang": u.get("lang") or "",
         "role": {"key": u.get("role_key"), "name_ar": u.get("role_name_ar"),
                  "name_en": u.get("role_name_en")},
         "permissions": u.get("permissions", []),
         "is_guest": u.get("email") == config.GUEST_EMAIL,
+        # view-as: who is really signed in (None when it is their own account)
+        "view_as": bool(real),
+        "real_user": real,
+        "can_view_as": (real or {}).get("role_key", u.get("role_key")) == "super_admin",
+        "mode": u.get("mode", "live"),
     }

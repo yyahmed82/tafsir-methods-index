@@ -7,11 +7,17 @@ from pathlib import Path
 
 CONSOLE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = Path(os.environ.get("MIRQAH_REPO_ROOT") or CONSOLE_DIR.parent).resolve()
+# Where agent runs read data/ and write moves/, verified/, committee/. On the server the
+# release folder is read-only, so MIRQAH_WORK_ROOT points at a writable copy that
+# mirqah-deploy keeps in step with each release (outputs are never deleted by a deploy).
+_WORK = os.environ.get("MIRQAH_WORK_ROOT") or ""
 VAR_DIR = Path(os.environ.get("MIRQAH_VAR_DIR") or (CONSOLE_DIR / "var")).resolve()
 STATIC_DIR = CONSOLE_DIR / "static"
 I18N_DIR = STATIC_DIR / "i18n"
 
 SESSION_COOKIE = "mirqah_session"
+MODE_COOKIE = "mirqah_mode"            # live | demo (per browser)
+VIEW_AS_HEADER = "x-mirqah-view-as"    # super admins only; read-only while set
 CSRF_HEADER = "x-mirqah"  # custom header required on every state-changing request
 
 # ---- production switches (set in the server's environment file, never in git)
@@ -61,6 +67,15 @@ PERMISSIONS = (
 # FORCE_SPECIALIST_METHODS + M_RAY). Used only by the read-only chair preview.
 FORCE_SPECIALIST = {"M_ISRAILIYYAT", "M_NUZUL", "M_QIRAAT", "M_RAY"}
 COMMITTEE_THRESHOLD = 85
+
+
+def work_root() -> Path:
+    """REPO_ROOT, or the writable run workspace when one is configured and present."""
+    if _WORK:
+        p = Path(_WORK)
+        if (p / "data").is_dir():
+            return p.resolve()
+    return REPO_ROOT
 
 
 def ensure_dirs() -> None:

@@ -20,6 +20,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "surah": 24,
         "data_root": "data/nur",
         "sample_ayah": "24:35",
+        "console_url": "",
     },
     "llm": {
         "runtime": "ollama-local",
@@ -53,6 +54,10 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "phase0_note": "",
         "sample_reviewed": False,
         "sample_max_windows": 12,
+    },
+    "demo": {
+        "guest_mode": "live",
+        "months": 12,
     },
     "reports": {
         "auto_daily": True,
@@ -222,6 +227,14 @@ def _validate(section: str, values: dict[str, Any]) -> None:
             raise SettingsError("general.data_root must look like data/<name>")
         if not re.match(r"^\d{1,3}:\d{1,3}$", values["sample_ayah"]):
             raise SettingsError("general.sample_ayah must look like 24:35")
+        if values["console_url"] and not re.match(r"^https?://[A-Za-z0-9.-]+(:\d+)?(/[^\s]*)?$",
+                                                  values["console_url"]):
+            raise SettingsError("general.console_url must be like https://console.example.com")
+    if section == "demo":
+        if values["guest_mode"] not in ("live", "demo"):
+            raise SettingsError("demo.guest_mode must be live or demo")
+        if not 3 <= values["months"] <= 18:
+            raise SettingsError("demo.months must be 3–18")
     if section == "gates" and not 1 <= values["sample_max_windows"] <= 60:
         raise SettingsError("gates.sample_max_windows must be 1–60")
 

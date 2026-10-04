@@ -6,6 +6,7 @@ state only — never tafsir text, tags or approvals of record.
 
 from __future__ import annotations
 
+import contextvars
 import json
 import sqlite3
 import threading
@@ -18,6 +19,58 @@ from . import config
 
 _LOCK = threading.RLock()
 _DB_PATH: Path | None = None
+# "live" or "demo". In demo mode connections open demo.db with the live database
+# attached: tables that demo.db does not have (settings, roles, languages, sessions…)
+# resolve to the live ones, while tasks, steps, reports, decisions, audit and the
+# demo people come from the simulation. See console/demo.py.
+_MODE: contextvars.ContextVar[str] = contextvars.ContextVar("mirqah_db_mode", default="live")
+
+DEMO_SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL, role_key TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1, created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY, kind TEXT NOT NULL, title_ar TEXT NOT NULL, params TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued', created_by INTEGER, created_at REAL NOT NULL,
+  started_at REAL, finished_at REAL, total_steps INTEGER NOT NULL DEFAULT 0,
+  done_steps INTEGER NOT NULL DEFAULT 0, failed_steps INTEGER NOT NULL DEFAULT 0,
+  skipped_steps INTEGER NOT NULL DEFAULT 0, cancel_requested INTEGER NOT NULL DEFAULT 0, error TEXT
+);
+CREATE TABLE IF NOT EXISTS task_steps (
+  id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL, seq INTEGER NOT NULL, agent TEXT NOT NULL,
+  tafsir TEXT NOT NULL, window TEXT NOT NULL, model TEXT, status TEXT NOT NULL DEFAULT 'queued',
+  started_at REAL, finished_at REAL, duration_ms INTEGER, exit_code INTEGER, result TEXT,
+  output_tail TEXT
+);
+CREATE INDEX IF NOT EXISTS steps_task ON task_steps(task_id, seq);
+CREATE INDEX IF NOT EXISTS steps_finished ON task_steps(finished_at);
+CREATE INDEX IF NOT EXISTS steps_status ON task_steps(status);
+CREATE TABLE IF NOT EXISTS reports (
+  id INTEGER PRIMARY KEY, day TEXT UNIQUE NOT NULL, generated_at REAL NOT NULL,
+  generated_by INTEGER, content TEXT NOT NULL, mailed_at REAL
+);
+CREATE TABLE IF NOT EXISTS decisions (
+  id INTEGER PRIMARY KEY, tafsir TEXT NOT NULL, window TEXT NOT NULL, annotator TEXT NOT NULL,
+  move_id TEXT NOT NULL, decision TEXT NOT NULL, compared_with_source INTEGER NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT '', user_id INTEGER NOT NULL, created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS decisions_unit ON decisions(tafsir, window, annotator, move_id);
+CREATE INDEX IF NOT EXISTS decisions_at ON decisions(created_at);
+CREATE TABLE IF NOT EXISTS audit (
+  id INTEGER PRIMARY KEY, at REAL NOT NULL, user_id INTEGER, action TEXT NOT NULL, target TEXT,
+  detail TEXT, ip TEXT
+);
+CREATE INDEX IF NOT EXISTS audit_at ON audit(at);
+CREATE TABLE IF NOT EXISTS demo_units (
+  tafsir TEXT NOT NULL, window TEXT NOT NULL, ayah TEXT NOT NULL, ayah_number INTEGER NOT NULL,
+  span_count INTEGER NOT NULL, chars INTEGER NOT NULL, moves INTEGER NOT NULL,
+  auto_candidate INTEGER NOT NULL, specialist INTEGER NOT NULL, flags INTEGER NOT NULL,
+  reasons TEXT NOT NULL, classifier_at REAL, verifier_at REAL, committee_at REAL,
+  PRIMARY KEY (tafsir, window)
+);
+CREATE TABLE IF NOT EXISTS demo_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+"""
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS roles (
@@ -154,6 +207,7 @@ CREATE TABLE IF NOT EXISTS outbox (
   to_addr TEXT NOT NULL,
   subject TEXT NOT NULL,
   body TEXT NOT NULL,
+  html TEXT,
   mode TEXT NOT NULL,
   status TEXT NOT NULL,
   error TEXT
@@ -169,7 +223,47 @@ def init(db_path: Path | None = None) -> Path:
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with connect() as con:
         con.executescript(SCHEMA)
+        _migrate(con)
     return _DB_PATH
+
+
+def _migrate(con: sqlite3.Connection) -> None:
+    """Additive column changes for databases created by older releases."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(outbox)")}
+    if "html" not in cols:
+        con.execute("ALTER TABLE outbox ADD COLUMN html TEXT")
+
+
+def demo_path() -> Path:
+    if _DB_PATH is None:
+        raise RuntimeError("db.init() was not called")
+    return _DB_PATH.with_name("demo.db")
+
+
+def mode() -> str:
+    return _MODE.get()
+
+
+@contextmanager
+def use(new_mode: str) -> Iterator[None]:
+    """Run the block against the live database or the simulation (demo.db)."""
+    token = _MODE.set("demo" if new_mode == "demo" else "live")
+    try:
+        yield
+    finally:
+        _MODE.reset(token)
+
+
+def init_demo() -> Path:
+    path = demo_path()
+    con = sqlite3.connect(path, timeout=30)
+    try:
+        con.execute("PRAGMA journal_mode = WAL")
+        con.executescript(DEMO_SCHEMA)
+        con.commit()
+    finally:
+        con.close()
+    return path
 
 
 @contextmanager
@@ -177,7 +271,11 @@ def connect() -> Iterator[sqlite3.Connection]:
     if _DB_PATH is None:
         raise RuntimeError("db.init() was not called")
     with _LOCK:
-        con = sqlite3.connect(_DB_PATH, timeout=30)
+        if _MODE.get() == "demo":
+            con = sqlite3.connect(demo_path(), timeout=30)
+            con.execute("ATTACH DATABASE ? AS live", (str(_DB_PATH),))
+        else:
+            con = sqlite3.connect(_DB_PATH, timeout=30)
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA foreign_keys = ON")
         con.execute("PRAGMA journal_mode = WAL")

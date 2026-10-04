@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import ipaddress
 import json
 import os
@@ -13,11 +14,11 @@ import urllib.request
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import __version__, auth, config, db, mailer, pipeline, runner, settings
+from . import __version__, auth, config, db, demo, mailer, mailtpl, pipeline, runner, settings
 
 
 # ------------------------------------------------------------------ setup
@@ -107,11 +108,60 @@ def _set_session_cookie(request: Request, response: Response, token: str, hours:
                         secure=config.SECURE_COOKIES or request.url.scheme == "https", path="/")
 
 
-def current_user(request: Request) -> dict:
+VIEW_AS_ALLOW = {"/api/view-as/stop", "/api/mode"}
+
+
+def real_user(request: Request) -> dict:
+    """The signed-in account, ignoring any view-as header."""
     user = auth.session_user(request.cookies.get(config.SESSION_COOKIE))
     if user is None:
         raise HTTPException(401, "login_required")
+    user["mode"] = demo.mode_for(request, user)
     return user
+
+
+def current_user(request: Request) -> dict:
+    """The account the request acts as.
+
+    A real super admin may look through another active user's account with the
+    X-Mirqah-View-As header: that user's role, permissions and pages. Identity for
+    the audit trail stays the super admin (``real_user``), and every write is refused
+    while the switch is on, so a route added later is closed by default. For anyone
+    who is not a super admin the header does nothing.
+    """
+    real = real_user(request)
+    target = auth.normalize_email(request.headers.get(config.VIEW_AS_HEADER) or "")
+    if not target or real.get("role_key") != "super_admin" or target == real["email"]:
+        return real
+    eff = auth.user_by_email(target)
+    if eff is None:
+        return real
+    eff["real_user"] = {"id": real["id"], "email": real["email"], "name": real["name"],
+                        "role_key": real["role_key"]}
+    eff["mode"] = real["mode"]
+    if request.method not in ("GET", "HEAD", "OPTIONS") and request.url.path not in VIEW_AS_ALLOW:
+        raise HTTPException(423, {"error": "view_as_read_only", "view_as": eff["email"]})
+    return eff
+
+
+def operational(write: bool = False):
+    """Run the route against the simulation when the viewer is in demo mode.
+
+    Demo mode is read-only: routes that write refuse with 423 ``demo_read_only``.
+    """
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            user = kwargs.get("user") or {}
+            if user.get("mode") != "demo":
+                return fn(*args, **kwargs)
+            if write:
+                raise HTTPException(423, {"error": "demo_read_only"})
+            demo.tick()
+            with db.use("demo"):
+                return fn(*args, **kwargs)
+        return wrapper
+    return deco
 
 
 def need(*perms: str):
@@ -166,6 +216,7 @@ class UserIn(BaseModel):
     role_id: int
     lang: str = ""
     active: bool = True
+    notify: bool = True
 
 
 class UserPatch(BaseModel):
@@ -209,6 +260,18 @@ class LangPatch(BaseModel):
 
 class SmtpTestIn(BaseModel):
     to: str = Field(max_length=200)
+
+
+class ModeIn(BaseModel):
+    mode: str = Field(max_length=10)
+
+
+class ViewAsIn(BaseModel):
+    email: str = Field(max_length=200)
+
+
+class DemoSeedIn(BaseModel):
+    months: int = 12
 
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -262,6 +325,8 @@ _PROBE_CACHE: dict[str, Any] = {"at": 0.0, "value": None}
 
 
 def _probe(force: bool = False) -> dict:
+    if db.mode() == "demo":
+        return pipeline.probe_llm()
     if force or time.time() - _PROBE_CACHE["at"] > 10:
         _PROBE_CACHE.update(at=time.time(), value=pipeline.probe_llm())
     return _PROBE_CACHE["value"]
@@ -280,6 +345,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
             "mail_mode": settings.get("smtp")["mode"],
             "has_users": bool(db.scalar("SELECT COUNT(*) FROM users")),
             "guest_access": bool(settings.get("security").get("guest_access")),
+            "demo_available": demo.available(),
             "version": __version__,
             "release": _release(),
         }
@@ -340,7 +406,57 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
 
     @app.get("/api/me")
     def me(user: dict = Depends(current_user)) -> dict:
-        return {"user": auth.public_user(user), "default_lang": default_lang()}
+        return {"user": auth.public_user(user), "default_lang": default_lang(),
+                "demo_available": demo.available()}
+
+    # ---------- live / demo (per browser; the simulation is read-only)
+    @app.post("/api/mode")
+    def set_mode(body: ModeIn, request: Request, response: Response,
+                 user: dict = Depends(current_user)) -> dict:
+        if body.mode not in ("live", "demo"):
+            raise _err(400, "bad_mode")
+        if body.mode == "demo" and not demo.available():
+            raise _err(409, "demo_not_seeded")
+        response.set_cookie(config.MODE_COOKIE, body.mode, max_age=180 * 86400, httponly=True,
+                            samesite="strict", secure=config.SECURE_COOKIES or request.url.scheme == "https",
+                            path="/")
+        db.audit("mode.switch", user_id=(user.get("real_user") or user)["id"], ip=_ip(request),
+                 detail={"mode": body.mode})
+        return {"mode": body.mode}
+
+    # ---------- view as another user (super admin only, read-only, audited)
+    def real_super(request: Request) -> dict:
+        u = real_user(request)
+        if u.get("role_key") != "super_admin":
+            db.audit("view_as.denied", user_id=u["id"], ip=_ip(request))
+            raise _err(403, "forbidden")
+        return u
+
+    @app.get("/api/view-as/users")
+    def view_as_users(user: dict = Depends(real_super)) -> dict:
+        rows = db.rows("SELECT u.email, u.name, r.key AS role_key, r.name_ar AS role_name_ar,"
+                       " r.name_en AS role_name_en, u.last_login_at FROM users u JOIN roles r"
+                       " ON r.id=u.role_id WHERE u.active=1 AND u.email<>? ORDER BY lower(u.name)",
+                       (user["email"],))
+        return {"users": rows}
+
+    @app.post("/api/view-as")
+    def view_as_start(body: ViewAsIn, request: Request, user: dict = Depends(real_super)) -> dict:
+        email = auth.normalize_email(body.email)
+        if email == user["email"]:
+            raise _err(400, "view_as_self")
+        target = auth.user_by_email(email)
+        if target is None:
+            raise _err(404, "user_not_found")
+        db.audit("view_as.start", user_id=user["id"], target=email, ip=_ip(request),
+                 detail={"role": target["role_key"]})
+        return {"ok": True, "user": auth.public_user(target)}
+
+    @app.post("/api/view-as/stop")
+    def view_as_stop(request: Request, user: dict = Depends(real_super)) -> dict:
+        target = auth.normalize_email(request.headers.get(config.VIEW_AS_HEADER) or "")
+        db.audit("view_as.stop", user_id=user["id"], target=target or None, ip=_ip(request))
+        return {"ok": True}
 
     @app.patch("/api/me")
     def me_patch(body: MeIn, user: dict = Depends(current_user)) -> dict:
@@ -355,20 +471,23 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
 
     # ---------- dashboard & progress
     @app.get("/api/dashboard")
+    @operational()
     def dashboard(user: dict = Depends(need("view_dashboard"))) -> dict:
         tasks = db.rows("SELECT id,kind,title_ar,status,total_steps,done_steps,failed_steps,"
                         "skipped_steps,created_at,started_at,finished_at FROM tasks"
                         " ORDER BY id DESC LIMIT 6")
         return {"llm": _probe(), "agents": runner.agents_state(), "progress": pipeline.progress(),
-                "gates": settings.get("gates"), "tasks": tasks,
+                "gates": pipeline.gates(), "tasks": tasks, "simulated": db.mode() == "demo",
                 "sample_ayah": settings.get("general")["sample_ayah"],
                 "server_time": time.time()}
 
     @app.get("/api/progress")
+    @operational()
     def progress(user: dict = Depends(need("view_dashboard"))) -> dict:
         return {"progress": pipeline.progress(), "matrix": pipeline.ayah_matrix()}
 
     @app.get("/api/llm/probe")
+    @operational()
     def llm_probe(user: dict = Depends(need("view_dashboard"))) -> dict:
         return _probe(force=True)
 
@@ -396,6 +515,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
 
     # ---------- tasks
     @app.get("/api/tasks")
+    @operational()
     def tasks(user: dict = Depends(need("view_tasks")), limit: int = 50) -> dict:
         rows = db.rows("SELECT t.*, u.name AS created_by_name FROM tasks t LEFT JOIN users u"
                        " ON u.id=t.created_by ORDER BY t.id DESC LIMIT ?", (min(limit, 200),))
@@ -404,6 +524,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         return {"tasks": rows}
 
     @app.post("/api/tasks/preview")
+    @operational(write=True)
     def task_preview(body: TaskIn, user: dict = Depends(need("run_tasks"))) -> dict:
         try:
             steps = runner.plan_steps(body.kind, body.scope, body.ayat, body.tafsirs)
@@ -420,6 +541,8 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                 blocked = "bulk_gate_phase0"
             elif not gates["sample_reviewed"]:
                 blocked = "bulk_gate_sample"
+        if blocked is None and body.kind != "dryrun" and not _probe().get("reachable"):
+            blocked = "engine_offline"
         per = {}
         for t, _w in wins:
             per[t] = per.get(t, 0) + 1
@@ -427,7 +550,15 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                 "blocked": blocked, "models": pipeline.models()}
 
     @app.post("/api/tasks")
+    @operational(write=True)
     def task_create(body: TaskIn, user: dict = Depends(need("run_tasks"))) -> dict:
+        try:
+            runner.check_gates(body.kind, body.scope,
+                               runner.plan_steps(body.kind, body.scope, body.ayat, body.tafsirs), user)
+        except runner.TaskError as e:
+            raise _err(400, str(e)) from e
+        if body.kind != "dryrun" and not _probe(force=True).get("reachable"):
+            raise _err(409, "engine_offline")
         try:
             tid = runner.create_task(body.kind, body.scope, body.ayat, body.tafsirs,
                                      body.skip_done, user)
@@ -436,6 +567,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         return {"id": tid}
 
     @app.get("/api/tasks/{task_id}")
+    @operational()
     def task_get(task_id: int, user: dict = Depends(need("view_tasks"))) -> dict:
         t = db.row("SELECT t.*, u.name AS created_by_name FROM tasks t LEFT JOIN users u"
                    " ON u.id=t.created_by WHERE t.id=?", (task_id,))
@@ -448,6 +580,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         return {"task": t, "steps": steps}
 
     @app.post("/api/tasks/{task_id}/cancel")
+    @operational(write=True)
     def task_cancel(task_id: int, user: dict = Depends(need("manage_tasks"))) -> dict:
         try:
             runner.cancel_task(task_id, user)
@@ -456,6 +589,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         return {"ok": True}
 
     @app.post("/api/tasks/{task_id}/retry")
+    @operational(write=True)
     def task_retry(task_id: int, user: dict = Depends(need("run_tasks"))) -> dict:
         try:
             return {"id": runner.retry_failed(task_id, user)}
@@ -464,6 +598,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
 
     # ---------- reports
     @app.get("/api/reports")
+    @operational()
     def reports(user: dict = Depends(need("view_reports"))) -> dict:
         rows = db.rows("SELECT r.day, r.generated_at, r.mailed_at, u.name AS generated_by_name,"
                        " r.content FROM reports r LEFT JOIN users u ON u.id=r.generated_by"
@@ -480,6 +615,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         return day
 
     @app.get("/api/reports/{day}")
+    @operational()
     def report_get(day: str, user: dict = Depends(need("view_reports"))) -> dict:
         rec = db.row("SELECT * FROM reports WHERE day=?", (_day(day),))
         if rec is None:
@@ -487,6 +623,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         return {"day": day, "content": db.loads(rec["content"]), "mailed_at": rec["mailed_at"]}
 
     @app.get("/api/reports/{day}/markdown")
+    @operational()
     def report_md(day: str, user: dict = Depends(need("view_reports"))) -> PlainTextResponse:
         rec = db.row("SELECT * FROM reports WHERE day=?", (_day(day),))
         if rec is None:
@@ -496,15 +633,18 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
             headers={"Content-Disposition": f'attachment; filename="report-{day}.md"'})
 
     @app.post("/api/reports/{day}/generate")
+    @operational(write=True)
     def report_generate(day: str, user: dict = Depends(need("generate_reports"))) -> dict:
         return {"content": runner.save_report(_day(day), user["id"])}
 
     @app.post("/api/reports/{day}/mail")
+    @operational(write=True)
     def report_mail(day: str, user: dict = Depends(need("generate_reports"))) -> dict:
         return runner.mail_report(_day(day), user["id"])
 
     # ---------- review
     @app.get("/api/review/units")
+    @operational()
     def review_units(user: dict = Depends(need("view_tasks")), tafsir: str | None = None) -> dict:
         units = pipeline.review_units(tafsir)
         counts = {(r["tafsir"], r["window"]): r for r in db.rows(
@@ -533,10 +673,16 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         return out
 
     @app.get("/api/review/{tafsir}/{window}")
+    @operational()
     def review_window(tafsir: str, window: str,
                       user: dict = Depends(need("view_tasks"))) -> dict:
         if tafsir not in config.TAFSIRS or not pipeline.WINDOW_RE.match(window):
             raise _err(400, "bad_unit")
+        if db.mode() == "demo":
+            out = demo.review_window(tafsir, window)
+            if out is None:
+                raise _err(404, "unit_not_found")
+            return out
         annotator, v, com = _review_source(tafsir, window)
         if v is None:
             raise _err(404, "unit_not_found")
@@ -573,6 +719,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                 "history": dec}
 
     @app.post("/api/review/decision")
+    @operational(write=True)
     def review_decide(body: DecisionIn, request: Request,
                       user: dict = Depends(need("review_units"))) -> dict:
         if body.decision not in ("approve", "needs_edit", "reject"):
@@ -597,6 +744,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         return {"ok": True}
 
     @app.get("/api/review/export")
+    @operational()
     def review_export(user: dict = Depends(need("review_units"))) -> JSONResponse:
         rows = db.rows("SELECT d.tafsir,d.window,d.annotator,d.move_id,d.decision,"
                        "d.compared_with_source,d.note,d.created_at,u.name AS reviewer,"
@@ -650,7 +798,15 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                           int(body.active), db.now(), user["id"]))
         db.audit("user.create", user_id=user["id"], target=email, ip=_ip(request),
                  detail={"role": role["key"]})
-        return {"id": uid}
+        mailed = None
+        if body.notify and body.active:
+            try:
+                mailer.send_mail(email, mailtpl.welcome(body.name.strip(), email, role["name_ar"],
+                                                        role["description_ar"], user["name"]))
+                mailed = True
+            except mailer.MailError:
+                mailed = False
+        return {"id": uid, "mailed": mailed}
 
     @app.patch("/api/users/{user_id}")
     def user_patch(user_id: int, body: UserPatch, request: Request,
@@ -787,8 +943,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         if not EMAIL_RE.match(to):
             raise _err(400, "bad_email")
         try:
-            res = mailer.send(to, "اختبار البريد — مِرْقاة",
-                              "هذه رسالة اختبار من لوحة لجنة مِرْقاة.\nThis is a test message.")
+            res = mailer.send_mail(to, mailtpl.test(to))
         except mailer.MailError as e:
             db.audit("smtp.test", user_id=user["id"], detail={"ok": False})
             raise _err(502, "mail_failed", detail=str(e)) from e
@@ -797,9 +952,21 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
 
     @app.get("/api/outbox")
     def outbox(user: dict = Depends(need("manage_settings"))) -> dict:
-        rows = db.rows("SELECT id,at,to_addr,subject,mode,status,error FROM outbox"
-                       " ORDER BY id DESC LIMIT 50")
+        rows = db.rows("SELECT id,at,to_addr,subject,mode,status,error,html IS NOT NULL AS has_html"
+                       " FROM outbox ORDER BY id DESC LIMIT 50")
+        for r in rows:
+            r["has_html"] = bool(r["has_html"])
         return {"outbox": rows}
+
+    @app.get("/api/outbox/{mail_id}/html")
+    def outbox_html(mail_id: int, user: dict = Depends(need("manage_settings"))) -> HTMLResponse:
+        """Preview of a sent mail as the recipient sees it (real mail keeps the code masked)."""
+        html = db.scalar("SELECT html FROM outbox WHERE id=?", (mail_id,))
+        if not html:
+            raise _err(404, "mail_not_found")
+        html = html.replace(f"cid:{mailtpl.LOGO_CID}", "/static/brand/mail-wordmark.png")
+        return HTMLResponse(html, headers={"Content-Security-Policy": (
+            "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'none'")})
 
     # ---------- languages
     @app.get("/api/languages")
@@ -880,8 +1047,32 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         db.audit("lang.translations", user_id=user["id"], target=code, detail={"keys": n})
         return {"ok": True, "updated": n}
 
+    # ---------- demo data (Settings → Demo)
+    @app.get("/api/demo")
+    def demo_status(user: dict = Depends(need("manage_settings"))) -> dict:
+        return demo.status()
+
+    @app.post("/api/demo/seed")
+    def demo_seed(body: DemoSeedIn, request: Request,
+                  user: dict = Depends(need("manage_settings"))) -> dict:
+        if not 3 <= body.months <= 18:
+            raise _err(400, "bad_months")
+        try:
+            out = demo.seed(body.months)
+        except RuntimeError as e:
+            raise _err(400, "demo_failed", detail=str(e)) from e
+        db.audit("demo.seed", user_id=user["id"], ip=_ip(request), detail={"months": body.months})
+        return out
+
+    @app.delete("/api/demo")
+    def demo_delete(request: Request, user: dict = Depends(need("manage_settings"))) -> dict:
+        demo.clear()
+        db.audit("demo.clear", user_id=user["id"], ip=_ip(request))
+        return {"ok": True}
+
     # ---------- audit
     @app.get("/api/audit")
+    @operational()
     def audit_log(user: dict = Depends(need("view_audit")), limit: int = 200) -> dict:
         rows = db.rows("SELECT a.*, u.name AS user_name FROM audit a LEFT JOIN users u"
                        " ON u.id=a.user_id ORDER BY a.id DESC LIMIT ?", (min(limit, 500),))
@@ -890,10 +1081,12 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         return {"audit": rows}
 
     @app.get("/api/llm/perf")
+    @operational()
     def llm_perf(user: dict = Depends(need("view_tasks"))) -> dict:
         return runner.perf_summary()
 
     @app.get("/api/llm/calls")
+    @operational()
     def llm_calls(user: dict = Depends(need("view_tasks")), limit: int = 100) -> dict:
         rows = db.rows("SELECT id,task_id,agent,tafsir,window,model,status,started_at,"
                        "finished_at,duration_ms,exit_code,result FROM task_steps WHERE"

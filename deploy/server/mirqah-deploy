@@ -11,6 +11,7 @@
 #   mirqah-deploy status                           what is live, what is waiting, recent history
 #   mirqah-deploy rollback [RELEASE]               go back to the previous (or named) release
 #   mirqah-deploy releases                         list release folders
+#   mirqah-deploy sync-work                        refresh the writable run workspace from the live release
 set -euo pipefail
 
 PREFIX=${MIRQAH_PREFIX:-/opt/mirqah}
@@ -20,6 +21,8 @@ SYSTEMCTL=${MIRQAH_SYSTEMCTL:-systemctl}
 PYTHON=${MIRQAH_PYTHON:-python3}
 VENV_ARGS=${MIRQAH_VENV_ARGS:-}
 SERVICE=mirqah-console
+WORK=${MIRQAH_WORK:-/var/lib/mirqah/work}
+APP_USER=${MIRQAH_USER:-mirqah}
 
 REPO_URL="https://github.com/yyahmed82/tafsir-methods-index.git"
 BRANCH="main"
@@ -180,6 +183,34 @@ smoke() {
   return "$rc"
 }
 
+# The release folders are read-only, but agent runs write moves/, verified/ and committee/
+# under data/. The console runs them in $WORK (MIRQAH_WORK_ROOT): code and inputs follow
+# each release; run outputs are never deleted by a deploy, and a release only replaces an
+# output file when its copy is newer (what was merged into git wins over an older run).
+sync_work() {
+  local src=$1 d
+  command -v rsync >/dev/null 2>&1 || { log "rsync is missing (apt-get install -y rsync); run workspace not updated"; return 1; }
+  mkdir -p "$WORK"
+  rsync -a --delete --exclude='/.release-sha' \
+    --filter='- data/**/moves/' --filter='- data/**/verified/' --filter='- data/**/committee/' \
+    "$src"/ "$WORK"/
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    mkdir -p "$WORK/$d"
+    rsync -a --update "$src/$d/" "$WORK/$d/"
+  done < <(cd "$src" && find data -type d \( -name moves -o -name verified -o -name committee \) -prune -print 2>/dev/null)
+  chown -R "$APP_USER:$APP_USER" "$WORK" 2>/dev/null || true
+  chmod 0750 "$WORK" 2>/dev/null || true
+}
+
+cmd_sync_work() {
+  local cur
+  cur=$(current_dir)
+  [ -n "$cur" ] || die "no live release yet"
+  sync_work "$cur" || die "sync failed"
+  log "run workspace $WORK is in step with $(basename "$cur")"
+}
+
 switch_to() {
   ln -sfn "$1" "$PREFIX/current.new"
   mv -Tf "$PREFIX/current.new" "$PREFIX/current"
@@ -256,6 +287,7 @@ deploy() {
     return 1
   fi
   prev=$(current_dir)
+  sync_work "$dir" || log "continuing without a fresh run workspace"
   switch_to "$dir"
   restart_console
   if healthy "$sha"; then
@@ -401,6 +433,12 @@ main() {
     status) need_root status "$@"; cmd_status ;;
     rollback) need_root rollback "$@"; cmd_rollback "$@" ;;
     releases) cmd_releases ;;
+    sync-work)
+      need_root sync-work "$@"
+      mkdir -p "$STATE"
+      exec 9>"$STATE/lock"
+      flock -w 900 9 || die "a deploy is still running after 15 min"
+      cmd_sync_work ;;
     help | -h | --help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
     *) die "unknown command $cmd (try: mirqah-deploy help)" ;;
   esac

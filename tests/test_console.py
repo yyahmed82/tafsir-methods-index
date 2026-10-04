@@ -148,7 +148,7 @@ def test_production_hides_mock_code_and_masks_real_mail(env, monkeypatch):
             pass
 
         def send_message(self, msg):
-            sent.append(msg.get_content())
+            sent.append(msg.get_body(("plain",)).get_content())
 
     monkeypatch.setattr(mailer.smtplib, "SMTP", FakeSMTP)
     settings.update("smtp", {"mode": "smtp", "host": "smtp.example.com",
@@ -319,6 +319,155 @@ def test_sample_preview_and_bulk_gate(env):
     p = env.post("/api/tasks/preview", json={"kind": "dryrun", "scope": "surah"},
                  headers=H).json()
     assert p["blocked"] is None  # a packet check never calls a model
+
+
+def test_engine_offline_blocks_model_runs_but_not_packet_checks(env):
+    add_user("op@example.com", "super_admin")
+    login(env, "op@example.com")
+    settings.update("llm", {"base_url": "http://127.0.0.1:9"}, None)  # nothing listens there
+    r = env.post("/api/tasks", json={"kind": "committee", "scope": "sample"}, headers=H)
+    assert r.status_code == 409 and r.json()["detail"]["error"] == "engine_offline"
+    p = env.post("/api/tasks/preview", json={"kind": "committee", "scope": "sample"}, headers=H).json()
+    assert p["blocked"] == "engine_offline"
+    assert env.post("/api/tasks", json={"kind": "dryrun", "scope": "sample"}, headers=H).status_code == 200
+
+
+# ------------------------------------------------------------------ view as user
+
+def test_view_as_is_super_admin_only_read_only_and_audited(env):
+    add_user("sa@example.com", "super_admin", "Admin")
+    add_user("spec@example.com", "specialist", "Spec")
+    add_user("view@example.com", "viewer", "Viewer")
+    login(env, "sa@example.com")
+    VA = {**H, "X-Mirqah-View-As": "spec@example.com"}
+    users = env.get("/api/view-as/users").json()["users"]
+    assert {u["email"] for u in users} == {"spec@example.com", "view@example.com"}
+    assert env.post("/api/view-as", json={"email": "spec@example.com"}, headers=H).status_code == 200
+    me = env.get("/api/me", headers=VA).json()["user"]
+    assert me["email"] == "spec@example.com" and me["view_as"] and me["real_user"]["email"] == "sa@example.com"
+    assert "review_units" in me["permissions"] and "manage_settings" not in me["permissions"]
+    assert env.get("/api/settings", headers=VA).status_code == 403          # the specialist cannot
+    for method, path, body in (("patch", "/api/me", {"name": "x"}),
+                               ("post", "/api/users", {"email": "n@example.com", "name": "n", "role_id": 1}),
+                               ("patch", "/api/settings/general", {"team_name": "x"})):
+        r = getattr(env, method)(path, json=body, headers=VA)
+        assert r.status_code == 423 and r.json()["detail"]["error"] == "view_as_read_only", path
+    assert env.post("/api/view-as/stop", headers=VA).status_code == 200
+    acts = [r["action"] for r in db.rows("SELECT action FROM audit WHERE action LIKE 'view_as.%' ORDER BY id")]
+    assert acts == ["view_as.start", "view_as.stop"]
+    assert db.scalar("SELECT user_id FROM audit WHERE action='view_as.start'") == \
+        db.scalar("SELECT id FROM users WHERE email='sa@example.com'")
+    # without the header the super admin is back
+    assert env.get("/api/me", headers=H).json()["user"]["email"] == "sa@example.com"
+    # a non-super-admin cannot switch: the header is ignored and the routes refuse
+    env.post("/api/auth/logout", headers=H)
+    login(env, "view@example.com")
+    me = env.get("/api/me", headers={**H, "X-Mirqah-View-As": "sa@example.com"}).json()["user"]
+    assert me["email"] == "view@example.com" and not me["view_as"]
+    assert env.post("/api/view-as", json={"email": "sa@example.com"}, headers=H).status_code == 403
+    assert env.get("/api/view-as/users").status_code == 403
+
+
+# ------------------------------------------------------------------ demo mode
+
+def test_demo_mode_is_isolated_and_read_only(env):
+    from console import demo
+    add_user("sa@example.com", "super_admin")
+    login(env, "sa@example.com")
+    assert env.get("/api/public").json()["demo_available"] is False
+    assert env.post("/api/mode", json={"mode": "demo"}, headers=H).status_code == 409
+    st = env.post("/api/demo/seed", json={"months": 3}, headers=H).json()
+    assert st["available"] and st["counts"]["demo_units"] == 296 and st["counts"]["tasks"] > 0
+    assert db.scalar("SELECT COUNT(*) FROM tasks") == 0                    # live DB untouched
+    assert env.post("/api/mode", json={"mode": "demo"}, headers=H).status_code == 200
+    assert env.get("/api/me").json()["user"]["mode"] == "demo"
+    d = env.get("/api/dashboard").json()
+    assert d["simulated"] and d["llm"]["simulated"] and d["progress"]["totals"]["windows"] == 296
+    assert d["progress"]["totals"]["committee"] > 0 and d["gates"]["phase0_merged"]
+    units = env.get("/api/review/units").json()["units"]
+    assert units and all(u["committee"] for u in units)
+    rv = env.get(f"/api/review/{units[0]['tafsir']}/{units[0]['window']}").json()
+    assert rv["simulated"] and all(m["text"] is None for m in rv["moves"])  # never tafsir text
+    assert env.get("/api/reports").json()["reports"]
+    assert env.get("/api/tasks").json()["tasks"]
+    r = env.post("/api/tasks", json={"kind": "dryrun", "scope": "sample"}, headers=H)
+    assert r.status_code == 423 and r.json()["detail"]["error"] == "demo_read_only"
+    assert env.post("/api/review/decision", json={"tafsir": "al_saadi", "window": "24_35", "move_id": "P-m01",
+                                                  "decision": "approve", "compared_with_source": True},
+                    headers=H).status_code == 423
+    # settings stay live and writable in demo mode
+    assert env.patch("/api/settings/demo", json={"guest_mode": "demo"}, headers=H).status_code == 200
+    assert env.post("/api/mode", json={"mode": "live"}, headers=H).status_code == 200
+    d = env.get("/api/dashboard").json()
+    assert not d["simulated"] and d["progress"]["totals"]["committee"] == 0
+    # guests follow Settings → Demo → guest_mode until they switch themselves
+    settings.update("security", {"guest_access": True}, None)
+    g = TestClient(env.app)
+    assert g.post("/api/auth/guest", headers=H).status_code == 200
+    assert g.get("/api/me").json()["user"]["mode"] == "demo"
+    assert g.get("/api/dashboard").json()["simulated"]
+    demo.clear()
+    assert env.get("/api/public").json()["demo_available"] is False
+
+
+# ------------------------------------------------------------------ mail templates
+
+def test_html_mail_with_inline_logo_masked_outbox_and_welcome(env, monkeypatch):
+    from console import mailer
+    sent = []
+
+    class FakeSMTP:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def starttls(self, **k):
+            pass
+
+        def login(self, *a):
+            pass
+
+        def send_message(self, msg):
+            sent.append(msg)
+
+    monkeypatch.setattr(mailer.smtplib, "SMTP", FakeSMTP)
+    add_user("sa@example.com", "super_admin", "Admin")
+    login(env, "sa@example.com")
+    mock_html = db.scalar("SELECT html FROM outbox ORDER BY id DESC LIMIT 1")
+    assert 'dir="rtl"' in mock_html and "cid:mqlogo" in mock_html
+    settings.update("smtp", {"mode": "smtp", "host": "smtp.example.com", "from_email": "no-reply@example.com"},
+                    None)
+    settings.update("general", {"console_url": "https://console.example.com"}, None)
+    settings.update("security", {"otp_resend_s": 0}, None)
+    assert env.post("/api/auth/request-otp", json={"email": "sa@example.com"}, headers=H).status_code == 200
+    msg = sent[-1]
+    kinds = [p.get_content_type() for p in msg.walk()]
+    assert {"text/plain", "text/html", "image/png"} <= set(kinds)
+    html = msg.get_body(("html",)).get_content()
+    code = re.search(r"\b(\d{6})\b", msg.get_body(("plain",)).get_content()).group(1)
+    assert code in html and "https://console.example.com" in html
+    stored = db.row("SELECT body, html FROM outbox ORDER BY id DESC LIMIT 1")
+    assert code not in stored["body"] and code not in stored["html"] and "••••••" in stored["html"]
+    rid = db.scalar("SELECT id FROM roles WHERE key='specialist'")
+    r = env.post("/api/users", json={"email": "new@example.com", "name": "New", "role_id": rid}, headers=H)
+    assert r.status_code == 200 and r.json()["mailed"] is True
+    assert sent[-1]["To"] == "new@example.com" and "أهلاً" in sent[-1]["Subject"]
+    mid = db.scalar("SELECT id FROM outbox ORDER BY id DESC LIMIT 1")
+    page = env.get(f"/api/outbox/{mid}/html")
+    assert page.status_code == 200 and "/static/brand/mail-wordmark.png" in page.text
+    assert env.get("/static/brand/mail-wordmark.png").status_code == 200
+
+
+def test_work_root_used_only_when_present(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "_WORK", str(tmp_path / "work"))
+    assert config.work_root() == config.REPO_ROOT          # missing → release folder
+    (tmp_path / "work" / "data").mkdir(parents=True)
+    assert config.work_root() == (tmp_path / "work").resolve()
 
 
 # ------------------------------------------------------------------ end to end

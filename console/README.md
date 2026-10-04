@@ -50,9 +50,41 @@ Command-line settings: `python -m console settings-show [section]`,
 
 الأرقام في اللوحة «أعداد توجيه وليست دقة». معاينة رئيس اللجنة لا تكتب ملفات ولا تعني اعتماداً.
 
+## وضع المحاكاة / Demo mode
+
+مفتاح «حيّ | محاكاة» في الشريط العلوي يعرض سنة عمل مولَّدة على سورة النور: مهام وإخفاقات وإعادات، قرار الرئيس،
+قرارات متخصصين تجريبيين، وتقارير يومية. البيانات في قاعدة منفصلة `console/var/demo.db`؛ لا تمسّ البيانات الحيّة ولا
+`data/`، ولا تحتوي نصاً من التفسير، وكل شيء فيها للقراءة فقط مع شريط تنبيه في كل صفحة. الأرقام فيها **ليست نتائج**.
+
+A Live | Demo switch shows a generated year of committee work (separate `demo.db`, read-only, banner on every
+page, no tafsir text, invented "(تجريبي)" people). Generate it in Settings → Demo or
+`python -m console demo-seed --months 12`; `demo-status`, `demo-clear`. Guests (judges) start on what
+Settings → Demo → guest mode says, and can switch themselves.
+
+## العرض كمستخدم آخر / View as another user
+
+المشرف العام فقط، من قائمة الحساب: يرى اللوحة بصلاحيات المستخدم وصفحاته تماماً، **للقراءة فقط** (كل كتابة تُرفض برمز 423)،
+مع شريط سفلي ثابت «العودة إلى حسابي». يُسجَّل البدء والانتهاء باسم المشرف في سجل التدقيق.
+Super admins only (account menu → View as another user): the `X-Mirqah-View-As` header is honoured only for a
+real super admin; identity in the audit log stays the super admin; every write is refused while switched.
+
+## البريد / Mail
+
+كل رسالة بقالب HTML عربي من اليمين إلى اليسار (`console/mailtpl.py`) مع نسخة نصية، والشعار مرفق داخلياً (cid):
+رمز الدخول، اختبار البريد، رسالة الترحيب عند إضافة مستخدم (`--notify` أو خيار في نافذة الإضافة)، والتقرير اليومي.
+Set Settings → General → console link (`settings-set general console_url=https://…`) for the buttons.
+Settings → Outbox → Preview shows any sent mail as the recipient sees it (real sign-in codes stay masked).
+
+## الشعار / Logo
+
+`console/static/brand/`: `mirqah-logo.svg` (full, with the book), `mirqah-wordmark.svg`, `-on-dark` variants,
+`mirqah-mark.svg` / `mirqah-icon.svg` (arch and stairs; favicon), `icon-180.png`, `mail-wordmark.png` (mail
+header; mail clients do not show SVG). The app inlines the SVGs so the ink follows light/dark mode.
+
 ## الحالة المحلية / Local state
 
-`console/var/` (gitignored): `console.db` (SQLite), `secret.key`, `outbox/`. Delete the folder to reset.
+`console/var/` (gitignored): `console.db` (SQLite), `demo.db`, `secret.key`, `outbox/`. Delete the folder to reset.
+On the server, agent runs use the writable copy in `MIRQAH_WORK_ROOT` (see `deploy/README.md`).
 
 ## Tests
 

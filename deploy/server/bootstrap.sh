@@ -35,7 +35,7 @@ case "$CONSOLE_HOST" in *.*) ;; *) echo "MIRQAH_CONSOLE_HOST must be a host name
 step "System packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq git curl ca-certificates python3 python3-venv python3-pip sqlite3 \
+apt-get install -y -qq git curl ca-certificates python3 python3-venv python3-pip sqlite3 rsync \
   fail2ban unattended-upgrades >/dev/null
 python3 - <<'PY'
 import sys
@@ -85,6 +85,7 @@ MIRQAH_PROXY="cloudflare"
 MIRQAH_ALLOWED_HOSTS="console.example.com"
 MIRQAH_REPO_ROOT="/opt/mirqah/current"
 MIRQAH_VAR_DIR="/var/lib/mirqah"
+MIRQAH_WORK_ROOT="/var/lib/mirqah/work"
 # set with:  sudo mirqah set-env MIRQAH_SMTP_PASSWORD
 # MIRQAH_SMTP_PASSWORD=""
 # only if the team approves hosted model runs:  sudo mirqah set-env LLM_API_KEY

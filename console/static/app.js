@@ -4,7 +4,8 @@
 
   // ------------------------------------------------------------ state & helpers
   const S = { pub: null, me: null, t: {}, lang: 'ar', dir: 'rtl', timers: [], route: '', loginStep: 'email',
-    loginEmail: '', mockCode: '', cooldown: 0, selAgent: 'classifier', settingsTab: 'general' };
+    loginEmail: '', mockCode: '', cooldown: 0, selAgent: 'classifier', settingsTab: 'general',
+    viewAs: '', demoAvailable: false, brand: { word: '', full: '' } };
   const $ = (sel, el = document) => el.querySelector(sel);
   const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -16,6 +17,11 @@
   };
   const T = (k, v) => esc(t(k, v));
   const has = (p) => !!(S.me && S.me.permissions.includes(p));
+  // read-only views: "view as user" blocks every write; demo mode blocks the committee's writes
+  const viewingAs = () => !!(S.me && S.me.view_as);
+  const inDemo = () => !!(S.me && S.me.mode === 'demo');
+  const canDo = (p) => has(p) && !viewingAs() && !inDemo();
+  const canAdmin = (p) => has(p) && !viewingAs();
   const store = {
     get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
     set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
@@ -24,9 +30,10 @@
   class ApiError extends Error {
     constructor(status, key, detail) { super(key || 'error'); this.status = status; this.key = key; this.detail = detail; }
   }
-  async function api(path, { method = 'GET', body } = {}) {
+  async function api(path, { method = 'GET', body, noViewAs = false } = {}) {
     const opt = { method, headers: { Accept: 'application/json' }, credentials: 'same-origin' };
     if (method !== 'GET') { opt.headers['X-Mirqah'] = '1'; opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body ?? {}); }
+    if (S.viewAs && !noViewAs) opt.headers['X-Mirqah-View-As'] = S.viewAs;
     let res;
     try { res = await fetch('/api' + path, opt); } catch (e) { throw new ApiError(0, 'network'); }
     let data = null;
@@ -44,7 +51,7 @@
   function errText(e) {
     if (!(e instanceof ApiError)) return t('common.error');
     if (e.status === 403 && e.key === 'forbidden') return t('common.forbidden');
-    for (const ns of ['auth.err.', 'tasks.err.', 'users.err.', 'roles.err.', 'lang.err.', 'review.err.']) {
+    for (const ns of ['auth.err.', 'tasks.err.', 'users.err.', 'roles.err.', 'lang.err.', 'review.err.', 'common.err.']) {
       if (S.t[ns + e.key]) return t(ns + e.key);
     }
     if (e.key === 'settings_invalid' && e.detail) return String(e.detail);
@@ -100,6 +107,8 @@
     out: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
     brain: 'M9.5 2A2.5 2.5 0 0 0 7 4.5v.1A3 3 0 0 0 4.5 8 3 3 0 0 0 3 10.6 3 3 0 0 0 4 15a3 3 0 0 0 3 4 2.5 2.5 0 0 0 5 .5V4.5A2.5 2.5 0 0 0 9.5 2zM14.5 2A2.5 2.5 0 0 1 17 4.5v.1A3 3 0 0 1 19.5 8 3 3 0 0 1 21 10.6 3 3 0 0 1 20 15a3 3 0 0 1-3 4 2.5 2.5 0 0 1-5 .5',
     arrow: 'M5 12h14M13 6l6 6-6 6',
+    eye: 'M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+    flask: 'M9 3h6M10 3v6L4.5 18.5A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 1.7-2.5L14 9V3M7.5 14h9',
   };
   const ico = (name, cls = '') => `<svg class="ic ${cls}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[name] || ''}"/></svg>`;
 
@@ -116,6 +125,23 @@
     <rect x="14" y="62" width="12" height="7" rx="3.5" fill="currentColor"/><rect x="74" y="62" width="12" height="7" rx="3.5" fill="currentColor"/>
     <rect x="35" y="87" width="9" height="9" rx="3" fill="currentColor"/><rect x="56" y="87" width="9" height="9" rx="3" fill="currentColor"/>
   </svg>`;
+
+  // ------------------------------------------------------------ brand (inline SVG: follows light/dark)
+  function brandMark(kind, cls) {
+    const raw = S.brand[kind];
+    if (!raw) return `<span class="brand-name">${esc(S.pub ? S.pub.team_name : 'مِرْقاة')}</span>`;
+    const pre = 'mq' + kind[0].toUpperCase();
+    return raw.replace(/<\?xml[^>]*>/, '').replace(/id="mq/g, `id="${pre}`).replace(/url\(#mq/g, `url(#${pre}`)
+      .replace('<svg ', `<svg class="${cls}" focusable="false" `);
+  }
+  async function loadBrand() {
+    await Promise.all(['word', 'full'].map(async (k) => {
+      try {
+        const r = await fetch(`/static/brand/mirqah-${k === 'word' ? 'wordmark' : 'logo'}.svg`, { credentials: 'same-origin' });
+        if (r.ok) S.brand[k] = await r.text();
+      } catch { /* the text name is shown instead */ }
+    }));
+  }
 
   // ------------------------------------------------------------ toasts & modal
   function toast(msg, kind = '') {
@@ -199,20 +225,30 @@
     const langs = (S.pub.languages || []).map((l) => `<button class="mi ${l.code === S.lang ? 'on' : ''}" data-act="lang" data-code="${esc(l.code)}">${esc(l.name_native)}</button>`).join('');
     return `<header class="topbar"><div class="topbar-in">
       <button class="icon-btn menu-btn" data-act="nav-toggle" aria-label="${T('nav.menu')}">${ico('menu')}</button>
-      <a class="brand" href="#/dashboard"><img src="/static/logo.svg" alt=""><span><span class="brand-name">${esc(S.pub.team_name)}</span>
-        <span class="brand-sub">${T('app.title')}</span></span><span class="badge-beta">BETA</span></a>
+      <a class="brand" href="#/dashboard" aria-label="${esc(S.pub.team_name)}">${brandMark('word', 'brand-logo')}
+        <span class="brand-sub">${T('app.title')}</span><span class="badge-beta">BETA</span></a>
       <nav class="nav" aria-label="${T('nav.menu')}">${nav}</nav>
       <div class="top-actions">
+        ${S.demoAvailable ? `<div class="mode-toggle" role="group" aria-label="${T('mode.switch_title')}" title="${T('mode.switch_title')}">
+          <button type="button" class="${inDemo() ? '' : 'on'}" data-act="mode" data-mode="live" aria-pressed="${!inDemo()}"><span class="dot ${inDemo() ? '' : 'live'}"></span>${T('mode.live')}</button>
+          <button type="button" class="${inDemo() ? 'on' : ''}" data-act="mode" data-mode="demo" aria-pressed="${inDemo()}">${ico('flask')}<span class="lbl">${T('mode.demo')}</span></button></div>` : ''}
         <div class="dropdown"><button class="icon-btn" data-act="dd" aria-label="${T('lang.switch')}">${ico('globe')}</button>
           <div class="dropdown-menu"><div class="mh">${T('lang.switch')}</div>${langs}</div></div>
         <button class="icon-btn" data-act="theme" title="${T('theme.toggle')}: ${T('theme.' + theme)}" aria-label="${T('theme.toggle')}">${ico(theme === 'dark' ? 'moon' : theme === 'light' ? 'sun' : 'auto')}</button>
-        <div class="dropdown"><button class="user-chip" data-act="dd"><span class="avatar">${esc(initials(S.me.name))}</span><span class="nm">${esc(S.me.name)}</span></button>
+        <div class="dropdown"><button class="user-chip ${viewingAs() ? 'as' : ''}" data-act="dd"><span class="avatar">${viewingAs() ? ico('eye') : esc(initials(S.me.name))}</span><span class="nm">${esc(S.me.name)}</span></button>
           <div class="dropdown-menu"><div class="mh">${esc(S.me.email)}<br>${esc(S.lang === 'ar' || S.lang === 'ur' ? S.me.role.name_ar : S.me.role.name_en)}</div>
-            <a class="mi" href="#/profile">${ico('user')} ${T('nav.profile')}</a><hr>
+            <a class="mi" href="#/profile">${ico('user')} ${T('nav.profile')}</a>
+            ${viewingAs() ? `<button class="mi" data-act="view-as-stop">${ico('out')} ${T('viewas.return')}</button>`
+              : S.me.can_view_as ? `<button class="mi" data-act="view-as">${ico('eye')} ${T('viewas.menu')}</button>` : ''}<hr>
             <button class="mi" data-act="logout">${ico('out')} ${T('auth.logout')}</button></div></div>
       </div></div></header>
       <div class="drawer-back" data-act="nav-toggle"></div>
-      <main class="page" id="page">${inner}</main>`;
+      ${inDemo() ? `<div class="mode-banner" role="status">${ico('flask')}<span><b>${T('demo.banner_title')}</b> ${T('demo.banner')}</span>
+        <button class="btn sm" data-act="mode" data-mode="live">${T('demo.back_live')}</button></div>` : ''}
+      <main class="page" id="page">${inner}</main>
+      ${viewingAs() ? `<div class="viewas-bar" role="status">${ico('eye')}<span><b>${T('viewas.bar', { name: S.me.name })}</b>
+        <span class="faint-in">${esc(S.me.email)} · ${esc(S.lang === 'ar' || S.lang === 'ur' ? S.me.role.name_ar : S.me.role.name_en)} — ${T('viewas.note')}</span></span>
+        <button class="btn sm" data-act="view-as-stop">${T('viewas.return')}</button></div>` : ''}`;
   }
   const head = (titleKey, subKey, actions = '') => `<div class="page-head"><div><h1>${T(titleKey)}</h1>${subKey ? `<p class="muted">${T(subKey)}</p>` : ''}</div>${actions ? `<div class="head-actions">${actions}</div>` : ''}</div>`;
   const loading = () => `<div class="empty"><div class="spinner" style="margin:auto"></div></div>`;
@@ -226,6 +262,8 @@
     clearTimers();
     closeModal();
     const app = $('#app');
+    document.body.classList.toggle('is-view-as', viewingAs());
+    document.body.classList.toggle('is-demo', inDemo());
     if (!S.me) { app.innerHTML = loginView(); bindLogin(); return; }
     const [r, a, b] = parts();
     const routes = {
@@ -280,7 +318,7 @@
     return `<div class="auth-top"><div class="dropdown"><button class="icon-btn" data-act="dd" aria-label="${T('lang.switch')}">${ico('globe')}</button><div class="dropdown-menu">${langs}</div></div>
       <button class="icon-btn" data-act="theme" aria-label="${T('theme.toggle')}">${ico(theme === 'dark' ? 'moon' : theme === 'light' ? 'sun' : 'auto')}</button></div>
       <div class="auth-wrap"><div class="auth-card">
-        <div class="auth-brand"><img src="/static/logo.svg" alt=""><div><h1>${esc(S.pub.team_name)}</h1><p class="muted">${T('app.title')} · ${esc(S.pub.project_name)}</p></div></div>
+        <div class="auth-brand"><h1 class="sr-only">${esc(S.pub.team_name)}</h1>${brandMark('full', 'login-logo')}<p class="muted">${T('app.title')} · ${esc(S.pub.project_name)}</p></div>
         <div class="card"><h2>${T('auth.title')}</h2><p class="muted mt-s mb">${T('auth.subtitle')}</p>${body}</div>${mock}${noUsers}
       </div></div>`;
   }
@@ -317,7 +355,8 @@
         const msg = $('#login-msg');
         try {
           const r = await api('/auth/verify-otp', { method: 'POST', body: { email: S.loginEmail, code: $('#code').value.trim() } });
-          S.me = r.user; S.mockCode = ''; S.loginStep = 'email';
+          S.mockCode = ''; S.loginStep = 'email';
+          { const me = await api('/me'); S.me = me.user; S.demoAvailable = !!me.demo_available; }
           if (S.me.lang && S.me.lang !== S.lang) await setLang(S.me.lang);
           if (!location.hash || location.hash === '#/') location.hash = '#/dashboard';
           render();
@@ -379,14 +418,18 @@
         <td class="num">${fNum(x.done_steps + x.skipped_steps)}/${fNum(x.total_steps)}</td></tr>`).join('')
       : `<tr><td colspan="5" class="empty">${T('tasks.empty')}</td></tr>`;
     const detail = agentDetail(sel, d);
-    const sampleBtn = has('run_tasks') ? `<button class="btn primary" data-act="run-sample">${ico('play')} ${T('dash.start_sample')} <span class="mono">${esc(d.sample_ayah)}</span></button>` : '';
-    return `${head('dash.title', 'dash.subtitle', `<span class="chip ${llm.reachable ? 'ok' : 'bad'}"><span class="dot ${llm.reachable ? 'live' : ''}"></span>${llm.reachable ? 'live' : 'offline'} · ${esc(fTime(d.server_time))}</span>
-        <button class="btn" data-act="probe">${ico('refresh')} ${T('dash.probe')}</button>${sampleBtn}`)}
+    const sampleBtn = canDo('run_tasks') ? `<button class="btn primary" data-act="run-sample" ${llm.reachable ? '' : `disabled title="${T('dash.engine_offline_note')}"`}>${ico('play')} ${T('dash.start_sample')} <span class="mono">${esc(d.sample_ayah)}</span></button>` : '';
+    const pill = d.simulated ? `<span class="chip violet"><span class="dot live"></span>${T('mode.demo')} · ${esc(fTime(d.server_time))}</span>`
+      : llm.reachable ? `<span class="chip ok"><span class="dot live"></span>${T('dash.connected')} · ${esc(fTime(d.server_time))}</span>`
+        : `<span class="chip warn"><span class="dot"></span>${T('dash.engine_offline')} · ${esc(fTime(d.server_time))}</span>`;
+    const offline = !d.simulated && !llm.reachable ? `<div class="notice warn mb">${ico('info')}<span>${T('dash.engine_offline_note')}</span></div>` : '';
+    return `${head('dash.title', 'dash.subtitle', `${pill}
+        <button class="btn" data-act="probe">${ico('refresh')} ${T('dash.probe')}</button>${sampleBtn}`)}${offline}
       <section class="card mission">
         <div class="brain"><div class="brain-orb ${llm.reachable ? '' : 'off'} ${busy ? 'busy' : ''}">${ico('brain')}</div>
           <div class="brain-meta"><div class="kicker">${T('dash.llm_layer')} · ${esc(llm.runtime || '')}</div>
             <div class="m">${esc(llm.classifier_model || '')} <span class="faint">+</span> ${esc(llm.verifier_model || '')}</div>
-            <div class="faint"><span class="mono">${esc(llm.base_url || '')}</span> · ${llm.reachable ? `<span class="c-green">${T('dash.reachable')}</span>` : `<span style="color:var(--danger)">${T('dash.unreachable')}</span>`}${llm.version ? ` · v${esc(llm.version)}` : ''} · ${busy ? `<span class="c-green">${T('dash.brain_busy')}</span>` : T('dash.brain_idle')}</div></div></div>
+            <div class="faint">${llm.simulated ? T('mode.demo_engine') : `<span class="mono">${esc(llm.base_url || '')}</span>`} · ${llm.reachable ? `<span class="c-green">${T('dash.reachable')}</span>` : `<span style="color:var(--warn)">${T('dash.unreachable')}</span>`}${llm.version && !llm.simulated ? ` · v${esc(llm.version)}` : ''} · ${busy ? `<span class="c-green">${T('dash.brain_busy')}</span>` : T('dash.brain_idle')}</div></div></div>
         <svg class="wires" viewBox="0 0 1000 70" preserveAspectRatio="none" aria-hidden="true">${wires}</svg>
         <div class="agents">${cards}</div>
       </section>
@@ -419,7 +462,7 @@
     let next;
     if (a.next) next = `<p class="big-next">${T('dash.queue_steps', { n: a.next })}</p>`;
     else if (a.key === 'specialist') next = `<a class="btn outline-accent" href="#/review">${ico('review')} ${T('nav.review')}</a>`;
-    else next = has('run_tasks') ? `<button class="btn outline-accent" data-act="new-task">${ico('plus')} ${T('tasks.new')}</button>` : '<p class="faint">—</p>';
+    else next = canDo('run_tasks') ? `<button class="btn outline-accent" data-act="new-task">${ico('plus')} ${T('tasks.new')}</button>` : '<p class="faint">—</p>';
     const td = a.today || {};
     let today = '';
     if (['classifier', 'verifier', 'chair'].includes(a.key)) today = `${T('dash.today')}: ${fNum(td.ok)} ${T('dash.ok')} · ${fNum(td.bad)} ${T('dash.failed')}`;
@@ -443,7 +486,7 @@
           <td class="num">${fNum(x.done_steps)}✓ ${x.failed_steps ? `${fNum(x.failed_steps)}✕ ` : ''}${x.skipped_steps ? `${fNum(x.skipped_steps)}↷ ` : ''}/ ${fNum(x.total_steps)}</td>
           <td class="hide-sm">${esc(x.created_by_name || '')}</td><td class="num hide-sm">${esc(fDT(x.created_at))}</td></tr>`).join('')
         : `<tr><td colspan="7" class="empty">${T('tasks.empty')}</td></tr>`;
-      setPage(`${head('tasks.title', 'tasks.subtitle', has('run_tasks') ? `<button class="btn primary" data-act="new-task">${ico('plus')} ${T('tasks.new')}</button>` : '')}
+      setPage(`${head('tasks.title', 'tasks.subtitle', canDo('run_tasks') ? `<button class="btn primary" data-act="new-task">${ico('plus')} ${T('tasks.new')}</button>` : '')}
         <div class="table-wrap"><table class="t"><thead><tr><th>#</th><th>${T('tasks.kind')}</th><th>${T('common.status')}</th><th>${T('tasks.steps')}</th><th></th><th class="hide-sm">${T('tasks.created_by')}</th><th class="hide-sm">${T('common.created')}</th></tr></thead><tbody>${rows}</tbody></table></div>`);
     };
     await load();
@@ -513,8 +556,8 @@
         <td class="mono">${esc(s.window)}</td><td class="mono hide-sm">${esc(s.model || '—')}</td><td>${statusChip(s.status)}</td><td class="num">${fDur(s.duration_ms)}</td>
         <td class="hide-sm">${s.result && s.result.moves != null ? `${T('dash.moves')} ${s.result.moves} · ${T('dash.candidates')} ${s.result.auto_candidate} · ${T('dash.specialist')} ${s.result.specialist}` : s.result && s.result.spans != null ? `spans ${s.result.spans}` : ''}</td></tr>`).join('');
       const actions = [
-        has('manage_tasks') && ['queued', 'running'].includes(x.status) ? `<button class="btn danger" data-act="cancel-task" data-id="${x.id}">${ico('stop')} ${T('tasks.cancel')}</button>` : '',
-        has('run_tasks') && x.failed_steps && !['queued', 'running'].includes(x.status) ? `<button class="btn warn" data-act="retry-task" data-id="${x.id}">${ico('refresh')} ${T('tasks.retry')}</button>` : '',
+        canDo('manage_tasks') && ['queued', 'running'].includes(x.status) ? `<button class="btn danger" data-act="cancel-task" data-id="${x.id}">${ico('stop')} ${T('tasks.cancel')}</button>` : '',
+        canDo('run_tasks') && x.failed_steps && !['queued', 'running'].includes(x.status) ? `<button class="btn warn" data-act="retry-task" data-id="${x.id}">${ico('refresh')} ${T('tasks.retry')}</button>` : '',
         `<a class="btn" href="#/tasks">${T('common.back')}</a>`].join('');
       const done = x.done_steps + x.skipped_steps;
       S.taskSteps = d.steps;
@@ -568,7 +611,7 @@
       <td class="num">${fNum((r.routes || {}).moves)} · ${fNum((r.routes || {}).auto_candidate)} · ${fNum((r.routes || {}).specialist)}</td>
       <td>${r.mailed_at ? `<span class="chip ok">${ico('mail')} ${T('reports.mailed')}</span>` : `<span class="chip">${T('reports.not_mailed')}</span>`}</td>
       <td class="num hide-sm">${esc(fDT(r.generated_at))}</td></tr>`).join('') : `<tr><td colspan="5" class="empty">${T('reports.empty')}</td></tr>`;
-    setPage(`${head('reports.title', 'reports.subtitle', has('generate_reports') ? `<button class="btn primary" data-act="gen-report" data-day="${d.today}">${ico('report')} ${T('reports.generate_today')}</button>` : '')}
+    setPage(`${head('reports.title', 'reports.subtitle', canDo('generate_reports') ? `<button class="btn primary" data-act="gen-report" data-day="${d.today}">${ico('report')} ${T('reports.generate_today')}</button>` : '')}
       <div class="table-wrap"><table class="t"><thead><tr><th>${T('audit.when')}</th><th>${T('reports.steps')}</th><th>${T('dash.moves')} · ${T('dash.candidates')} · ${T('dash.specialist')}</th><th>${T('common.status')}</th><th class="hide-sm">${T('common.created')}</th></tr></thead><tbody>${rows}</tbody></table></div>`);
   }
   async function viewReport(day) {
@@ -580,8 +623,8 @@
     const fails = c.failures.map((f) => `<div class="ev"><span class="tm">#${f.task_id}</span><span>${T('agent.' + f.agent)} · ${esc(tafsirName(f.tafsir))} <span class="mono">${esc(f.window)}</span> · <span class="mono faint">${esc(f.last_line)}</span></span></div>`).join('');
     const acts = [
       `<a class="btn" href="/api/reports/${esc(day)}/markdown">${ico('download')} ${T('common.download')} .md</a>`,
-      has('generate_reports') ? `<button class="btn" data-act="gen-report" data-day="${esc(day)}">${ico('refresh')} ${T('reports.regenerate')}</button>` : '',
-      has('generate_reports') ? `<button class="btn primary" data-act="mail-report" data-day="${esc(day)}">${ico('mail')} ${T('reports.mail')}</button>` : '',
+      canDo('generate_reports') ? `<button class="btn" data-act="gen-report" data-day="${esc(day)}">${ico('refresh')} ${T('reports.regenerate')}</button>` : '',
+      canDo('generate_reports') ? `<button class="btn primary" data-act="mail-report" data-day="${esc(day)}">${ico('mail')} ${T('reports.mail')}</button>` : '',
       `<a class="btn" href="#/reports">${T('common.back')}</a>`].join('');
     setPage(`<div class="page-head"><div><div class="kicker">${T('reports.title')}</div><h1 class="ltr" style="text-align:start">${esc(c.day)}</h1>
         <p class="muted">${d.mailed_at ? `${T('reports.mailed')} ${esc(fDT(d.mailed_at))}` : T('reports.not_mailed')} · ${T('reports.content_ar_note')}</p></div><div class="head-actions">${acts}</div></div>
@@ -616,7 +659,7 @@
     const d = await api(`/review/${encodeURIComponent(tafsir)}/${encodeURIComponent(win)}`);
     const preview = {};
     (d.chair ? d.chair.moves : []).forEach((c) => { preview[c.move_id] = c; });
-    const canDecide = has('review_units');
+    const canDecide = canDo('review_units');
     const reasonChip = (code) => code ? `<span class="chip warn mono" title="${T('review.verifier_reason')}">${esc(code)}</span>` : '';
     const moves = d.moves.map((m) => {
       const c = m.committee;
@@ -641,7 +684,7 @@
         ${agents}
         ${c && c.abstention_ar ? `<p class="faint mb" dir="rtl">${esc(c.abstention_ar)}</p>` : ''}
         <div class="label mb">${T('review.text')} <span class="faint mono">${esc((m.span_ids || []).join(' '))}</span></div>
-        <div class="move-text">${esc(m.text || '')}</div>
+        ${d.simulated ? `<div class="move-text sim">${ico('flask')} ${T('demo.text_hidden')}</div>` : `<div class="move-text">${esc(m.text || '')}</div>`}
         ${m.rationale_ar ? `<p class="faint mt-s"><b>${T('review.rationale')}</b> (${T('review.rationale_note')}): <span dir="rtl">${esc(m.rationale_ar)}</span></p>` : ''}
         ${canDecide ? `<div class="decide"><div class="stack"><label class="check"><input type="checkbox" data-compare><span>${T('review.compare')}</span></label>
             <input class="input" data-note placeholder="${T('review.note_ph')}" maxlength="1000"></div>
@@ -655,9 +698,9 @@
     const mdl = d.models ? `${T('agent.classifier')}: <span class="mono">${esc((d.models.proposer || {}).tag || '')}</span> · ${T('agent.verifier')}: <span class="mono">${esc((d.models.reviewer || {}).tag || '')}</span>` : '';
     S.reviewCtx = { tafsir, win };
     setPage(`<div class="page-head"><div><div class="kicker">${T('review.title')}</div><h1>${esc(d.name_ar)} · <span class="mono">${esc(d.window)}</span></h1>
-        <p class="muted">${T('progress.ayah')} <span class="mono">${esc(d.ayah)}</span> · ${T('review.source')}: <span class="mono">${esc(d.source_file)}</span> · sha256 <span class="mono">${esc((d.source_sha256 || '').slice(0, 12))}…</span></p></div>
+        <p class="muted">${T('progress.ayah')} <span class="mono">${esc(d.ayah)}</span> · ${d.simulated ? T('demo.source_none') : `${T('review.source')}: <span class="mono">${esc(d.source_file)}</span> · sha256 <span class="mono">${esc((d.source_sha256 || '').slice(0, 12))}…</span>`}</p></div>
         <div class="head-actions"><a class="btn" href="#/review">${T('common.back')}</a></div></div>
-      ${canDecide ? '' : `<div class="notice mb">${ico('info')}<span>${T('review.read_only')}</span></div>`}
+      ${canDecide ? '' : `<div class="notice mb">${ico('info')}<span>${T(inDemo() ? 'demo.read_only' : viewingAs() ? 'viewas.note' : 'review.read_only')}</span></div>`}
       <div class="notice mb">${ico('shield')}<span>${T('review.subtitle')} ${d.is_committee ? T('review.committee_note') : T('review.chair_note')}</span></div>
       ${d.is_committee ? `<section class="card mb"><div class="row between"><div class="row"><b>${T('review.committee')}</b> ${mdl}</div>
         <span class="faint">${T('dash.moves')} ${fNum(sum.move_count)} · ${T('dash.candidates')} ${fNum(sum.auto_candidate)} · ${T('dash.specialist')} ${fNum(sum.specialist)} · ${esc(sum.caption || '')}</span></div>
@@ -704,8 +747,8 @@
       <td>${esc(S.lang === 'ar' || S.lang === 'ur' ? x.role_name_ar : x.role_name_en)}</td><td class="hide-sm">${esc(((S.pub.languages || []).find((l) => l.code === x.lang) || {}).name_native || t('users.lang_default'))}</td>
       <td>${x.active ? `<span class="chip ok">${T('common.active')}</span>` : `<span class="chip bad">${T('common.inactive')}</span>`}</td>
       <td class="num hide-sm">${x.last_login_at ? esc(fDT(x.last_login_at)) : T('common.never')}</td>
-      <td class="num"><button class="btn sm" data-act="edit-user" data-id="${x.id}">${T('common.edit')}</button></td></tr>`).join('');
-    setPage(`${head('users.title', 'users.subtitle', `<button class="btn primary" data-act="add-user">${ico('plus')} ${T('users.add')}</button>`)}
+      <td class="num">${canAdmin('manage_users') ? `<button class="btn sm" data-act="edit-user" data-id="${x.id}">${T('common.edit')}</button>` : ''}</td></tr>`).join('');
+    setPage(`${head('users.title', 'users.subtitle', canAdmin('manage_users') ? `<button class="btn primary" data-act="add-user">${ico('plus')} ${T('users.add')}</button>` : '')}
       <div class="table-wrap"><table class="t"><thead><tr><th>${T('users.name')}</th><th>${T('users.role')}</th><th class="hide-sm">${T('users.lang')}</th><th>${T('common.status')}</th><th class="hide-sm">${T('users.last_login')}</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`);
   }
   function userModal(user) {
@@ -718,6 +761,7 @@
         <div class="field"><label for="u-role">${T('users.role')}</label><select class="input" id="u-role">${roles}</select></div>
         <div class="field"><label for="u-lang">${T('users.lang')}</label><select class="input" id="u-lang"><option value="">${T('users.lang_default')}</option>${langs}</select></div>
         <div class="field"><span class="label">${T('common.status')}</span><label class="switch"><input type="checkbox" id="u-active" ${!user || user.active ? 'checked' : ''}><span>${T('common.active')}</span></label></div>
+        ${user ? '' : `<div class="field full"><label class="switch"><input type="checkbox" id="u-notify" checked><span>${T('users.notify')}</span></label><span class="hint">${T('users.notify_hint')}</span></div>`}
         <div class="form-actions full">${user ? `<button type="button" class="btn ghost" data-act="revoke-user" data-id="${user.id}">${T('users.revoke')}</button>` : ''}
           <button type="button" class="btn" data-act="close-modal">${T('common.cancel')}</button><button type="submit" class="btn primary">${T('common.save')}</button></div></form>`);
     $('#f-user', m).addEventListener('submit', async (e) => {
@@ -725,8 +769,12 @@
       const body = { name: $('#u-name', m).value.trim(), role_id: Number($('#u-role', m).value), lang: $('#u-lang', m).value, active: $('#u-active', m).checked };
       try {
         if (user) await api('/users/' + user.id, { method: 'PATCH', body });
-        else await api('/users', { method: 'POST', body: { ...body, email: $('#u-email', m).value.trim() } });
-        closeModal(); toast(t('common.saved'), 'ok'); render();
+        else {
+          const r = await api('/users', { method: 'POST', body: { ...body, email: $('#u-email', m).value.trim(), notify: $('#u-notify', m).checked } });
+          if (r.mailed === false) toast(t('users.notify_failed'), 'bad');
+          else if (r.mailed) toast(t('users.notify_sent'), 'ok');
+        }
+        closeModal(); if (user) toast(t('common.saved'), 'ok'); render();
       } catch (err) { toast(errText(err), 'bad'); }
     });
   }
@@ -738,10 +786,10 @@
     S.permList = d.permissions;
     const cards = d.roles.map((r) => `<section class="card"><div class="card-h"><div><h2>${esc(roleName(r))} ${r.system ? `<span class="chip warn">${ico('lock')} ${T('roles.system')}</span>` : ''}</h2>
         <div class="faint mono">${esc(r.key)} · ${fNum(r.users)} ${T('roles.users')}</div></div>
-        ${r.system ? '' : `<div class="row"><button class="btn sm" data-act="edit-role" data-id="${r.id}">${T('common.edit')}</button><button class="btn sm danger" data-act="del-role" data-id="${r.id}">${T('common.delete')}</button></div>`}</div>
+        ${r.system || !canAdmin('manage_roles') ? '' : `<div class="row"><button class="btn sm" data-act="edit-role" data-id="${r.id}">${T('common.edit')}</button><button class="btn sm danger" data-act="del-role" data-id="${r.id}">${T('common.delete')}</button></div>`}</div>
         <p class="muted" dir="rtl" style="text-align:start">${esc(r.description_ar)}</p>
         <div class="row mt-s">${r.permissions.map((p) => `<span class="chip ok">${T('perm.' + p)}</span>`).join('')}</div></section>`).join('');
-    setPage(`${head('roles.title', 'roles.subtitle', `<button class="btn primary" data-act="add-role">${ico('plus')} ${T('roles.add')}</button>`)}<div class="grid g2">${cards}</div>`);
+    setPage(`${head('roles.title', 'roles.subtitle', canAdmin('manage_roles') ? `<button class="btn primary" data-act="add-role">${ico('plus')} ${T('roles.add')}</button>` : '')}<div class="grid g2">${cards}</div>`);
   }
   function roleModal(role) {
     const perms = (S.permList || []).map((p) => `<label class="check"><input type="checkbox" name="perm" value="${p}" ${role && role.permissions.includes(p) ? 'checked' : ''} ${has(p) ? '' : 'disabled'}><span>${T('perm.' + p)}</span></label>`).join('');
@@ -766,13 +814,13 @@
   }
 
   // ------------------------------------------------------------ settings
-  const TABS = ['general', 'llm', 'smtp', 'security', 'gates', 'reports', 'languages', 'outbox'];
+  const TABS = ['general', 'llm', 'smtp', 'security', 'gates', 'reports', 'demo', 'languages', 'outbox'];
   async function viewSettings(tab) {
     if (tab && TABS.includes(tab)) S.settingsTab = tab;
     const tabNav = `<div class="tabs" role="tablist">${TABS.filter((x) => x !== 'languages' || has('manage_languages')).map((x) => `<button role="tab" class="${x === S.settingsTab ? 'on' : ''}" data-act="tab" data-tab="${x}">${T('settings.tab.' + x)}</button>`).join('')}</div>`;
     setPage(`${head('settings.title', 'settings.subtitle')}${tabNav}<div id="tab-body">${loading()}</div>`);
     const body = $('#tab-body');
-    const tabFn = { languages: tabLanguages, outbox: tabOutbox }[S.settingsTab] || tabSection;
+    const tabFn = { languages: tabLanguages, outbox: tabOutbox, demo: tabDemo }[S.settingsTab] || tabSection;
     body.innerHTML = await tabFn(S.settingsTab);
     bindTab(S.settingsTab);
   }
@@ -792,7 +840,8 @@
     let extra = '';
     if (sec === 'general') {
       fields = fieldFor(sec, 'project_name', v.project_name) + fieldFor(sec, 'team_name', v.team_name) + fieldFor(sec, 'timezone', v.timezone, { ltr: true })
-        + fieldFor(sec, 'surah', v.surah) + fieldFor(sec, 'data_root', v.data_root, { ltr: true }) + fieldFor(sec, 'sample_ayah', v.sample_ayah, { ltr: true });
+        + fieldFor(sec, 'surah', v.surah) + fieldFor(sec, 'data_root', v.data_root, { ltr: true }) + fieldFor(sec, 'sample_ayah', v.sample_ayah, { ltr: true })
+        + fieldFor(sec, 'console_url', v.console_url, { ltr: true, full: true, ph: 'https://console.mirqah.app', hint: T('set.general.console_url_hint') });
     } else if (sec === 'llm') {
       let probe = null;
       try { probe = await api('/llm/probe'); } catch { /* shown below */ }
@@ -826,7 +875,28 @@
         + `<div class="field full"><span class="label">${T('set.reports.mail_roles')}</span><div class="perm-grid">${r.roles.map((x) => `<label class="check"><input type="checkbox" name="mail_roles" value="${esc(x.key)}" ${v.mail_roles.includes(x.key) ? 'checked' : ''}><span>${esc(roleName(x))}</span></label>`).join('')}</div></div>`;
     }
     return `<form id="f-settings" class="card" data-sec="${sec}"><div class="form-grid">${fields}</div>
-      <div class="form-actions"><button class="btn primary" type="submit">${T('common.save')}</button></div></form>${extra}`;
+      <div class="form-actions">${canAdmin('manage_settings') ? `<button class="btn primary" type="submit">${T('common.save')}</button>` : `<span class="faint">${T('viewas.note')}</span>`}</div></form>${extra}`;
+  }
+  async function tabDemo() {
+    const [st, d] = await Promise.all([api('/demo'), api('/settings')]);
+    const v = d.settings.demo;
+    S.settings = d.settings;
+    const c = st.counts || {};
+    const status = st.available
+      ? `<div class="notice ok">${ico('check')}<span>${T('demo.status', { from: fmt(st.start, { day: '2-digit', month: 'short', year: 'numeric' }), to: fmt(st.end, { day: '2-digit', month: 'short', year: 'numeric' }), m: st.months })}</span></div>
+        <div class="grid g4 mt">${[['tasks', 'nav.tasks'], ['task_steps', 'reports.steps'], ['decisions', 'reports.decisions'], ['reports', 'nav.reports']].map(([k, l]) => `<div class="card flat"><div class="kicker">${T(l)}</div><div class="stat">${fNum(c[k])}</div></div>`).join('')}</div>`
+      : `<div class="notice">${ico('info')}<span>${T('demo.status_none')}</span></div>`;
+    const months = [9, 12, 18].map((m) => `<option value="${m}" ${m === v.months ? 'selected' : ''}>${T('demo.months_n', { n: m })}</option>`).join('');
+    const can = canAdmin('manage_settings');
+    return `<section class="card"><div class="card-h"><div><h2>${ico('flask')} ${T('settings.tab.demo')}</h2><p class="faint mt-s">${T('demo.note')}</p></div></div>
+        ${status}
+        ${can ? `<div class="row mt"><div class="field" style="min-width:180px"><label for="demo-months">${T('set.demo.months')}</label><select class="input" id="demo-months">${months}</select></div>
+          <button class="btn primary" data-act="demo-seed" style="align-self:flex-end">${ico('refresh')} ${T(st.available ? 'demo.regenerate' : 'demo.generate')}</button>
+          ${st.available ? `<button class="btn danger" data-act="demo-clear" style="align-self:flex-end">${ico('x')} ${T('demo.delete')}</button>` : ''}</div>` : ''}</section>
+      <form id="f-settings" class="card mt" data-sec="demo"><div class="form-grid">
+        ${fieldFor('demo', 'guest_mode', v.guest_mode, { choices: ['live', 'demo'], full: true, hint: T('set.demo.guest_mode_hint') })}
+        <input type="hidden" data-k="months" value="${esc(v.months)}"></div>
+        <div class="form-actions">${can ? `<button class="btn primary" type="submit">${T('common.save')}</button>` : ''}</div></form>`;
   }
   async function tabLanguages() {
     const d = await api('/languages');
@@ -848,9 +918,10 @@
   async function tabOutbox() {
     const d = await api('/outbox');
     const rows = d.outbox.map((o) => `<tr><td class="num">${esc(fDT(o.at))}</td><td class="ltr">${esc(o.to_addr)}</td><td>${esc(o.subject)}</td><td><span class="chip">${esc(o.mode)}</span></td>
-      <td><span class="chip ${o.status === 'failed' ? 'bad' : 'ok'}">${esc(o.status)}</span>${o.error ? `<div class="faint mono">${esc(o.error)}</div>` : ''}</td></tr>`).join('')
-      || `<tr><td colspan="5" class="empty">${T('common.empty')}</td></tr>`;
-    return `<div class="table-wrap"><table class="t"><thead><tr><th>${T('audit.when')}</th><th>${T('outbox.to')}</th><th>${T('outbox.subject')}</th><th>${T('outbox.mode')}</th><th>${T('common.status')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      <td><span class="chip ${o.status === 'failed' ? 'bad' : 'ok'}">${esc(o.status)}</span>${o.error ? `<div class="faint mono">${esc(o.error)}</div>` : ''}</td>
+      <td class="num">${o.has_html ? `<a class="btn sm" href="/api/outbox/${o.id}/html" target="_blank" rel="noopener">${ico('eye')} ${T('outbox.preview')}</a>` : ''}</td></tr>`).join('')
+      || `<tr><td colspan="6" class="empty">${T('common.empty')}</td></tr>`;
+    return `<div class="table-wrap"><table class="t"><thead><tr><th>${T('audit.when')}</th><th>${T('outbox.to')}</th><th>${T('outbox.subject')}</th><th>${T('outbox.mode')}</th><th>${T('common.status')}</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
   function bindTab(sec) {
     const f = $('#f-settings');
@@ -860,7 +931,7 @@
       $$('[data-k]', f).forEach((el) => {
         const k = el.dataset.k;
         if (el.type === 'checkbox') body[k] = el.checked;
-        else if (el.type === 'number') body[k] = Number(el.value);
+        else if (el.type === 'number' || (el.type === 'hidden' && /^\d+$/.test(el.value))) body[k] = Number(el.value);
         else body[k] = el.value;
       });
       if (sec === 'reports') body.mail_roles = $$('input[name=mail_roles]:checked', f).map((x) => x.value);
@@ -903,6 +974,33 @@
     });
   }
 
+  // ------------------------------------------------------------ view as another user (super admin, read-only)
+  async function viewAsModal() {
+    const d = await api('/view-as/users', { noViewAs: true });
+    const rn = (u) => (S.lang === 'ar' || S.lang === 'ur' ? u.role_name_ar : u.role_name_en);
+    const rows = d.users.map((u) => `<button class="pick" data-act="view-as-pick" data-email="${esc(u.email)}">
+        <span class="avatar">${esc(initials(u.name))}</span><span class="pick-main"><b>${esc(u.name)}</b><span class="faint ltr">${esc(u.email)}</span></span>
+        <span class="chip ${u.role_key === 'super_admin' ? 'warn' : u.role_key === 'specialist' ? 'violet' : ''}">${esc(rn(u))}</span></button>`).join('')
+      || `<div class="empty">${T('viewas.empty')}</div>`;
+    const m = modal(`${modalHead(t('viewas.title'))}<p class="muted mb">${T('viewas.intro')}</p>
+      <input class="input mb" id="va-search" placeholder="${T('viewas.search')}" autocomplete="off">
+      <div class="pick-list">${rows}</div>`);
+    $('#va-search', m).addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      $$('.pick', m).forEach((b) => { b.style.display = b.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+    });
+  }
+  async function startViewAs(email) {
+    await api('/view-as', { method: 'POST', body: { email }, noViewAs: true });
+    S.viewAs = email; store.set('mq-view-as', email);
+    location.hash = '#/dashboard'; location.reload();
+  }
+  async function stopViewAs() {
+    try { await api('/view-as/stop', { method: 'POST' }); } catch { /* clear locally anyway */ }
+    S.viewAs = ''; store.set('mq-view-as', '');
+    location.reload();
+  }
+
   // ------------------------------------------------------------ profile
   async function viewProfile() {
     const langs = (S.pub.languages || []).map((l) => `<option value="${esc(l.code)}" ${S.me.lang === l.code ? 'selected' : ''}>${esc(l.name_native)}</option>`).join('');
@@ -939,6 +1037,22 @@
     try {
       switch (act) {
         case 'close-modal': closeModal(); break;
+        case 'mode': {
+          if (el.classList.contains('on')) break;
+          const r = await api('/mode', { method: 'POST', body: { mode: el.dataset.mode } });
+          const me = await api('/me'); S.me = me.user; S.demoAvailable = me.demo_available;
+          toast(t(r.mode === 'demo' ? 'mode.on_demo' : 'mode.on_live'), 'ok'); render(); break;
+        }
+        case 'view-as': viewAsModal(); break;
+        case 'view-as-pick': await startViewAs(el.dataset.email); break;
+        case 'view-as-stop': await stopViewAs(); break;
+        case 'demo-seed': {
+          el.disabled = true; el.innerHTML = `<span class="spinner sm"></span> ${T('demo.generating')}`;
+          try { await api('/demo/seed', { method: 'POST', body: { months: Number($('#demo-months').value) } }); S.demoAvailable = true; toast(t('common.saved'), 'ok'); }
+          finally { render(); }
+          break;
+        }
+        case 'demo-clear': if (await confirmBox(t('demo.confirm_delete'))) { await api('/demo', { method: 'DELETE' }); S.demoAvailable = false; const me = await api('/me'); S.me = me.user; render(); } break;
         case 'nav-toggle': document.body.classList.toggle('nav-open'); break;
         case 'theme': {
           const order = ['auto', 'light', 'dark'];
@@ -958,7 +1072,8 @@
         case 'resend': sendCode(S.loginEmail); break;
         case 'guest': {
           const r = await api('/auth/guest', { method: 'POST' });
-          S.me = r.user; S.loginStep = 'email';
+          S.loginStep = 'email';
+          { const me = await api('/me'); S.me = me.user || r.user; S.demoAvailable = !!me.demo_available; }
           if (!location.hash || location.hash === '#/') location.hash = '#/dashboard';
           render(); break;
         }
@@ -1008,7 +1123,13 @@
   (async function boot() {
     applyTheme();
     try { S.pub = await api('/public'); } catch { $('#app').innerHTML = `<div class="auth-wrap"><div class="notice bad">${ico('warn')}<span>Console server not reachable.</span></div></div>`; return; }
-    try { const me = await api('/me'); S.me = me.user; } catch { S.me = null; }
+    S.viewAs = store.get('mq-view-as', '');
+    await loadBrand();
+    try {
+      const me = await api('/me'); S.me = me.user; S.demoAvailable = !!me.demo_available;
+      // the server is the authority: drop a stale switch (account disabled, no longer super admin…)
+      if (S.viewAs && !S.me.view_as) { S.viewAs = ''; store.set('mq-view-as', ''); }
+    } catch { S.me = null; }
     const want = (S.me && S.me.lang) || store.get('mq-lang', '') || S.pub.default_lang;
     await setLang(want, false);
     render();

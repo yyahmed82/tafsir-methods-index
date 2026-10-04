@@ -15,7 +15,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from . import config, settings
+from . import config, db, settings
 
 if str(config.REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(config.REPO_ROOT / "src"))
@@ -33,7 +33,20 @@ _CACHE_LOCK = threading.Lock()
 
 
 def data_root() -> Path:
-    return (config.REPO_ROOT / settings.get("general")["data_root"]).resolve()
+    return (config.work_root() / settings.get("general")["data_root"]).resolve()
+
+
+def _demo():
+    """console.demo when the current request runs in demo mode, else None."""
+    if db.mode() == "demo":
+        from . import demo
+        return demo
+    return None
+
+
+def gates(as_of: float | None = None) -> dict:
+    d = _demo()
+    return d.gates(as_of) if d else settings.get("gates")
 
 
 def base_dir(tafsir: str) -> Path:
@@ -161,8 +174,11 @@ def _summaries(tafsir: str, annotator: str) -> dict[str, dict]:
     return out
 
 
-def progress() -> dict:
+def progress(as_of: float | None = None) -> dict:
     """Coverage per tafsir for the configured classifier / verifier models."""
+    d = _demo()
+    if d:
+        return d.progress(as_of)
     m = models()
     per_tafsir = []
     totals = {"windows": 0, "classifier": 0, "verifier": 0, "both": 0,
@@ -196,6 +212,9 @@ def progress() -> dict:
 
 def ayah_matrix() -> dict:
     """Status per ayah × tafsir: none | partial | classifier | both."""
+    d = _demo()
+    if d:
+        return d.ayah_matrix()
     m = models()
     cols = []
     ayat: dict[int, dict] = {}
@@ -328,6 +347,9 @@ def chair_preview(tafsir: str, window: str) -> dict | None:
 
 def review_units(tafsir: str | None = None) -> list[dict]:
     """Windows ready for review: the chair's decision when it exists, else agent 1."""
+    d = _demo()
+    if d:
+        return d.review_units(tafsir)
     m = models()
     out = []
     for t in config.TAFSIRS:
@@ -363,6 +385,9 @@ def _get_json(url: str, timeout: float = 4.0) -> Any:
 
 
 def probe_llm() -> dict:
+    d = _demo()
+    if d:
+        return d.probe()
     llm = settings.get("llm")
     base = llm["base_url"].rstrip("/")
     out: dict[str, Any] = {"base_url": base, "runtime": llm["runtime"], "reachable": False,

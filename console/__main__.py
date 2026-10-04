@@ -2,11 +2,14 @@
 
     python -m console                      # serve on http://127.0.0.1:8800
     python -m console --host 0.0.0.0       # LAN (use only on a trusted network)
-    python -m console create-user --email you@example.com --name "Yosri" --role super_admin
+    python -m console create-user --email you@example.com --name "Yosri" --role super_admin [--notify]
     python -m console list-users
     python -m console settings-show [section]
     python -m console settings-set smtp mode=smtp host=smtp-relay.brevo.com port=587
     python -m console mail-test --to you@example.com
+    python -m console demo-seed [--months 12]   # simulated year for demo mode (separate database)
+    python -m console demo-status | demo-clear
+    python -m console llm-probe                 # can the console reach the model server?
 """
 
 from __future__ import annotations
@@ -39,6 +42,14 @@ def _create_user(args: argparse.Namespace) -> int:
                    " (?,?,?,?,1,?)", (email, args.name, role["id"], args.lang, db.now()))
         print(f"created {email} as {args.role}")
     db.audit("user.cli_create", target=email, detail={"role": args.role})
+    if args.notify:
+        from . import mailer, mailtpl
+        try:
+            mailer.send_mail(email, mailtpl.welcome(args.name, email, role["name_ar"],
+                                                    role["description_ar"], None))
+            print(f"welcome mail sent to {email}")
+        except mailer.MailError as e:
+            print(f"welcome mail failed: {e}", file=sys.stderr)
     return 0
 
 
@@ -118,18 +129,53 @@ def _settings_set(args: argparse.Namespace) -> int:
 
 
 def _mail_test(args: argparse.Namespace) -> int:
-    from . import db, mailer, settings
+    from . import db, mailer, mailtpl, settings
     db.init()
     settings.seed()
-    gen = settings.get("general")
     try:
-        res = mailer.send(args.to, f"اختبار البريد — {gen['team_name']}",
-                          "رسالة اختبار من لوحة لجنة مِرْقاة.\nTest message from the Mirqah "
-                          "committee console.\n")
+        res = mailer.send_mail(args.to, mailtpl.test(args.to))
     except mailer.MailError as e:
         print(f"mail failed: {e}", file=sys.stderr)
         return 1
     print(f"mail {res['status']} (mode={res['mode']}) to {args.to}")
+    return 0
+
+
+def _llm_probe(_args: argparse.Namespace) -> int:
+    import json
+    from . import config, db, pipeline, settings
+    db.init()
+    settings.seed()
+    out = pipeline.probe_llm()
+    out["work_root"] = str(config.work_root())
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+    ok = out.get("reachable") and out.get("classifier_installed") and out.get("verifier_installed")
+    print("\nOK: the console can reach both models." if ok else
+          "\nNOT READY: check the Mac is awake, Tailscale is up and llm.base_url is right.")
+    return 0 if ok else 1
+
+
+def _demo(args: argparse.Namespace) -> int:
+    import json
+    from . import db, demo, settings
+    db.init()
+    settings.seed()
+    if args.cmd == "demo-clear":
+        demo.clear()
+        db.audit("demo.clear", detail={"via": "cli"})
+        print("demo data removed")
+        return 0
+    if args.cmd == "demo-seed":
+        months = args.months or settings.get("demo")["months"]
+        try:
+            out = demo.seed(months)
+        except RuntimeError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        db.audit("demo.seed", detail={"months": months, "via": "cli"})
+    else:
+        out = demo.status()
+    print(json.dumps(out, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -143,6 +189,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--name", required=True)
     c.add_argument("--role", default="super_admin")
     c.add_argument("--lang", default="")
+    c.add_argument("--notify", action="store_true", help="e-mail a welcome message with the sign-in steps")
     sub.add_parser("list-users")
     sh = sub.add_parser("settings-show", help="print settings (secrets redacted)")
     sh.add_argument("section", nargs="?")
@@ -151,7 +198,16 @@ def main(argv: list[str] | None = None) -> int:
     st.add_argument("pairs", nargs="+")
     mt = sub.add_parser("mail-test", help="send a test e-mail with the current SMTP settings")
     mt.add_argument("--to", required=True)
+    ds = sub.add_parser("demo-seed", help="build the simulated year shown in demo mode")
+    ds.add_argument("--months", type=int, default=0, help="3–18 (default: Settings → demo)")
+    sub.add_parser("demo-status")
+    sub.add_parser("demo-clear")
+    sub.add_parser("llm-probe", help="check the model server (base_url, models installed)")
     args = p.parse_args(argv)
+    if args.cmd == "llm-probe":
+        return _llm_probe(args)
+    if args.cmd in ("demo-seed", "demo-status", "demo-clear"):
+        return _demo(args)
     if args.cmd == "create-user":
         return _create_user(args)
     if args.cmd == "list-users":

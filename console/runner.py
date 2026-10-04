@@ -20,7 +20,7 @@ import threading
 import time
 from typing import Any
 
-from . import config, db, mailer, pipeline, settings
+from . import config, db, mailer, mailtpl, pipeline, settings
 
 log = logging.getLogger("mirqah.console")
 
@@ -102,9 +102,8 @@ def is_bulk(scope: str, steps: list[dict]) -> bool:
     return scope != "sample" and len(windows) > limit
 
 
-def create_task(kind: str, scope: str, ayat: str, tafsirs: list[str], skip_done: bool,
-                user: dict) -> int:
-    steps = plan_steps(kind, scope, ayat, tafsirs)
+def check_gates(kind: str, scope: str, steps: list[dict], user: dict) -> bool:
+    """Raise TaskError when a bulk run is not allowed yet; return whether it is bulk."""
     bulk = is_bulk(scope, steps) and kind != "dryrun"
     if bulk:
         gates = settings.get("gates")
@@ -114,6 +113,13 @@ def create_task(kind: str, scope: str, ayat: str, tafsirs: list[str], skip_done:
             raise TaskError("bulk_gate_phase0")
         if not gates["sample_reviewed"]:
             raise TaskError("bulk_gate_sample")
+    return bulk
+
+
+def create_task(kind: str, scope: str, ayat: str, tafsirs: list[str], skip_done: bool,
+                user: dict) -> int:
+    steps = plan_steps(kind, scope, ayat, tafsirs)
+    bulk = check_gates(kind, scope, steps, user)
     windows = sorted({(s["tafsir"], s["window"]) for s in steps})
     title = f"{KIND_TITLES_AR[kind]} — {SCOPE_TITLES_AR.get(scope, scope)}"
     if scope == "ayat":
@@ -244,7 +250,7 @@ def _run_step(task: dict, step: dict) -> None:
         return
     timeout = settings.get("llm")["step_timeout_s"]
     try:
-        proc = subprocess.Popen(cmd, cwd=config.REPO_ROOT, env=env, stdout=subprocess.PIPE,
+        proc = subprocess.Popen(cmd, cwd=config.work_root(), env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, encoding="utf-8",
                                 errors="replace")
     except OSError as e:
@@ -458,7 +464,7 @@ def perf_summary(start: float | None = None, end: float | None = None) -> dict:
         groups.setdefault((r["agent"], r["model"] or ""), []).append(r)
     agents = []
     m = pipeline.models()
-    prog = pipeline.progress()["totals"]
+    prog = pipeline.progress(as_of=end)["totals"]
     for (agent, model), rs in sorted(groups.items()):
         ok = [r for r in rs if r["status"] == "done"]
         secs = [r["duration_ms"] / 1000 for r in ok if r["duration_ms"] is not None]
@@ -500,7 +506,7 @@ REASON_AR = {
 }
 
 
-def build_report(day: str) -> dict:
+def build_report(day: str, as_of: float | None = None) -> dict:
     start, end = day_bounds(day)
     steps = db.rows("SELECT * FROM task_steps WHERE finished_at BETWEEN ? AND ?", (start, end))
     ok = [s for s in steps if s["status"] == "done"]
@@ -546,8 +552,8 @@ def build_report(day: str) -> dict:
     dec = db.row("SELECT COUNT(*) n, SUM(decision='approve') approve,"
                  " SUM(decision='needs_edit') needs_edit, SUM(decision='reject') reject"
                  " FROM decisions WHERE created_at BETWEEN ? AND ?", (start, end)) or {}
-    prog = pipeline.progress()
-    gates = settings.get("gates")
+    prog = pipeline.progress(as_of=as_of)
+    gates = pipeline.gates(as_of)
     nxt = []
     if not gates["phase0_merged"]:
         nxt.append("إغلاق فجوات الإسناد السبع (المرحلة ٠) ودمجها قبل أي وسم جماعي.")
@@ -659,12 +665,11 @@ def mail_report(day: str, user_id: int | None) -> dict:
     q = ",".join("?" * len(roles))
     users = db.rows(f"SELECT u.email FROM users u JOIN roles r ON r.id=u.role_id"
                     f" WHERE u.active=1 AND r.key IN ({q})", roles)
-    body = report_markdown(content)
-    team = settings.get("general")["team_name"]
+    mail = mailtpl.report(content, report_markdown(content))
     sent = failed = 0
     for u in users:
         try:
-            mailer.send(u["email"], f"التقرير اليومي — {team} — {day}", body)
+            mailer.send_mail(u["email"], mail)
             sent += 1
         except mailer.MailError:
             failed += 1

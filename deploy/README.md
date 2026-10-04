@@ -72,11 +72,32 @@ EOF
 | Rotate the SMTP key | `sudo mirqah set-env MIRQAH_SMTP_PASSWORD` |
 | Hosted model key (team decision first) | `sudo mirqah set-env LLM_API_KEY` |
 | Backup now / list | `sudo mirqah-backup` · `sudo mirqah-backup list` (nightly at 03:15, 14 days kept) |
+| Model link check | `sudo mirqah llm-probe` |
+| Demo data (simulated year) | `sudo mirqah demo-seed --months 12` · `sudo mirqah demo-status` · `sudo mirqah demo-clear` |
 | Deploy messages in Discord | add `DISCORD_WEBHOOK_URL="…"` to `/etc/mirqah/deploy.env` |
 
 Layout: releases in `/opt/mirqah/releases/<time>-<sha>`, live one at `/opt/mirqah/current`, state (DB, key)
 in `/var/lib/mirqah`, secrets in `/etc/mirqah/mirqah.env` (root:mirqah 0640), deploy history in
 `/var/lib/mirqah-deploy/history`.
+
+## Connect the AI (models stay on the Mac, private link)
+
+The server never runs the models. It calls Ollama on the team Mac through **Tailscale** (WireGuard,
+free): nothing is opened to the internet, and Ollama keeps listening on the Mac's localhost only.
+
+| Where | Once |
+|---|---|
+| Mac | Install Tailscale (`brew install --cask tailscale`), open it, sign in. Keep Ollama running with both models. |
+| Mac | Publish Ollama to your tailnet only: `tailscale serve --bg --tcp 11434 tcp://localhost:11434` |
+| Server | `curl -fsSL https://tailscale.com/install.sh \| sh` then `sudo tailscale up --hostname mirqah-console` (open the printed link, approve) |
+| Server | `sudo mirqah settings-set llm base_url=http://<mac-tailscale-name>:11434` then `sudo mirqah llm-probe` |
+
+Runs write `moves/`, `verified/`, `committee/` in the run workspace `/var/lib/mirqah/work`
+(`MIRQAH_WORK_ROOT`), which `mirqah-deploy` refreshes from every release without deleting run outputs
+(`sudo mirqah-deploy sync-work` refreshes it by hand). To bring results into git, on the Mac:
+`bash deploy/mac/pull-runs.sh` → review → commit on a branch → PR. While the Mac sleeps the dashboard
+says "engine offline", review and reports keep working, and new model runs are refused (packet checks still run).
+Keep the Mac awake during demos: `caffeinate -dimsu`.
 
 ## Security checklist
 
