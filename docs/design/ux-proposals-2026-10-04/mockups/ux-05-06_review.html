@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>وضع المراجعة والاعتماد — فهرس مناهج التفسير</title>
+  <style>
+    :root {
+      --base: #F6F7FC;
+      --surface: #FFFFFF;
+      --surface-2: #EBEEFA;
+      --line: #E3E6F2;
+      --ink: #161B3D;
+      --sub: #4A5175;
+      --muted: #7E86A8;
+      --accent: #5B3FD9;
+      --accent-bg: #EEEAFE;
+      --ok: #0C7A5C;
+      --ok-bg: #E3F5EE;
+      --warn: #9A6A12;
+      --warn-bg: #FBF1DC;
+      --bad: #A3264F;
+      --bad-bg: #FBE6EE;
+      --teal: #0C5C52;
+      --teal-bg: rgba(12, 92, 82, 0.08);
+
+      /* Method colors */
+      --m-quran: #3C2BB8;
+      --m-sunnah: #0C5C52;
+      --m-lugha: #6A3418;
+      --m-tabiin: #1A4F86;
+      --m-ray: #1F4D2A;
+
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 1px 3px rgba(22, 27, 61, 0.05);
+      --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Readex Pro", "IBM Plex Sans Arabic", "Noto Sans Arabic", Tahoma, sans-serif;
+      --font-text: "Noto Naskh Arabic", "Amiri", "Traditional Arabic", serif;
+      --font-quran: "Amiri", "Noto Naskh Arabic", serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--base);
+      color: var(--ink);
+      font-family: var(--font-ui);
+      width: 1440px;
+      height: 900px;
+      overflow: hidden;
+      direction: rtl;
+      text-align: right;
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top App Header */
+    header.app-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-logo {
+      height: 36px;
+      width: auto;
+      display: block;
+    }
+    .brand-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--line);
+    }
+    .nav-selectors {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .selector-chip {
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .trust-pill {
+      font-size: 0.8rem;
+      color: var(--sub);
+      background: var(--surface-2);
+      padding: 4px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+    }
+
+    /* 3-Column Review Layout */
+    .review-container {
+      display: grid;
+      grid-template-columns: 310px 1fr 340px;
+      gap: 16px;
+      padding: 16px 24px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* RIGHT COLUMN: Queue Panel (UX-5 Fix) */
+    .queue-panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+    /* UX-5: Header on its own line */
+    .queue-header-box {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .queue-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .queue-title-row h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .queue-badge-count {
+      font-size: 0.76rem;
+      background: var(--surface-2);
+      padding: 2px 8px;
+      border-radius: 999px;
+      color: var(--sub);
+      font-weight: 600;
+    }
+    /* UX-5: Tabs cleanly placed below the title */
+    .queue-tabs-row {
+      display: flex;
+      background: var(--base);
+      padding: 3px;
+      border-radius: 8px;
+      gap: 4px;
+    }
+    .queue-tab {
+      flex: 1;
+      text-align: center;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 6px 0;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      color: var(--sub);
+      cursor: pointer;
+    }
+    .queue-tab.is-active {
+      background: var(--surface);
+      color: var(--ink);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    .queue-list {
+      padding: 10px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .queue-item {
+      display: grid;
+      grid-template-columns: 8px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: var(--surface);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .queue-item:hover {
+      background: var(--surface-2);
+    }
+    .queue-item.is-selected {
+      background: var(--accent-bg);
+      border-color: var(--accent);
+    }
+    .queue-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .queue-item-text {
+      min-width: 0;
+    }
+    .queue-item-text .primary-txt {
+      font-size: 0.86rem;
+      font-weight: 600;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .queue-item-text .secondary-txt {
+      font-size: 0.74rem;
+      color: var(--muted);
+    }
+    .item-tag {
+      font-size: 0.72rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    /* CENTER COLUMN: Text in Context (UX-6 Fix) */
+    .text-panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 22px 26px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+    .text-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .text-panel-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .text-legend-mini {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.78rem;
+      color: var(--sub);
+    }
+    .legend-indicator {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .legend-box-active {
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--accent);
+      border-radius: 2px;
+      background: var(--accent-bg);
+    }
+    .legend-line-other {
+      width: 14px;
+      height: 2px;
+      background: var(--m-sunnah);
+    }
+
+    .tafsir-scroll-area {
+      overflow-y: auto;
+      font-family: var(--font-text);
+      font-size: 1.25rem;
+      line-height: 2.3;
+      color: var(--ink);
+      padding-left: 10px;
+    }
+    .quran-verse-block {
+      background: var(--teal-bg);
+      border-right: 3px solid var(--teal);
+      padding: 8px 14px;
+      margin-bottom: 18px;
+      border-radius: 4px;
+      font-family: var(--font-quran);
+      font-weight: 700;
+      color: var(--teal);
+      font-size: 1.28rem;
+    }
+
+    /* UX-6: Evidence highlights as light background + 2px underline */
+    .ev-span {
+      padding: 1px 2px;
+      text-decoration-line: underline;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 3px;
+      border-radius: 2px;
+    }
+    .ev-quran {
+      background: rgba(60, 43, 184, 0.08);
+      text-decoration-color: var(--m-quran);
+    }
+    .ev-sunnah {
+      background: rgba(12, 92, 82, 0.08);
+      text-decoration-color: var(--m-sunnah);
+    }
+    .ev-lugha {
+      background: rgba(106, 52, 24, 0.08);
+      text-decoration-color: var(--m-lugha);
+    }
+
+    /* UX-6: ONLY active passage is framed */
+    .ev-active-framed {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+      background: var(--accent-bg);
+      border-radius: 4px;
+      color: var(--ink);
+      font-weight: 600;
+      position: relative;
+    }
+    .active-span-badge {
+      font-family: var(--font-ui);
+      font-size: 0.65rem;
+      font-weight: 700;
+      background: var(--accent);
+      color: #FFFFFF;
+      padding: 1px 6px;
+      border-radius: 3px;
+      margin-right: 4px;
+      vertical-align: middle;
+      display: inline-block;
+      line-height: 1.4;
+    }
+
+    /* LEFT COLUMN: Decision Panel */
+    .decision-panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      box-shadow: var(--shadow-sm);
+    }
+    .decision-panel-head {
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line);
+    }
+    /* Heading «قرار المختص» */
+    .decision-subheading {
+      font-size: 0.74rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+    }
+    .proposal-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .method-dot-lg {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--m-quran);
+    }
+
+    .meta-kv-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 6px 12px;
+      font-size: 0.82rem;
+      background: var(--base);
+      padding: 10px 12px;
+      border-radius: 8px;
+    }
+    .meta-kv-grid .lbl { color: var(--muted); }
+    .meta-kv-grid .val { font-weight: 600; color: var(--ink); }
+
+    /* Specialist Decision Actions */
+    .decision-actions-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .section-sm-lbl {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--sub);
+    }
+    .btn-action {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 11px 14px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      border: 1px solid transparent;
+      font-family: inherit;
+      transition: all 0.15s ease;
+    }
+    /* Prominent «اعتماد» button */
+    .btn-approve {
+      background: var(--ok);
+      color: #FFFFFF;
+      box-shadow: 0 2px 8px rgba(12, 122, 92, 0.2);
+    }
+    .btn-approve:hover {
+      background: #09684e;
+    }
+    .specialist-tag {
+      font-size: 0.68rem;
+      background: rgba(255, 255, 255, 0.25);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .btn-edit {
+      background: var(--surface);
+      border-color: var(--line);
+      color: var(--ink);
+    }
+    .btn-edit:hover {
+      background: var(--surface-2);
+    }
+    .btn-reject {
+      background: var(--surface);
+      border-color: #F8D0DF;
+      color: var(--bad);
+    }
+    .btn-reject:hover {
+      background: var(--bad-bg);
+    }
+
+    .notes-box {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .notes-input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-family: inherit;
+      font-size: 0.8rem;
+      background: var(--surface);
+      color: var(--ink);
+      resize: vertical;
+      min-height: 54px;
+    }
+
+    .nav-pager {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-top: auto;
+    }
+    .pager-btn {
+      background: transparent;
+      border: none;
+      color: var(--sub);
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: inherit;
+    }
+    .pager-btn:hover {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top App Header -->
+  <header class="app-header">
+    <div class="header-right">
+      <div class="brand-wrap">
+        <img src="../../../../web/assets/brand/mirqah-wordmark.svg" alt="مِرْقاة" class="brand-logo">
+        <span class="brand-divider"></span>
+      </div>
+      <div class="nav-selectors">
+        <div class="selector-chip">
+          <span>كتاب التفسير:</span>
+          <strong>جامع البيان (الطبري)</strong>
+        </div>
+        <div class="selector-chip">
+          <span>الموضع:</span>
+          <strong>سورة البقرة: الآية ٢٥٥ (آية الكرسي)</strong>
+        </div>
+      </div>
+    </div>
+    <div class="header-left">
+      <span class="trust-pill">
+        🛡️ النص مطابق للمصدر حرفاً بحرف (sha256: 8f4a...29c)
+      </span>
+    </div>
+  </header>
+
+  <!-- 3-Column Review Container -->
+  <div class="review-container">
+
+    <!-- RIGHT: Queue Panel (UX-5 Fix) -->
+    <aside class="queue-panel">
+      <!-- Header on its own line -->
+      <div class="queue-header-box">
+        <div class="queue-title-row">
+          <h3>طابور المواضع</h3>
+          <span class="queue-badge-count">إجمالي: [ن]</span>
+        </div>
+        <!-- Tabs placed cleanly below without overlapping -->
+        <div class="queue-tabs-row">
+          <button class="queue-tab is-active">مرشّح ([ن])</button>
+          <button class="queue-tab">بانتظار المختص ([ن])</button>
+          <button class="queue-tab">معتمد ([ن])</button>
+        </div>
+      </div>
+
+      <!-- Queue list items -->
+      <div class="queue-list">
+        <div class="queue-item is-selected">
+          <div class="queue-dot" style="background: var(--m-quran);"></div>
+          <div class="queue-item-text">
+            <div class="primary-txt">قد دلَّلْنا فيما مضى على تأويلِ قولِ اللهِ جلّ ثناؤه: {اللَّهُ}</div>
+            <div class="secondary-txt">موضع [ن] · منهج: تفسير القرآن بالقرآن</div>
+          </div>
+          <span class="item-tag" style="background: var(--accent-bg); color: var(--accent);">نشط</span>
+        </div>
+
+        <div class="queue-item">
+          <div class="queue-dot" style="background: var(--m-sunnah);"></div>
+          <div class="queue-item-text">
+            <div class="primary-txt">فإن معناه النَّهيُ عن أن يُعبدَ شيءٌ غيرُ اللهِ الحيِّ القَيُّومِ</div>
+            <div class="secondary-txt">موضع [ن] · منهج: الاستدلال بالسنة</div>
+          </div>
+          <span class="item-tag" style="background: var(--surface-2); color: var(--sub);">اقتراح</span>
+        </div>
+
+        <div class="queue-item">
+          <div class="queue-dot" style="background: var(--m-lugha);"></div>
+          <div class="queue-item-text">
+            <div class="primary-txt">يعني بقولِه جلّ ثناؤُه: {لَا تَأْخُذُهُ سِنَةٌ}: لا يَأْخُذُه نُعاسٌ</div>
+            <div class="secondary-txt">موضع [ن] · منهج: دلالة لغوية</div>
+          </div>
+          <span class="item-tag" style="background: var(--surface-2); color: var(--sub);">اقتراح</span>
+        </div>
+
+        <div class="queue-item">
+          <div class="queue-dot" style="background: var(--m-quran);"></div>
+          <div class="queue-item-text">
+            <div class="primary-txt">وهذه الآيةُ إبانةٌ من اللهِ جلّ ثناؤه للمؤمنين به وبرسولِه</div>
+            <div class="secondary-txt">موضع [ن] · منهج: الاستدلال بالقرآن</div>
+          </div>
+          <span class="item-tag" style="background: var(--surface-2); color: var(--sub);">اقتراح</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER: Text in Context (UX-6 Fix) -->
+    <main class="text-panel">
+      <div class="text-panel-header">
+        <span class="text-panel-title">المتن في سياقه مع إبراز الشواهد</span>
+        <div class="text-legend-mini">
+          <div class="legend-indicator">
+            <span class="legend-box-active"></span>
+            <span>الشاهد النشط (مؤطر)</span>
+          </div>
+          <div class="legend-indicator">
+            <span class="legend-line-other"></span>
+            <span>شواهد أخرى (خلفية خفيفة + خط سفلي)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="tafsir-scroll-area">
+        <div class="quran-verse-block">
+          ٱللَّهُ لَا إِلَٰهَ إِلَّا هُوَ ٱلْحَىُّ ٱلْقَيُّومُ ۚ لَا تَأْخُذُهُۥ سِنَةٌ وَلَا نَوْمٌ ۚ لَّهُۥ مَا فِى ٱلسَّمَٰوَٰتِ وَمَا فِى ٱلْأَرْضِ ۗ مَن ذَا ٱلَّذِى يَشْفَعُ عِندَهُۥ إِلَّا بِإِذْنِهِۦ ۚ يَعْلَمُ مَا بَيْنَ أَيْدِيهِمْ وَمَا خَلْفَهُمْ ۖ وَلَا يُحِيطُونَ بِشَىْءٍ مِّنْ عِلْمِهِۦ إِلَّا بِمَا شَآءَ ۚ وَسِعَ كُرْسِيُّهُ ٱلسَّمَٰوَٰتِ وَٱلْأَرْضَ ۖ وَلَا يَئُودُهُۥ حِفْظُهُمَا ۚ وَهُوَ ٱلْعَلِىُّ ٱلْعَظِيمُ
+        </div>
+
+        <p>
+          القولُ في تأويل قولِ اللهِ جلّ ثناؤه: {اللَّهُ لَا إِلَهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ}.
+        </p>
+
+        <!-- Active passage: framed and focused (UX-6) -->
+        <p>
+          <span class="ev-span ev-quran ev-active-framed">
+            <span class="active-span-badge">الشاهد النشط</span>
+            قد دلَّلْنا فيما مضى على تأويلِ قولِ اللهِ جلّ ثناؤه: {اللَّهُ}
+          </span>
+          وأما تأويلُ قولِه: {لَا إِلَهَ إِلَّا هُوَ}.
+          <!-- Non-active passages: subtle background + 2px underline (UX-6) -->
+          <span class="ev-span ev-sunnah">
+            فإن معناه النَّهيُ عن أن يُعبدَ شيءٌ غيرُ اللهِ الحيِّ القَيُّومِ، الذي صفَتُه ما وصَف به نفسَه تعالى ذكرُه في هذه الآيةِ، يقولُ: اللهُ الذي له عبادةُ الخلقِ، الحيُّ القيومُ، لا إلهَ سواه، لا معبودَ سواه.
+          </span>
+        </p>
+
+        <p>
+          القولُ في تأويلِ قولِه جلّ ثناؤُه: {لَا تَأْخُذُهُ سِنَةٌ وَلَا نَوْمٌ}.
+          <span class="ev-span ev-lugha">
+            يعني بقولِه جلّ ثناؤُه: {لَا تَأْخُذُهُ سِنَةٌ}: لا يَأْخُذُه نُعاسٌ فيَنْعَسَ، ولا نَوْمٌ فيَسْتَثْقِلَ نومًا.
+          </span>
+        </p>
+
+        <div style="margin-top: 14px; padding: 10px 14px; background: var(--surface-2); border: 1px dashed var(--line); border-radius: 6px; color: var(--muted); font-size: 0.85rem; text-align: center;">
+          [نص المصدر المثبّت]
+        </div>
+      </div>
+    </main>
+
+    <!-- LEFT: Decision Panel (UX-6: Specialist only) -->
+    <aside class="decision-panel">
+      <div class="decision-panel-head">
+        <div class="decision-subheading">قرار المختص</div>
+        <div class="proposal-title">
+          <span class="method-dot-lg"></span>
+          <span>تفسير القرآن بالقرآن</span>
+        </div>
+      </div>
+
+      <div class="meta-kv-grid">
+        <span class="lbl">الموضع:</span>
+        <span class="val">[ن]</span>
+        <span class="lbl">المقترح الآلي:</span>
+        <span class="val">[ن]</span>
+        <span class="lbl">الفحص الحتمي:</span>
+        <span class="val" style="color: var(--ok);">مطابق للبنية (صفر انحراف)</span>
+      </div>
+
+      <div class="decision-actions-section">
+        <span class="section-sm-lbl">إجراءات المختص:</span>
+
+        <!-- Prominent «اعتماد» button for specialist -->
+        <button class="btn-action btn-approve">
+          <span>✓ اعتماد الاقتراح</span>
+          <span class="specialist-tag">خاص بالمختص</span>
+        </button>
+
+        <button class="btn-action btn-edit">
+          <span>✎ طلب تعديل الحدود / الوسم</span>
+        </button>
+
+        <button class="btn-action btn-reject">
+          <span>✕ رفض الاقتراح</span>
+        </button>
+      </div>
+
+      <div class="notes-box">
+        <span class="section-sm-lbl">ملاحظة المختص (اختياري):</span>
+        <textarea class="notes-input" placeholder="اكتب تعليلاً أو ملاحظة على حدود الشاهد..."></textarea>
+      </div>
+
+      <div class="nav-pager">
+        <button class="pager-btn">→ السابق</button>
+        <span>موضع [ن] من [ن]</span>
+        <button class="pager-btn">التالي ←</button>
+      </div>
+    </aside>
+
+  </div>
+
+</body>
+</html>

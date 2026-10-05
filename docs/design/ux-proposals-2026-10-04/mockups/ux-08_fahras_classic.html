@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>الواجهة الكلاسيكية — فهرس مناهج التفسير</title>
+  <style>
+    :root {
+      --navy: #12183F;
+      --violet: #6150EA;
+      --violet-safe: #3C2BB8;
+      --base: #F2F4FF;
+      --surface: #FFFFFF;
+      --surface-2: #EBEEFA;
+      --glass-line: #D5DAF0;
+      --ink: #12183F;
+      --sub: #2C3775;
+      --muted: #4A5590;
+      --amber: #7A4E0D;
+      --amber-bg: rgba(122, 78, 13, 0.10);
+      --teal: #0C5C52;
+      --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Readex Pro", "IBM Plex Sans Arabic", "Noto Sans Arabic", Tahoma, sans-serif;
+      --font-text: "Noto Naskh Arabic", "Amiri", "Traditional Arabic", serif;
+      --radius: 10px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--base);
+      color: var(--ink);
+      font-family: var(--font-ui);
+      width: 1440px;
+      height: 300px;
+      overflow: hidden;
+      direction: rtl;
+      text-align: right;
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* UX-8: Prominent Notice Banner at the very top */
+    .legacy-notice-bar {
+      background: #FDF3D7;
+      border-bottom: 1px solid #EBD5A0;
+      padding: 10px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .notice-text-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .badge-legacy {
+      background: var(--amber);
+      color: #FFFFFF;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .notice-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #5C3802;
+    }
+    .notice-desc {
+      font-size: 0.85rem;
+      color: #7A531A;
+    }
+
+    /* UX-8: Prominent «جرّب الواجهة الجديدة» button */
+    .btn-try-new {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--violet);
+      color: #FFFFFF;
+      text-decoration: none;
+      font-size: 0.92rem;
+      font-weight: 700;
+      padding: 8px 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(97, 80, 234, 0.3);
+      transition: all 0.2s ease;
+      border: 1px solid #4D3BC9;
+    }
+    .btn-try-new:hover {
+      background: #4D3BC9;
+      transform: translateY(-1px);
+    }
+    .arrow-icon {
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
+    /* Classic App Header / Toolbar */
+    .hero-classic {
+      background: var(--surface);
+      border-bottom: 1px solid var(--glass-line);
+      padding: 16px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      flex: 1;
+    }
+    .toolbar-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: nowrap;
+    }
+    .brand-lockup {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .brand-logo {
+      height: 38px;
+      width: auto;
+    }
+    .brand-divider {
+      width: 1px;
+      height: 22px;
+      background: var(--glass-line);
+    }
+    .brand-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .classic-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .classic-field {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.84rem;
+      color: var(--sub);
+      background: var(--surface-2);
+      border: 1px solid var(--glass-line);
+      border-radius: 6px;
+      padding: 6px 12px;
+    }
+    .classic-select {
+      background: transparent;
+      border: none;
+      font-family: inherit;
+      font-weight: 600;
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    .classic-btns {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-classic-secondary {
+      background: var(--surface-2);
+      border: 1px solid var(--glass-line);
+      color: var(--sub);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    /* Ayah summary bar (classic) */
+    .classic-ayah-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--base);
+      border: 1px solid var(--glass-line);
+      border-radius: 8px;
+      font-size: 0.86rem;
+      color: var(--sub);
+    }
+    .quran-txt-preview {
+      font-family: var(--font-text);
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .meta-stats-pill {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- UX-8: Clear Banner marking this as Classic for Comparison + Prominent New Interface CTA -->
+  <aside class="legacy-notice-bar">
+    <div class="notice-text-wrap">
+      <span class="badge-legacy">
+        <span>🏛️</span>
+        الواجهة الكلاسيكية — للمقارنة
+      </span>
+      <span class="notice-title">هذه النسخة محفوظة للمقارنة التوثيقية والبحثية فقط.</span>
+      <span class="notice-desc">الواجهة الجديدة هي التجربة الموصى بها.</span>
+    </div>
+
+    <!-- Prominent «جرّب الواجهة الجديدة» -->
+    <a href="reader.html" class="btn-try-new">
+      <span>جرّب الواجهة الجديدة</span>
+      <span class="arrow-icon">←</span>
+    </a>
+  </aside>
+
+  <!-- Classic Toolbar Header -->
+  <header class="hero-classic">
+    <div class="toolbar-row">
+      <div class="brand-lockup">
+        <img src="../../../../web/assets/brand/mirqah-wordmark.svg" alt="مِرْقاة" class="brand-logo">
+        <span class="brand-divider"></span>
+        <span class="brand-title">فهرس مناهج التفسير</span>
+      </div>
+
+      <div class="classic-controls">
+        <div class="classic-field">
+          <span>التفسير:</span>
+          <select class="classic-select">
+            <option>جامع البيان (الطبري)</option>
+          </select>
+        </div>
+
+        <div class="classic-field">
+          <span>الآية:</span>
+          <select class="classic-select">
+            <option>البقرة: آية الكرسي (٢٥٥)</option>
+          </select>
+        </div>
+
+        <div class="classic-field">
+          <span>النموذج:</span>
+          <select class="classic-select">
+            <option>deepseek-reasoner</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="classic-btns">
+        <button class="btn-classic-secondary">اعرض الأصل بجانبه</button>
+        <button class="btn-classic-secondary">تصدير ▾</button>
+        <button class="btn-classic-secondary">دليل الواجهة ؟</button>
+      </div>
+    </div>
+
+    <!-- Classic ayah status bar -->
+    <div class="classic-ayah-bar">
+      <div>
+        <span>نص الآية: </span>
+        <span class="quran-txt-preview">{اللَّهُ لَا إِلَهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ}</span>
+      </div>
+      <div class="meta-stats-pill">
+        حالة الفحص: مطابق للأصل حرفاً بحرف (sha256: 8f4a...29c)
+      </div>
+    </div>
+  </header>
+
+</body>
+</html>
