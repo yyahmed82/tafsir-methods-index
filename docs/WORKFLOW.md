@@ -46,6 +46,30 @@ How a unit goes from the AI committee to mirqah.app, and who does what. The cons
   **chair's suggestions** — too few specialists, old or unbalanced work, failures, loops,
   context limits, units waiting to be published. Suggestions are plain rules, not AI.
 
+### Remind now, and the Performance page
+
+- **Remind** (operators and super admins): on the Performance page next to each specialist,
+  and on a window's assignment bar. It e-mails that one person the windows still waiting
+  for them. At most once an hour per person; the 09:00 e-mail counts, and the 09:00 batch
+  skips anyone reminded by hand within the hour. Written to the audit log
+  (`review.remind_one`).
+- **Performance** (top bar, `#/team`): the history behind the work, next to mission
+  control's live view. Period 7 / 30 / 90 days or a year (weeks and months for the long
+  ones).
+  - Specialists: decisions (approve / needs edit / reject), what is waiting now, median time
+    from assignment to clearing a window, oldest waiting, lessons taught, specialists vs the
+    minimum; decisions per day (stacked per person) with milestone markers; a table per
+    person with the Remind button; milestones (first decision, 50/100/250… decisions, first
+    lesson, desk cleared, team totals, versions published).
+  - Agents: steps done, failed in the end, saved by a retry, classifier median time, tokens
+    in/out; steps per day per agent with failures; per agent: done, failed, saved by retry,
+    median, p95, tokens and why steps failed; what humans decided on moves the chair
+    suggested vs referred (routing guidance, not accuracy).
+  - Who sees what: operators and super admins see every specialist; a specialist sees their
+    own numbers and the team totals; anyone else sees team totals. The baseline vs profile
+    comparison is hidden from anyone holding the Specialist role (blind review).
+  - Works in demo mode (the simulated year) for the video.
+
 ## Automatic retries and alerts
 
 | What happened | What the console does | Attempt used? |

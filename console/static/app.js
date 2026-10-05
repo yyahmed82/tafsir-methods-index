@@ -115,6 +115,7 @@
     upload: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',
     inbox: 'M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z',
     chev: 'M9 6l6 6-6 6',
+    pulse: 'M22 12h-4l-3 9L9 3l-3 9H2',
   };
   const ico = (name, cls = '') => `<svg class="ic ${cls}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[name] || ''}"/></svg>`;
 
@@ -208,6 +209,7 @@
     { r: 'dashboard', icon: 'home', k: 'nav.dashboard', p: 'view_dashboard' },
     { r: 'tasks', icon: 'tasks', k: 'nav.tasks', p: 'view_tasks' },
     { r: 'progress', icon: 'chart', k: 'nav.progress', p: 'view_dashboard' },
+    { r: 'team', icon: 'pulse', k: 'nav.team', p: 'view_dashboard' },
     { r: 'review', icon: 'review', k: 'nav.review', p: 'view_tasks' },
     { r: 'reports', icon: 'report', k: 'nav.reports', p: 'view_reports' },
     { r: 'calls', icon: 'bolt', k: 'nav.calls', p: 'view_tasks', opt: true },
@@ -278,7 +280,7 @@
     const [r, a, b, c] = parts();
     const routes = {
       dashboard: [viewDashboard, 'view_dashboard'], tasks: [a ? viewTask : viewTasks, 'view_tasks'],
-      progress: [viewProgress, 'view_dashboard'], reports: [a ? viewReport : viewReports, 'view_reports'],
+      progress: [viewProgress, 'view_dashboard'], team: [viewTeam, 'view_dashboard'], reports: [a ? viewReport : viewReports, 'view_reports'],
       review: [a === 'learning' ? viewLearning : a ? viewReviewWindow : viewReview, 'view_tasks'], calls: [viewCalls, 'view_tasks'],
       audit: [viewAudit, 'view_audit'], users: [viewUsers, 'manage_users'], roles: [viewRoles, 'manage_roles'],
       settings: [viewSettings, 'manage_settings'], profile: [viewProfile, null], publish: [viewPublish, 'publish_units'],
@@ -851,6 +853,202 @@
     });
   }
 
+  // ------------------------------------------------------------ team & agents performance
+  // History, not the live state (mission control is live). Counts of decisions, routing
+  // and timing — never accuracy. Charts are HTML columns (no library): 2px surface gaps,
+  // 4px rounded data-ends, one shared tooltip built with textContent, a table view.
+  const AGENT_KEYS = ['classifier', 'method_specialist', 'verifier', 'chair'];
+  const DEC_KEYS = ['approve', 'needs_edit', 'reject'];
+  const decColor = { approve: 'var(--accent)', needs_edit: 'var(--warn)', reject: 'var(--danger)' };
+  const fDay = (iso, long) => { try { return new Intl.DateTimeFormat(locale(), long ? { weekday: 'short', day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short' }).format(new Date(iso + 'T12:00:00')); } catch (e) { return iso; } };
+  const fHours = (h) => (h == null ? '—' : h < 1 ? `${Math.max(1, Math.round(h * 60))} ${t('team.min')}` : h < 48 ? `${(Math.round(h * 10) / 10).toLocaleString(locale())} ${t('team.h')}` : `${Math.round(h / 24).toLocaleString(locale())} ${t('team.d')}`);
+  const compact = (n) => (n == null ? '—' : new Intl.NumberFormat(locale(), { notation: n >= 10000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(n));
+  const niceMax = (m) => { if (m <= 4) return 4; const p = 10 ** Math.floor(Math.log10(m)); const f = m / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; };
+  const tipAttr = (title, rows) => `data-tip="${esc(JSON.stringify({ title, rows }))}"`;
+
+  // days → columns: one per day up to 45 days, then weeks, then months (columns stay readable)
+  function bucketize(days, value, marks) {
+    if (days.length <= 45) return { cols: days.map((d, i) => ({ label: fDay(d), long: fDay(d, true), idx: [i], days: [d] })), value, marks };
+    const monthly = days.length > 120;
+    const cols = [];
+    days.forEach((d, i) => {
+      const dt = new Date(d + 'T12:00:00');
+      const key = monthly ? d.slice(0, 7) : (() => { const m = new Date(dt); m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); return m.toISOString().slice(0, 10); })();
+      let c = cols[cols.length - 1];
+      if (!c || c.key !== key) { c = { key, idx: [], days: [] }; cols.push(c); }
+      c.idx.push(i); c.days.push(d);
+    });
+    const fm = (d) => { try { return new Intl.DateTimeFormat(locale(), { month: 'short', year: '2-digit' }).format(new Date(d + 'T12:00:00')); } catch (e) { return d.slice(0, 7); } };
+    cols.forEach((c) => { c.label = monthly ? fm(c.days[0]) : fDay(c.days[0]); c.long = monthly ? fm(c.days[0]) : `${fDay(c.days[0])} – ${fDay(c.days[c.days.length - 1])}`; });
+    const v2 = (ci, k) => cols[ci].idx.reduce((a, i) => a + (value(i, k) || 0), 0);
+    const m2 = {}; cols.forEach((c) => { const all = c.days.flatMap((d) => marks[d] || []); if (all.length) m2[c.key] = all; });
+    return { cols, value: v2, marks: m2, grouped: true };
+  }
+
+  // one stacked-column chart: series [{key,label,color}], value(dayIdx,key), marks per day
+  function colChart({ days: dayList, series, value: dayValue, marks: dayMarks = {}, height = 190, unit = '' }) {
+    const B = bucketize(dayList, dayValue, dayMarks);
+    const days = B.cols.map((c) => c.key || c.days[0]);
+    const value = B.value; const marks = B.marks;
+    const label = (i) => B.cols[i].label; const long = (i) => B.cols[i].long;
+    const totals = days.map((_, i) => series.reduce((a, s) => a + (value(i, s.key) || 0), 0));
+    const max = niceMax(Math.max(1, ...totals));
+    const ticks = [0, max / 2, max].map((v) => `<span style="bottom:${(100 * v) / max}%">${fNum(v)}</span>`).join('');
+    const every = Math.max(1, Math.ceil(days.length / (days.length > 60 ? 6 : 8)));
+    const cols = days.map((d, i) => {
+      const segs = series.map((s) => [s, value(i, s.key) || 0]).filter(([, v]) => v > 0);
+      const rows = segs.map(([s, v]) => ({ v: fNum(v), label: iso(s.label), color: s.color }));
+      const ms = marks[d] || [];
+      ms.forEach((m) => rows.push({ ms: true, label: m }));
+      const title = `${long(i)} · ${fNum(totals[i])}${unit ? ' ' + unit : ''}`;
+      return `<div class="vc-col" tabindex="0" ${tipAttr(title, rows)}>
+        ${ms.length ? `<span class="vc-ms" aria-hidden="true"></span>` : ''}
+        <div class="vc-stack" style="height:${(100 * totals[i]) / max}%">${segs.map(([s, v]) => `<i style="flex:${v};background:${s.color}"></i>`).join('')}</div></div>`;
+    }).join('');
+    const xl = days.map((d, i) => { const k = days.length - 1 - i; const on = k % every === 0;
+      return `<span class="${on && (k / every) % 2 ? 'alt' : ''}">${on ? esc(label(i)) : ''}</span>`; }).join('');
+    const legend = series.map((s) => `<span class="lg"><i style="background:${s.color}"></i><bdi>${esc(s.label)}</bdi> <b>${fNum(days.reduce((a, _, i) => a + (value(i, s.key) || 0), 0))}</b></span>`).join('')
+      + (B.grouped ? `<span class="faint">${T(dayList.length > 120 ? 'team.per_month' : 'team.per_week')}</span>` : '');
+    const hasMs = Object.keys(marks).length;
+    const tableRows = days.map((d, i) => (totals[i] || (marks[d] || []).length) ? `<tr><td>${esc(long(i))}</td>${series.map((s) => `<td class="num">${fNum(value(i, s.key) || 0)}</td>`).join('')}<td class="num"><b>${fNum(totals[i])}</b></td>${hasMs ? `<td>${esc((marks[d] || []).join(' · '))}</td>` : ''}</tr>` : '').join('');
+    return `<div class="vc-legend">${legend}${hasMs ? `<span class="lg"><i class="ms"></i>${T('team.milestone')}</span>` : ''}</div>
+      <div class="vchart" dir="ltr" style="--vc-h:${height}px"><div class="vc-y">${ticks}</div>
+        <div class="vc-plot"><div class="vc-grid"><i style="bottom:0"></i><i style="bottom:50%"></i><i style="bottom:100%"></i></div><div class="vc-cols">${cols}</div></div>
+        <div class="vc-x">${xl}</div></div>
+      <details class="vc-table"><summary>${T('team.as_table')}</summary><div class="table-wrap"><table class="t"><thead><tr><th>${T('team.day')}</th>${series.map((s) => `<th class="num">${esc(s.label)}</th>`).join('')}<th class="num">${T('team.total')}</th>${hasMs ? `<th>${T('team.milestone')}</th>` : ''}</tr></thead>
+        <tbody>${tableRows || `<tr><td colspan="${series.length + 2 + (hasMs ? 1 : 0)}" class="empty">${T('team.no_data')}</td></tr>`}</tbody></table></div></details>`;
+  }
+  // a 100% split bar (approve / needs edit / reject …) with its numbers beside it
+  function splitBar(parts, { label = '' } = {}) {
+    const tot = parts.reduce((a, p) => a + p.v, 0);
+    if (!tot) return `<div class="hbar empty"><i></i></div>`;
+    const rows = parts.filter((p) => p.v).map((p) => ({ v: `${fNum(p.v)} · ${pct(p.v, tot)}%`, label: p.label, color: p.color }));
+    return `<div class="hbar" tabindex="0" ${tipAttr(label || t('team.total') + ' ' + fNum(tot), rows)}>${parts.filter((p) => p.v).map((p) => `<i style="flex:${p.v};background:${p.color}"></i>`).join('')}</div>`;
+  }
+  function wireTips(root) {
+    let tip = $('#vtip');
+    if (!tip) { tip = document.createElement('div'); tip.id = 'vtip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip); }
+    const show = (el, x, y) => {
+      let d; try { d = JSON.parse(el.dataset.tip); } catch (e) { return; }
+      tip.textContent = '';
+      const h = document.createElement('div'); h.className = 'vt-h'; h.textContent = d.title; tip.appendChild(h);
+      (d.rows || []).forEach((r) => {
+        const row = document.createElement('div'); row.className = 'vt-r' + (r.ms ? ' ms' : '');
+        const k = document.createElement('i'); if (r.color) k.style.background = r.color; row.appendChild(k);
+        if (!r.ms) { const v = document.createElement('b'); v.textContent = r.v; row.appendChild(v); }
+        const l = document.createElement('span'); l.textContent = r.label; row.appendChild(l);
+        tip.appendChild(row);
+      });
+      tip.classList.add('on');
+      const r = el.getBoundingClientRect();
+      const tw = tip.offsetWidth; const th = tip.offsetHeight;
+      let left = (x ?? r.left + r.width / 2) + 14; if (left + tw > innerWidth - 8) left = (x ?? r.left) - tw - 14; if (left < 8) left = 8;
+      let top = (y ?? r.top) - th / 2; top = Math.max(8, Math.min(innerHeight - th - 8, top));
+      tip.style.left = left + 'px'; tip.style.top = top + 'px';
+    };
+    const hide = () => tip.classList.remove('on');
+    $$('[data-tip]', root).forEach((el) => {
+      el.addEventListener('pointermove', (e) => show(el, e.clientX, e.clientY));
+      el.addEventListener('pointerleave', hide);
+      el.addEventListener('focus', () => show(el));
+      el.addEventListener('blur', hide);
+    });
+  }
+  const iso = (s) => `\u2068${s}\u2069`;  // isolate a name inside a sentence of the other direction
+  const msText = (m) => t('team.ms.' + m.kind, { who: iso(m.who || ''), n: fNum(m.n || 0), v: m.version || '', units: fNum(m.units || 0) });
+  const msIcon = { first_review: 'review', decisions_n: 'check', first_lesson: 'brain', desk_cleared: 'inbox', team_decisions_n: 'users', published: 'upload' };
+
+  async function viewTeam() {
+    const days = S.teamDays || 30;
+    const d = await api('/team?days=' + days);
+    const tm = d.team; const ag = d.agents;
+    const all = d.scope === 'all';
+    const people = d.people || [];
+    const pcolor = {}; people.forEach((p, i) => { pcolor[p.id] = `var(--p${(i % 6) + 1})`; });
+    const range = `<div class="seg" role="group" aria-label="${T('team.range')}">${d.range.options.map((n) => `<button type="button" data-act="team-range" data-days="${n}" class="${n === d.range.days ? 'on' : ''}" aria-pressed="${n === d.range.days}">${T('team.range.' + n)}</button>`).join('')}</div>`;
+    const sim = d.simulated ? `<span class="chip violet"><span class="dot live"></span>${T('mode.demo')}</span>` : '';
+    // milestones by day, for the chart markers
+    const marks = {};
+    d.milestones.forEach((m) => { const k = new Date(m.at * 1000).toLocaleDateString('en-CA', { timeZone: tz() }); (marks[k] = marks[k] || []).push(msText(m)); });
+    // decisions per day: by person for managers, by decision for everyone else
+    const decSeries = all && people.length
+      ? people.map((p) => ({ key: String(p.id), label: p.name, color: pcolor[p.id] }))
+      : DEC_KEYS.map((k) => ({ key: k, label: t('review.decision.' + k), color: decColor[k] }));
+    const decChart = colChart({ days: d.daily.map((x) => x.day), series: decSeries, marks,
+      value: (i, k) => (all && people.length ? (d.daily[i].by_person[k] || 0) : d.daily[i][k]), unit: t('team.decisions_unit') });
+    const tile = (k, v, sub = '', cls = '') => `<section class="card tile ${cls}"><div class="kicker">${T(k)}</div><div class="tile-v">${v}</div>${sub ? `<div class="faint tile-s">${sub}</div>` : ''}</section>`;
+    const decSplit = splitBar(DEC_KEYS.map((k) => ({ v: tm[k], label: t('review.decision.' + k), color: decColor[k] })));
+    const short = tm.specialists < tm.min_specialists;
+    const tiles = `<div class="tiles">
+      ${tile('team.k.decided', fNum(tm.decided), decSplit + `<span class="ltr-num">${DEC_KEYS.map((k) => `${fNum(tm[k])} ${t('team.short.' + k)}`).join(' · ')}</span>`)}
+      ${tile('team.k.open', `${fNum(tm.open_moves)}<small> ${T('team.moves')}</small>`, T('team.in_windows', { n: fNum(tm.open_windows) }))}
+      ${tile('team.k.clear', esc(fHours(tm.median_clear_h)), T('team.k.clear_s'))}
+      ${tile('team.k.oldest', tm.oldest_h != null ? esc(fHours(tm.oldest_h)) : '—', T('team.k.oldest_s'), tm.oldest_h >= 48 ? 'warn' : '')}
+      ${tile('team.k.lessons', fNum(tm.lessons), T('team.k.lessons_s'))}
+      ${tile('team.k.specialists', `${fNum(tm.specialists)}<small> / ${fNum(tm.min_specialists)}</small>`, short ? T('team.k.too_few') : T('team.k.active', { n: fNum(tm.active) }), short ? 'warn' : '')}</div>`;
+    const canRemind = canDo('manage_tasks') && !d.simulated;
+    const prow = (p) => {
+      const split = splitBar(DEC_KEYS.map((k) => ({ v: p[k], label: t('review.decision.' + k), color: decColor[k] })), { label: iso(p.name) });
+      const cool = p.remind_after ? t('team.remind_wait', { t: fTime(p.remind_after) }) : '';
+      const btn = !canRemind ? '' : p.open_windows ? `<button class="btn sm" data-act="team-remind" data-id="${p.id}" ${cool ? `disabled title="${esc(cool)}"` : `title="${T('team.remind_hint')}"`}>${ico('mail')} ${T('team.remind')}</button>`
+        : `<span class="faint">${T('team.nothing_open')}</span>`;
+      return `<tr><td><span class="pdot" style="background:${all ? pcolor[p.id] : 'var(--accent)'}"></span><b><bdi>${esc(p.name)}</bdi></b>${p.current ? '' : ` <span class="chip">${T('team.former')}</span>`}</td>
+        <td class="num">${fNum(p.open_moves)} <span class="faint">/ ${fNum(p.open_windows)}</span></td>
+        <td class="num ${p.oldest_h >= 48 ? 'c-amber' : ''}">${p.oldest_h != null ? esc(fHours(p.oldest_h)) : '—'}</td>
+        <td class="num"><b>${fNum(p.decided)}</b>${p.decided_today ? ` <span class="faint">+${fNum(p.decided_today)} ${T('team.today')}</span>` : ''}</td>
+        <td class="split-cell">${split}</td>
+        <td class="num hide-sm">${esc(fHours(p.median_clear_h))}</td><td class="num hide-sm">${fNum(p.lessons)}</td>
+        <td class="num hide-sm">${p.last_decision_at ? esc(fDT(p.last_decision_at)) : '—'}</td>
+        ${canRemind ? `<td class="num">${btn}${p.last_reminder_at ? `<div class="faint tiny">${T('team.reminded', { t: fDT(p.last_reminder_at) })}</div>` : ''}</td>` : ''}</tr>`;
+    };
+    const peopleCard = people.length ? `<section class="card mt"><div class="card-h"><h2>${T(all ? 'team.people' : 'team.you')}</h2><span class="faint">${T('team.people_s')}</span></div>
+      <div class="table-wrap"><table class="t team-t"><thead><tr><th>${T('team.col.name')}</th><th class="num">${T('team.col.open')}</th><th class="num">${T('team.col.oldest')}</th><th class="num">${T('team.col.decided')}</th><th>${T('team.col.split')}</th><th class="num hide-sm">${T('team.col.clear')}</th><th class="num hide-sm">${T('team.col.lessons')}</th><th class="num hide-sm">${T('team.col.last')}</th>${canRemind ? '<th></th>' : ''}</tr></thead>
+      <tbody>${people.map(prow).join('')}</tbody></table></div></section>` : '';
+    const msList = d.milestones.length ? d.milestones.slice().reverse().slice(0, 14).map((m) => `<li><span class="ms-ic">${ico(msIcon[m.kind] || 'check')}</span><span>${esc(msText(m))}</span><span class="faint num">${esc(fDT(m.at))}</span></li>`).join('')
+      : `<li class="empty">${T('team.no_milestones')}</li>`;
+    // agents
+    const agName = (k) => t('agent.' + k);
+    const agColor = (k) => `var(--ag-${k})`;
+    const agSeries = AGENT_KEYS.filter((k) => ag.table.some((r) => r.agent === k)).map((k) => ({ key: k, label: agName(k), color: agColor(k) }));
+    if (ag.daily.some((x) => x.failed)) agSeries.push({ key: 'failed', label: t('team.failed_steps'), color: 'var(--danger)' });
+    const agChart = colChart({ days: ag.daily.map((x) => x.day), series: agSeries, value: (i, k) => (k === 'failed' ? ag.daily[i].failed : ag.daily[i].by_agent[k]), unit: t('team.steps_unit') });
+    const at = ag.totals;
+    const agTiles = `<div class="tiles">
+      ${tile('team.a.done', fNum(at.done), T('team.a.done_s'))}
+      ${tile('team.a.fail', at.fail_pct == null ? '—' : `${fNum(at.fail_pct)}<small>%</small>`, T('team.a.fail_s', { n: fNum(at.failed) }), at.fail_pct >= 10 ? 'warn' : '')}
+      ${tile('team.a.recovered', fNum(at.retried_ok), T('team.a.recovered_s'))}
+      ${tile('team.a.median', at.classifier_median_s == null ? '—' : esc(fSecs(at.classifier_median_s)), T('team.a.median_s'))}
+      ${tile('team.a.tokens', `<span class="ltr-num">${compact(at.tokens_in)} / ${compact(at.tokens_out)}</span>`, T('team.a.tokens_s'))}</div>`;
+    const causeChips = (c) => Object.entries(c || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span class="chip ${k === 'restart' || k === 'engine' ? 'warn' : 'bad'} cause">${T('tasks.cause.' + k)} ${fNum(n)}</span>`).join(' ') || '<span class="faint">—</span>';
+    const agRows = ag.table.length ? ag.table.map((r) => `<tr><td><span class="pdot" style="background:${agColor(r.agent)}"></span><b>${esc(agName(r.agent))}</b><div class="faint mono tiny">${esc(r.models.join(', ') || '—')}</div></td>
+        <td class="num"><b>${fNum(r.ok)}</b></td><td class="num">${r.failed ? `<span class="c-red">${fNum(r.failed)}</span>` : '0'} <span class="faint">${r.fail_pct != null ? `(${fNum(r.fail_pct)}%)` : ''}</span></td>
+        <td class="num">${fNum(r.retried_ok)}</td><td class="num">${r.median_s == null ? '—' : esc(fSecs(r.median_s))}</td><td class="num hide-sm">${r.p95_s == null ? '—' : esc(fSecs(r.p95_s))}</td>
+        <td class="num hide-sm"><span class="ltr-num">${r.model_calls ? `${compact(r.tokens_in)} / ${compact(r.tokens_out)}` : '—'}</span></td><td class="hide-sm">${causeChips(r.causes)}</td></tr>`).join('')
+      : `<tr><td colspan="8" class="empty">${T('team.no_steps')}</td></tr>`;
+    const ro = d.routing || {};
+    const routeRow = (k, label) => { const x = ro[k] || {}; const tot = DEC_KEYS.reduce((a, j) => a + (x[j] || 0), 0);
+      return `<div class="route-row"><div class="route-l"><b>${T(label)}</b><span class="faint">${fNum(tot)} ${T('team.decisions_unit')}</span></div>${splitBar(DEC_KEYS.map((j) => ({ v: x[j] || 0, label: t('review.decision.' + j), color: decColor[j] })), { label: t(label) })}
+        <div class="route-n faint ltr-num">${tot ? `${pct(x.approve || 0, tot)}% ${t('team.short.approve')}` : '—'}</div></div>`; };
+    const routing = `<section class="card"><div class="card-h"><h2>${T('team.r.title')}</h2></div>
+      ${routeRow('suggested', 'team.r.suggested')}${routeRow('referred', 'team.r.referred')}
+      ${ro.arms ? `<div class="route-sep"></div>${(() => { ro.baseline = ro.arms.baseline; ro.profile = ro.arms.profile; return routeRow('baseline', 'team.r.baseline') + routeRow('profile', 'team.r.profile'); })()}` : ''}
+      <p class="faint mt-s">${T('team.r.note')}</p></section>`;
+    setPage(`${head('team.title', 'team.subtitle', `${sim}${range}`)}
+      ${short ? `<div class="notice warn mb">${ico('warn')}<span>${T(tm.specialists ? 'team.too_few' : 'set.workflow.no_specialists', { n: fNum(tm.specialists), min: fNum(tm.min_specialists) })}</span></div>` : ''}
+      <h2 class="section-title">${ico('users')} ${T('team.sec.people')}</h2>
+      ${tiles}
+      <div class="grid team-grid mt"><section class="card"><div class="card-h"><h2>${T('team.c.decisions')}</h2><span class="faint">${esc(fDay(d.range.from))} – ${esc(fDay(d.range.to))}</span></div>${decChart}</section>
+        <section class="card"><div class="card-h"><h2>${T('team.c.milestones')}</h2></div><ol class="ms-list">${msList}</ol></section></div>
+      ${peopleCard}
+      <h2 class="section-title">${ico('brain')} ${T('team.sec.agents')}</h2>
+      ${agTiles}
+      <div class="grid team-grid mt"><section class="card"><div class="card-h"><h2>${T('team.c.steps')}</h2><span class="faint">${T('team.c.steps_s')}</span></div>${agChart}</section>${routing}</div>
+      <section class="card mt"><div class="card-h"><h2>${T('team.c.agents')}</h2></div>
+        <div class="table-wrap"><table class="t"><thead><tr><th>${T('tasks.agent')}</th><th class="num">${T('team.col.done')}</th><th class="num">${T('team.col.failed')}</th><th class="num">${T('team.col.recovered')}</th><th class="num">${T('team.col.median')}</th><th class="num hide-sm">p95</th><th class="num hide-sm">${T('team.col.tokens')}</th><th class="hide-sm">${T('team.col.causes')}</th></tr></thead><tbody>${agRows}</tbody></table></div>
+        <p class="faint mt-s">${T('team.caption')}</p></section>`);
+    wireTips($('#app') || document);
+  }
+
   // ------------------------------------------------------------ tasks
   // A retry is not a new task: it is attempt n of the original. Lists show one row per
   // original with the combined result (last outcome of every step); attempts fold under it.
@@ -1212,7 +1410,8 @@
       ${asg || (d.specialists || []).length ? `<section class="card mb assign-bar"><div class="row between"><div class="row">${ico('inbox')}<b>${T('review.assigned_to')}</b>
           ${asg ? `<span class="chip ${asg.status === 'done' ? 'ok' : asg.user_id === S.me.id ? 'info' : ''}">${esc(asg.user_id === S.me.id ? t('review.you') : asg.name || '—')}</span><span class="faint">${T(asg.assigned_by ? 'review.assigned_manual' : 'review.assigned_chair')} · ${esc(fDT(asg.assigned_at))}</span>` : `<span class="faint">${T('review.unassigned')}</span>`}</div>
           ${(d.specialists || []).length && canDo('manage_tasks') ? `<div class="row"><select class="input sm" id="reassign-to" aria-label="${T('review.reassign')}">${d.specialists.map((p) => `<option value="${p.id}" ${asg && asg.user_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
-            <button class="btn sm" data-act="reassign" data-t="${esc(tafsir)}" data-w="${esc(win)}">${T('review.reassign')}</button></div>` : ''}</div></section>` : ''}
+            <button class="btn sm" data-act="reassign" data-t="${esc(tafsir)}" data-w="${esc(win)}">${T('review.reassign')}</button>
+            ${asg && asg.status === 'open' && asg.user_id !== S.me.id && !inDemo() ? `<button class="btn sm" data-act="remind-assignee" data-id="${asg.user_id}" title="${T('team.remind_hint')}">${ico('mail')} ${T('team.remind')}</button>` : ''}</div>` : ''}</div></section>` : ''}
       ${canDecide ? '' : `<div class="notice mb">${ico('info')}<span>${inDemo() ? T('demo.read_only') : viewingAs() ? T('viewas.note')
         : !S.me.can_decide ? T('review.specialists_only') : asg && asg.status === 'open' && asg.user_id !== S.me.id ? T('review.assigned_other', { name: asg.name || '—' }) : T('review.read_only')}</span></div>`}
       ${d.arm ? `<div class="notice mb">${ico('info')}<span>${T('review.arm_note')}</span></div>` : ''}
@@ -1666,6 +1865,13 @@
         case 'cancel-task': if (await confirmBox(t('tasks.confirm_cancel'))) { await api(`/tasks/${id}/cancel`, { method: 'POST' }); render(); } break;
         case 'retry-task': { const r = await api(`/tasks/${id}/retry`, { method: 'POST' }); location.hash = '#/tasks/' + r.id; break; }
         case 'toggle-attempts': toggleAttempts(id); break;
+        case 'team-range': S.teamDays = Number(el.dataset.days) || 30; render(); break;
+        case 'team-remind': case 'remind-assignee': {
+          el.disabled = true;
+          try { const r = await api(`/team/remind/${id}`, { method: 'POST' }); toast(t('team.reminded_ok', { name: r.name, n: r.windows }), 'ok'); }
+          catch (err) { toast(err.key === 'remind_cooldown' ? t('team.err.cooldown') : errText(err), 'bad'); }
+          render(); break;
+        }
         case 'gen-report': await api(`/reports/${el.dataset.day}/generate`, { method: 'POST' }); location.hash = '#/reports/' + el.dataset.day; render(); break;
         case 'mail-report': { const r = await api(`/reports/${el.dataset.day}/mail`, { method: 'POST' }); toast(t('reports.mail_result', r), r.failed ? 'bad' : 'ok'); render(); break; }
         case 'decide': {

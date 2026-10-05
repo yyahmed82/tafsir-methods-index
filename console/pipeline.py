@@ -425,6 +425,22 @@ def review_source(tafsir: str, window: str,
     return slug, load_verified(tafsir, slug, window), None
 
 
+def move_routes(tafsir: str, window: str, annotator: str) -> dict[str, str]:
+    """Unit key → the route the agents gave it (auto_candidate = suggested by the chair,
+    else referred to the specialist), for the file a reviewer decided on."""
+    d = _demo()
+    if d:
+        u = db.row("SELECT span_count FROM demo_units WHERE tafsir=? AND window=?",
+                   (tafsir, window))
+        return {m["key"]: m["route"] for m in d.unit_moves(tafsir, window, u["span_count"])} \
+            if u else {}
+    variant = "profile" if annotator.endswith("__profile") else None
+    ann, v, com = review_source(tafsir, window, variant)
+    if v is None or ann != annotator:
+        return {}
+    return {key: str(mv.get("route") or "") for key, mv, _c in unit_rows(v, com)}
+
+
 def review_units(tafsir: str | None = None) -> list[dict]:
     """Units ready for review: per window and arm, the chair's decision when it
     exists, else agent 1. Windows with an arm B run get one unit per arm, labelled

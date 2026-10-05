@@ -235,10 +235,14 @@ def send_reminders() -> dict:
             by_user.setdefault(r["user_id"], []).append(r)
     people = {p["id"]: p for p in specialists()}
     sent = failed = 0
+    now = db.now()
     for uid, items in by_user.items():
         p = people.get(uid)
         if p is None:
             continue
+        last = max((r.get("last_reminder_at") or 0 for r in items), default=0)
+        if last and now - last < REMIND_COOLDOWN_S:
+            continue  # reminded by hand within the hour: no second e-mail
         try:
             mailer.send_mail(p["email"], mailtpl.review_reminder(p["name"], items))
             sent += 1
@@ -249,6 +253,36 @@ def send_reminders() -> dict:
             failed += 1
     db.audit("review.remind", detail={"sent": sent, "failed": failed})
     return {"sent": sent, "failed": failed}
+
+
+REMIND_COOLDOWN_S = 3600  # one reminder an hour per person, manual or scheduled
+
+
+def remind_user(user_id: int, by: dict) -> dict:
+    """Remind one specialist now: one e-mail with the windows still waiting for them.
+    Refused within an hour of the last reminder (the 09:00 one counts)."""
+    p = next((x for x in specialists() if x["id"] == user_id), None)
+    if p is None:
+        raise ValueError("not_a_specialist")
+    items = [r for r in desk(user_id) if r["status"] == "open" and r["open"] > 0]
+    if not items:
+        raise ValueError("nothing_open")
+    last = db.scalar("SELECT MAX(last_reminder_at) FROM assignments WHERE user_id=?"
+                     " AND status='open'", (user_id,))
+    now = db.now()
+    if last and now - last < REMIND_COOLDOWN_S:
+        raise ValueError("remind_cooldown")
+    try:
+        mailer.send_mail(p["email"], mailtpl.review_reminder(p["name"], items))
+    except mailer.MailError as e:
+        log.warning("reminder to %s failed: %s", p["email"], e)
+        raise ValueError("mail_failed") from e
+    db.execute("UPDATE assignments SET last_reminder_at=? WHERE user_id=? AND status='open'",
+               (now, user_id))
+    db.audit("review.remind_one", user_id=by["id"], target=str(user_id),
+             detail={"windows": len(items), "moves": sum(r["open"] for r in items)})
+    return {"sent": True, "at": now, "next_at": now + REMIND_COOLDOWN_S,
+            "windows": len(items), "name": p["name"]}
 
 
 # ------------------------------------------------------------------ chair report

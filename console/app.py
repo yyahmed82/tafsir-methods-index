@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import (__version__, auth, config, db, demo, learning, mailer, mailtpl, pipeline, publish,
-               runner, settings, workflow)
+               runner, settings, team, workflow)
 
 
 # ------------------------------------------------------------------ setup
@@ -918,6 +918,23 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     @operational(write=True)
     def workflow_remind(user: dict = Depends(need("manage_tasks"))) -> dict:
         return workflow.send_reminders()
+
+    # ---------- team & agents performance (history; mission control is the live view)
+    @app.get("/api/team")
+    @operational()
+    def team_view(user: dict = Depends(need("view_dashboard")), days: int = 30) -> dict:
+        return team.summary(user, days, reveal_arms=_reveals_arms(user))
+
+    @app.post("/api/team/remind/{user_id}")
+    @operational(write=True)
+    def team_remind(user_id: int, user: dict = Depends(need("manage_tasks"))) -> dict:
+        if db.mode() == "demo":
+            raise _err(400, "demo_read_only")
+        try:
+            return workflow.remind_user(user_id, user)
+        except ValueError as e:
+            code = str(e)
+            raise _err(429 if code == "remind_cooldown" else 400, code) from e
 
     # ---------- publishing to mirqah.app (super admins; no git merge)
     @app.get("/api/publish")
