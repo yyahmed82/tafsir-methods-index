@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8">
+<title>مهارات فريق مِرْقاة — دليل التشغيل والتنفيذ</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1600px;height:900px;font-family:"Segoe UI",Tahoma,Arial,sans-serif;background:#f4f1e8;color:#1e2a24;overflow:hidden}
+.wrap{padding:20px 36px 18px 36px;height:900px;display:flex;flex-direction:column}
+h1{font-size:28px;margin-bottom:2px;color:#142d20}
+.sub{font-size:14.5px;color:#4a5a52;margin-bottom:10px}
+.skills-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
+.skill-card{background:#fff;border:1px solid #d8d0ba;border-radius:8px;padding:8px 12px;font-size:13px;line-height:1.45}
+.skill-card b{color:#1e6b4f;font-size:13.5px;display:block;margin-bottom:3px}
+.skill-card span{color:#33403a}
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;flex:1}
+.step{background:#fff;border:1px solid #d8d0ba;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.step-header{display:flex;align-items:center;gap:8px}
+.step .num{background:#1e6b4f;color:#fff;min-width:26px;height:26px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700}
+.step h2{font-size:15px;color:#1b382b}
+.step p{font-size:12.5px;line-height:1.45;color:#33403a}
+code{direction:ltr;unicode-bidi:isolate;display:block;background:#10201a;color:#d7f0e2;font-family:Consolas,"Courier New",monospace;font-size:11px;border-radius:6px;padding:6px 8px;white-space:pre-wrap;word-break:break-all}
+.exp{font-size:11.8px;background:#eef5ef;border:1px solid #bcd4bf;border-radius:6px;padding:5px 8px;line-height:1.4}
+.stop{font-size:11.8px;background:#fbeede;border:1px solid #d9a45b;border-radius:6px;padding:5px 8px;line-height:1.4}
+.strips{display:flex;gap:10px;margin-top:10px}
+.strip{flex:1;border-radius:8px;padding:8px 14px;font-size:13px;line-height:1.45}
+.scope{background:#f7e3e3;border:1px solid #cf8a8a;color:#4a1c1c}
+.verify{background:#e3efe6;border:1px solid #6fa287;color:#1b442d}
+.footer{margin-top:8px;display:flex;justify-content:space-between;font-size:12.5px;color:#5b6a62;border-top:2px solid #1e6b4f;padding-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>مهارات فريق مِرْقاة: دليل التشغيل والتنفيذ</h1>
+<div class="sub">حزمة مهارات المشروع لوكلاء الذكاء الاصطناعي (Claude Code / Codex): بناء العرض النهائي، تسجيل الفيديو التعريفي، ومراجعة طلبات السحب</div>
+
+<div class="skills-summary">
+<div class="skill-card">
+<b>بناء العرض النهائي (mirqah-deck-build)</b>
+<span>توليد العرض النهائي ومعالجة ثنائية الاتجاه إجبارياً، وملء علامات التحديث بالأرقام الحقيقية، ومراجعة الشرائح بصرياً.</span>
+</div>
+<div class="skill-card">
+<b>تسجيل الفيديو التعريفي (mirqah-demo-recording)</b>
+<span>تسجيل مرئي بمنتج حقيقي وبث حي للطرفية (≤ دقيقتين)، بالسمة الفاتحة، وفق جدول VO v3 ولائحة لقطات Playwright.</span>
+</div>
+<div class="skill-card">
+<b>مراجعة طلبات السحب (mirqah-pr-review)</b>
+<span>مراجعة مستقلة عدائية، واختبار سلبي يفشل على main وينجح على الفرع، وحظر المساس ببيانات data/** وحكم PASS/BLOCK.</span>
+</div>
+</div>
+
+<div class="steps">
+<div class="step">
+<div class="step-header"><div class="num">1</div><h2>تحميل المهارات</h2></div>
+<p>نسخ مهارات المشروع إلى مجلد مهارات الوكيل في بيئة العمل.</p>
+<code>Copy-Item -Recurse docs/team/skills/* $HOME/.claude/skills/</code>
+<div class="exp">النتيجة: التعرف على المهارات الثلاث وظهورها في بيئة الوكيل.</div>
+<div class="stop">توقف إن لم تظهر: تحقق من صحة مسار المهارات قبل البدء.</div>
+</div>
+
+<div class="step">
+<div class="step-header"><div class="num">2</div><h2>بناء العرض التقديمي</h2></div>
+<p>بناء الشرائح ثم تشغيل سكريبت معالجة الاتجاه إجبارياً.</p>
+<code>python build_final.py
+python fix_bidi.py in.pptx out.pptx</code>
+<div class="exp">النتيجة: ملف عرض متناسق وضبط رموز اللغة بدون انعكاس الأقواس.</div>
+<div class="stop">توقف إن فُقدت خطوة المعالجة: لا تسليم بدون تشغيل fix_bidi.</div>
+</div>
+
+<div class="step">
+<div class="step-header"><div class="num">3</div><h2>أتمتة لقطات الفيديو</h2></div>
+<p>تسجيل لقطات المتصفح بدقة محددة وبالسمة الفاتحة في وضع حي.</p>
+<code>python -m playwright codegen --viewport-size=1920,1080 mirqah.app</code>
+<div class="exp">النتيجة: مشاهد حقيقية متزامنة مع نص التعليق الصوتي المعتمد.</div>
+<div class="stop">توقف إن ظهرت الطرفية في وضع محاكاة: وضع LIVE إلزامي.</div>
+</div>
+
+<div class="step">
+<div class="step-header"><div class="num">4</div><h2>حراسة البيانات والمصدر</h2></div>
+<p>التحقق من عدم المساس بأي ملفات نصية أو طبقات مصدرية.</p>
+<code>git diff origin/main -- data/</code>
+<div class="exp">النتيجة: ناتج فارغ تماماً يؤكد ثبات البيانات المصدرية.</div>
+<div class="stop">توقف إن ظهر أي تعديل في data: الرفض الفوري لطلب السحب.</div>
+</div>
+
+<div class="step">
+<div class="step-header"><div class="num">5</div><h2>المراجعة المستقلة</h2></div>
+<p>إثبات الاختبار السلبي على الكود القديم ثم التحقق من الكود الجديد.</p>
+<code>git checkout origin/main -- src/
+python -m pytest -q
+git checkout HEAD -- src/
+python -m pytest -q</code>
+<div class="exp">النتيجة: فشل على القديم ونجاح على الجديد وحكم PASS موثق.</div>
+<div class="stop">توقف إن نجح الاختبار على القديم: الاختبار شكلي ويُرفض.</div>
+</div>
+</div>
+
+<div class="strips">
+<div class="strip scope">
+<b>ما لا يفعله هذا الفرع:</b> لا تعديل على كود المحرك أو البيانات المصدرية، لا نسب مئوية (% أو ٪)، لا ادعاء دقة، لا كلمة «الأول» للسبق، ولا اعتماد آلي — «اعتماد» محجوز للمتخصص البشري.
+</div>
+<div class="strip verify">
+<b>كيف تعرف أنه يعمل:</b> وجود مجلدات المهارات الثلاث بمستنداتها الكاملة، وتطابق بوابات الفحص الصارمة، وإصدار أحكام المراجعة بتقرير موثق ومحدد المسار والسطر.
+</div>
+</div>
+
+<div class="footer">
+<span><bdi dir="ltr">docs/branches/docs-team-skills</bdi></span>
+<span>مِرْقاة · فهرس مناهج التفسير</span>
+</div>
+</div>
+</body>
+</html>
