@@ -1403,7 +1403,8 @@ aside.reader-aside {
 
     <div class="header-actions">
       <button type="button" class="btn" id="btn-export-decisions" hidden title="تصدير قرارات المتخصص بصيغة JSON">صدّر القرارات</button>
-      <button type="button" class="btn btn-primary" id="btn-toggle-mode">وضع المراجعة ←</button>
+      <button type="button" class="btn" id="btn-export-log" hidden title="قرارات حُفظت في هذا المتصفح أثناء تجربة سابقة؛ المراجعة الرسمية في لوحة اللجنة">صدّر قراراتك المحفوظة</button>
+      <button type="button" class="btn btn-primary" id="btn-toggle-mode" hidden>وضع المراجعة ←</button>
       <button type="button" class="ib-btn" id="btn-theme-toggle" aria-pressed="false" aria-label="تبديل المظهر" title="تبديل المظهر الفاتح/الداكن">◐</button>
       <a href="fahras.html" class="btn btn-ghost" title="الرجوع إلى الواجهة الكلاسيكية">الواجهة الكلاسيكية</a>
     </div>
@@ -1635,6 +1636,10 @@ aside.reader-aside {
   var DATA = JSON.parse(document.getElementById("methods-data").textContent);
 
   var STORAGE_KEY = "tafsir-fahras-v1-log";
+  // The public reader is for reading. Specialists decide in the committee console
+  // (console.mirqah.app), where decisions are saved on the server; this page's old
+  // review mode kept decisions in the browser only, so it stays closed.
+  var REVIEW_OPEN = false;
   var THEME_KEY = "tafsir-fahras-v1-theme";
   var TYPE_KEY = "tafsir-fahras-v1-type-scale";
   var TYPE_STEPS = [1.05, 1.15, 1.25, 1.38, 1.5];
@@ -2487,6 +2492,9 @@ aside.reader-aside {
       exportBtn.hidden = true;
       toggleModeBtn.textContent = "وضع المراجعة ←";
       toggleModeBtn.classList.add("btn-primary");
+      toggleModeBtn.hidden = !REVIEW_OPEN;
+      var logBtn = document.getElementById("btn-export-log");
+      if (logBtn) logBtn.hidden = !(state.log && state.log.length);
       try {
         var url2 = new URL(window.location.href);
         url2.searchParams.delete("mode");
@@ -3656,6 +3664,26 @@ aside.reader-aside {
       });
     }
 
+    var logBtn = document.getElementById("btn-export-log");
+    if (logBtn && modal) {
+      logBtn.addEventListener("click", function () {
+        if (!state.log || !state.log.length) { toast("لا توجد قرارات محفوظة في هذا المتصفح"); return; }
+        var payload = {
+          kind: "mirqah-reader-log",
+          note_ar: "قرارات حُفظت في متصفح المراجِع على صفحة القارئ (تجربة سابقة)؛ ليست قرارات معتمدة في اللوحة.",
+          data_version: DATA.data_version || "",
+          exported_at: new Date().toISOString(),
+          decisions: state.log
+        };
+        if (area) area.value = JSON.stringify(payload, null, 2);
+        modal.setAttribute("data-kind", "log");
+        modal.hidden = false;
+      });
+    }
+    if (exportBtn && modal) {
+      exportBtn.addEventListener("click", function () { modal.removeAttribute("data-kind"); });
+    }
+
     if (closeBtn && modal) {
       closeBtn.addEventListener("click", function () { modal.hidden = true; });
     }
@@ -3683,7 +3711,9 @@ aside.reader-aside {
         var url = URL.createObjectURL(blob);
         var a = document.createElement("a");
         a.href = url;
-        a.download = "approved-" + state.tafsirId + "-" + state.windowId + ".json";
+        a.download = (modal && modal.getAttribute("data-kind") === "log")
+          ? "mirqah-reader-decisions.json"
+          : "approved-" + state.tafsirId + "-" + state.windowId + ".json";
         a.click();
         URL.revokeObjectURL(url);
       });
@@ -3757,7 +3787,7 @@ aside.reader-aside {
     // Check URL mode parameter
     try {
       var params = new URLSearchParams(window.location.search);
-      if (params.get("mode") === "review") {
+      if (REVIEW_OPEN && params.get("mode") === "review") {
         state.mode = "review";
       }
       var tParam = params.get("t") || params.get("tafsir");
