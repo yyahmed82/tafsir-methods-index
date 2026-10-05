@@ -7,9 +7,27 @@
 
 ---
 
+## التثبيت المحلي في أمر واحد / One-command local install
+
+يثبّت لوحة اللجنة والقارئ العام ومحرّك ذكاء محلياً (Ollama) على Ubuntu/Debian أو WSL2 أو macOS، ويختار حجم النماذج حسب ذاكرة جهازك.
+Installs the committee console, the public reader and a local AI engine (Ollama) on Ubuntu/Debian, WSL2 or macOS, sized to your machine.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/install/local/install.sh | bash
+```
+
+| المستوى / Tier | الذاكرة / RAM | القرص / Disk | النماذج / Models |
+|---|---|---|---|
+| `full` | 16 GB | 22 GB | qwen2.5:14b + gemma3:12b (كما عند الفريق) |
+| `lite` | 8 GB | 8 GB | qwen2.5:3b + gemma3:1b |
+| `none` | 4 GB | 3 GB | بلا نموذج — وضع المحاكاة فقط / demo mode only |
+
+ثم افتح http://localhost:8800 (اللوحة) و http://localhost:8080/fahras.html (القارئ). فحص الجهاز دون تثبيت: `bash install.sh --check`.
+التفاصيل والخيارات والتشغيل عبر SSH وإزالة التثبيت: **[`docs/INSTALL.md`](docs/INSTALL.md)**.
+
 ## ابدأ من هنا (للزملاء)
 
-1. شغّل الصفحة والاختبارات: قسم «التشغيل» أدناه.
+1. أسرع طريق: «التثبيت المحلي في أمر واحد» أعلاه. للتشغيل اليدوي والاختبارات: قسم «التشغيل» أدناه.
 2. إن كنت تعمل عبر Codex أو Claude: الأداة تقرأ [`AGENTS.md`](AGENTS.md) تلقائياً (Claude عبر [`CLAUDE.md`](CLAUDE.md)). ابدأ كل جلسة بـ «اقرأ AGENTS.md والتزم به».
 3. قواعد العمل والفروع: [`CONTRIBUTING.md`](CONTRIBUTING.md). قبل التسليم: [`docs/SUBMISSION_CHECKLIST.md`](docs/SUBMISSION_CHECKLIST.md).
 4. **المهام التالية بالترتيب:** [`docs/HANDOFF.md`](docs/HANDOFF.md).

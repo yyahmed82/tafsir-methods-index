@@ -45,3 +45,7 @@ deck/qa/qa_raw_results.json
 # arm B (methodology profiles): rebuilt from windows + markers + method/profiles on every run
 data/**/markers_profile/
 data/**/packets_profile/
+
+# local install (install.sh)
+.venv/
+.mirqah-local/

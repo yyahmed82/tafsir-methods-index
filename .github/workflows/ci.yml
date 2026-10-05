@@ -86,3 +86,31 @@ jobs:
               git diff --stat -- data
               exit 1
             }
+
+  installer:
+    # Fresh-machine check of install.sh (tier none: no model download) on Linux and macOS
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        if: runner.os == 'Linux'
+        run: shellcheck -S warning install.sh scripts/mirqah-local
+
+      - name: Install (tier none) and health checks
+        run: |
+          ./install.sh --check
+          ./install.sh --tier none --yes --email ci@mirqah.local --name CI
+          scripts/mirqah-local status
+          curl -fsS http://127.0.0.1:8800/api/public >/dev/null
+          curl -fsS http://127.0.0.1:8080/fahras.html >/dev/null
+          ./install.sh --tier none --yes --email ci@mirqah.local --name CI   # second run is safe
+          scripts/mirqah-local stop
+
+      - name: Install log
+        if: always()
+        run: cat .mirqah-local/install.log 2>/dev/null || cat "${TMPDIR:-/tmp}"/mirqah-install-*.log 2>/dev/null || true
