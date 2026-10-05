@@ -724,3 +724,25 @@ a.chip:hover { filter: brightness(1.08); }
   .vchart { grid-template-columns: 28px minmax(0, 1fr); column-gap: 6px; }
   .vc-x span.alt { visibility: hidden; }
 }
+
+/* review in context: the move highlighted inside the pinned window text */
+.move-ctx { max-height: 320px; }
+.move-ctx .ctx-out { color: var(--text-3); }
+.move-ctx mark.ctx-cur { background: var(--accent-soft); color: var(--text); border-radius: 4px; padding: 1px 2px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
+.ctx-part { font-family: inherit; font-size: 12px; color: var(--violet); background: var(--violet-soft); border-radius: 6px; padding: 1px 6px; margin-inline-end: 4px; }
+.ctx-sep { color: var(--text-3); }
+.ctx-full > summary { cursor: pointer; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; list-style: none; }
+.ctx-full > summary::-webkit-details-marker { display: none; }
+.ctx-full[open] > summary { margin-bottom: 10px; }
+.ctx-full .ctx-doc { max-height: 60vh; }
+.ctx-full .ctx-edge { margin: 6px 0; }
+.ctx-doc mark.ctx-mv { cursor: pointer; border-radius: 4px; padding: 1px 2px; color: var(--text); background: var(--warn-soft);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--warn) 30%, transparent); }
+.ctx-doc mark.ctx-mv.done { background: var(--accent-soft); box-shadow: none; }
+.ctx-doc mark.ctx-mv.done.reject { background: color-mix(in srgb, var(--danger, #dc2626) 14%, transparent); }
+.ctx-doc mark.ctx-mv:hover, .ctx-doc mark.ctx-mv:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ctx-doc .ctx-tag { font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-2); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 5px; padding: 1px 4px; margin-inline-end: 4px; vertical-align: 2px; }
+.move.flash { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); transition: box-shadow .3s; }
+@media (max-width: 640px) { .move-ctx { font-size: 17px; } .ctx-full .ctx-doc { max-height: 55vh; } }

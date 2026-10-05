@@ -772,6 +772,16 @@ def test_committee_runs_pipeline_end_to_end(env, tmp_path, monkeypatch):
         assert rv["is_committee"] and rv["annotator"] == "committee"
         first = rv["moves"][0]
         assert first["key"] == "P-m01" and first["committee"]["committee_route"] == "specialist"
+        # the reviewer reads each move in place: the pinned window text and span offsets
+        ctx = rv["context"]
+        assert ctx and ctx["text"]
+        for mv in rv["moves"]:
+            for sid in mv["span_ids"]:
+                a, b = ctx["spans"][sid]
+                assert 0 <= a < b <= len(ctx["text"])
+        a = min(ctx["spans"][s][0] for s in first["span_ids"])
+        b = max(ctx["spans"][s][1] for s in first["span_ids"])
+        assert ctx["text"][a:b].strip() and ctx["text"][a:b].strip()[:20] in (first["text"] or "")
         units = env.get("/api/review/units").json()["units"]
         assert units and units[0]["committee"] is True
 

@@ -1412,6 +1412,43 @@
     const canDecide = canDo('review_units') && !!d.can_decide;
     const asg = d.assignment;
     const reasonChip = (code) => code ? `<span class="chip warn mono" title="${T('review.verifier_reason')}">${esc(code)}</span>` : '';
+    // context: the window's pinned text, so each move is read with what comes before and after it
+    const ctx = !d.simulated && d.context && d.context.text ? d.context : null;
+    const CTX_CHARS = 280;
+    const moveRange = (m) => {
+      if (!ctx) return null;
+      const r = (m.span_ids || []).map((id) => ctx.spans[id]).filter(Boolean);
+      return r.length ? [Math.min(...r.map((x) => x[0])), Math.max(...r.map((x) => x[1]))] : null;
+    };
+    const moveInContext = (m) => {
+      const r = moveRange(m);
+      if (!r) return `<div class="move-text">${esc(m.text || '')}</div>`;
+      const [a, b] = r;
+      let before = ctx.text.slice(Math.max(0, a - CTX_CHARS), a);
+      let after = ctx.text.slice(b, b + CTX_CHARS);
+      const fromPrev = a < CTX_CHARS && ctx.prev ? `<span class="ctx-part">${T('review.ctx_prev_part')}</span>${esc(ctx.prev.text.slice(-(CTX_CHARS - a)))}<span class="ctx-sep"> ⋯ </span>` : '';
+      const toNext = b + CTX_CHARS > ctx.text.length && ctx.next ? `<span class="ctx-sep"> ⋯ </span><span class="ctx-part">${T('review.ctx_next_part')}</span>${esc(ctx.next.text.slice(0, CTX_CHARS - (ctx.text.length - b)))}` : '';
+      const cutBefore = a - CTX_CHARS > 0 ? '… ' : '';
+      const cutAfter = b + CTX_CHARS < ctx.text.length ? ' …' : '';
+      return `<div class="move-text move-ctx"><span class="ctx-out">${fromPrev}${cutBefore}${esc(before)}</span><mark class="ctx-cur">${esc(ctx.text.slice(a, b))}</mark><span class="ctx-out">${esc(after)}${cutAfter}${toNext}</span></div>`;
+    };
+    // the whole window with every move marked; a click jumps to that move
+    const fullText = () => {
+      if (!ctx) return '';
+      const marks = d.moves.map((m) => ({ m, r: moveRange(m) })).filter((x) => x.r).sort((x, y) => x.r[0] - y.r[0]);
+      let pos = 0; let html = '';
+      for (const { m, r } of marks) {
+        if (r[0] < pos) continue;   // overlapping moves: the first one keeps the mark
+        html += esc(ctx.text.slice(pos, r[0]));
+        html += `<mark class="ctx-mv ${m.decision ? 'done ' + m.decision.decision : 'open'}" data-act="goto-move" data-k="${esc(m.key)}" title="${esc(m.key)}"><b class="ctx-tag">${esc(m.key)}</b>${esc(ctx.text.slice(r[0], r[1]))}</mark>`;
+        pos = r[1];
+      }
+      html += esc(ctx.text.slice(pos));
+      return `<details class="card mb ctx-full"><summary>${ico('eye')} <b>${T('review.ctx_full')}</b> <span class="faint">${T('review.ctx_full_hint')}</span></summary>
+        ${ctx.prev ? `<p class="faint ctx-edge">${T('review.ctx_prev_part')} <span class="mono">${esc(ctx.prev.window)}</span></p>` : ''}
+        <div class="move-text ctx-doc">${html}</div>
+        ${ctx.next ? `<p class="faint ctx-edge">${T('review.ctx_next_part')} <span class="mono">${esc(ctx.next.window)}</span></p>` : ''}</details>`;
+    };
     const moves = d.moves.map((m) => {
       const c = m.committee;
       const p = preview[m.move_id];
@@ -1435,8 +1472,8 @@
         ${agents}
         ${c && c.abstention_ar ? `<p class="faint mb" dir="rtl">${esc(c.abstention_ar)}</p>` : ''}
         ${m.method_specialist ? (() => { const sv = m.method_specialist; return `<div class="spec-note"><span class="chip ${sv.verdict === 'confirm' ? 'ok' : sv.verdict === 'invalid' ? 'bad' : 'warn'}">${ico('flask')} ${T('spec.title', { f: T('learn.family.' + sv.family) })}: ${T('spec.verdict.' + sv.verdict)}${sv.primary ? ` · ${mName(sv.primary)}` : ''}</span>${sv.reason_code && sv.reason_code !== 'ok' ? ` <span class="chip">${esc(errTypes[sv.reason_code] || sv.reason_code)}</span>` : ''}${sv.note_ar ? `<span class="faint" dir="rtl">${esc(sv.note_ar)}</span>` : ''}</div>`; })() : ''}
-        <div class="label mb">${T('review.text')} <span class="faint mono">${esc((m.span_ids || []).join(' '))}</span></div>
-        ${d.simulated ? `<div class="move-text sim">${ico('flask')} ${T('demo.text_hidden')}</div>` : `<div class="move-text">${esc(m.text || '')}</div>`}
+        <div class="label mb">${T('review.text')} <span class="faint mono">${esc((m.span_ids || []).join(' '))}</span>${ctx ? ` <span class="faint">· ${T('review.ctx_hint')}</span>` : ''}</div>
+        ${d.simulated ? `<div class="move-text sim">${ico('flask')} ${T('demo.text_hidden')}</div>` : moveInContext(m)}
         ${m.rationale_ar ? `<p class="faint mt-s"><b>${T('review.rationale')}</b> (${T('review.rationale_note')}): <span dir="rtl">${esc(m.rationale_ar)}</span></p>` : ''}
         ${canDecide ? decideBlock(m, dec) : ''}
       </article>`;
@@ -1468,7 +1505,7 @@
       ${d.is_committee ? `<section class="card mb"><div class="row between"><div class="row"><b>${T('review.committee')}</b> ${mdl}</div>
         <span class="faint">${T('dash.moves')} ${fNum(sum.move_count)} · ${T('dash.candidates')} ${fNum(sum.auto_candidate)} · ${T('dash.specialist')} ${fNum(sum.specialist)} · ${esc(sum.caption || '')}</span></div>
         ${reasons ? `<div class="row mt-s">${reasons}</div>` : ''}</section>` : ''}
-      ${progress}${moves}`);
+      ${fullText()}${progress}${moves}`);
     if (S.reviewFocus) {
       const next = $(`[data-move="${CSS.escape(S.reviewFocus)}"]`);
       S.reviewFocus = null;
@@ -1948,6 +1985,16 @@
           break;
         }
         case 'toggle-decided': S.reviewShowDecided = !S.reviewShowDecided; render(); break;
+        case 'goto-move': {
+          const art = $(`[data-move="${CSS.escape(el.dataset.k)}"]`);
+          if (art) {
+            const fold = art.closest('details.move-fold');
+            if (fold) fold.open = true;
+            art.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            art.classList.add('flash'); setTimeout(() => art.classList.remove('flash'), 1400);
+          }
+          break;
+        }
         case 'add-user': userModal(null); break;
         case 'edit-user': userModal((S.usersCache || []).find((u) => String(u.id) === id)); break;
         case 'revoke-user': await api(`/users/${id}/revoke-sessions`, { method: 'POST' }); toast(t('common.saved'), 'ok'); break;

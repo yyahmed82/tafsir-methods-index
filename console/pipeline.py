@@ -117,6 +117,44 @@ def moves_path(tafsir: str, annotator: str, window: str) -> Path:
     return base_dir(tafsir) / "moves" / annotator / f"{window}.json"
 
 
+_PART_RE = re.compile(r"^(?P<stem>\d+_\d+)_p(?P<n>\d+)$")
+CONTEXT_EDGE = 400   # characters of the neighbouring part shown before / after a window
+
+
+def window_context(tafsir: str, window: str) -> dict | None:
+    """The window's whole pinned text, so the reviewer reads each move in place.
+
+    Returns the exact source slice (window_text), each span's offsets relative to it,
+    and the edge of the previous / next part of the same ayah. Text only comes from
+    the pinned window file written by the extraction step; nothing is generated."""
+    base = base_dir(tafsir)
+    p = base / "windows" / f"{window}.json"
+    if not p.is_file():
+        return None
+    w = _read_json(p)
+    text = w.get("window_text") or ""
+    ws = int(w.get("window_start") or 0)
+    spans = {}
+    for s in w.get("spans") or []:
+        try:
+            a, b = int(s["start"]) - ws, int(s["end"]) - ws
+        except (KeyError, TypeError, ValueError):
+            continue
+        if 0 <= a <= b <= len(text):
+            spans[s["id"]] = [a, b]
+    out = {"text": text, "spans": spans, "prev": None, "next": None}
+    m = _PART_RE.match(window)
+    if m:
+        n = int(m.group("n"))
+        for key, k, edge in (("prev", n - 1, "tail"), ("next", n + 1, "head")):
+            q = base / "windows" / f"{m.group('stem')}_p{k:02d}.json"
+            if k >= 1 and q.is_file():
+                t = _read_json(q).get("window_text") or ""
+                out[key] = {"window": q.stem,
+                            "text": t[-CONTEXT_EDGE:] if edge == "tail" else t[:CONTEXT_EDGE]}
+    return out
+
+
 def load_verified(tafsir: str, annotator: str, window: str) -> dict | None:
     p = verified_path(tafsir, annotator, window)
     return _read_json(p) if p.is_file() else None

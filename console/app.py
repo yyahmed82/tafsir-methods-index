@@ -845,7 +845,8 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                 "chair": None if com is not None else pipeline.chair_preview(tafsir, window,
                                                                              variant),
                 "error_types": learning.error_types(), "methods": list(learning.METHODS),
-                "method_names": learning.method_names(), "history": dec}
+                "method_names": learning.method_names(), "history": dec,
+                "context": pipeline.window_context(tafsir, window)}
 
     @app.post("/api/review/decision")
     @operational(write=True)
