@@ -148,7 +148,7 @@
     const v = js ? (new URL(js.src).searchParams.get('v') || '') : '';
     await Promise.all(['word', 'full'].map(async (k) => {
       try {
-        const r = await fetch(`/static/brand/mirqah-${k === 'word' ? 'wordmark' : 'logo'}.svg${v ? `?v=${v}` : ''}`, { credentials: 'same-origin' });
+        const r = await fetch(`/static/brand/mirqah-wordmark.svg${v ? `?v=${v}` : ''}`, { credentials: 'same-origin' });
         if (r.ok) S.brand[k] = await r.text();
       } catch { /* the text name is shown instead */ }
     }));
