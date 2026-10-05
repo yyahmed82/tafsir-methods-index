@@ -308,6 +308,24 @@ def probe() -> dict:
             "classifier_installed": True, "verifier_installed": True}
 
 
+def ollama_ps() -> dict:
+    """Simulated GET /api/ps: both committee models held in memory for five minutes."""
+    llm = settings.get("llm")
+    now = time.time()
+    sizes = {llm["classifier_model"]: 9.7e9, llm["verifier_model"]: 8.9e9}
+    return {"available": True, "error": None, "simulated": True, "at": now,
+            "models": [{"name": n, "size": int(b), "size_vram": int(b), "context_length": 16384,
+                        "expires_at": now + 240, "parameter_size": None, "quantization": None}
+                       for n, b in sizes.items()]}
+
+
+def sim_usage(chars: int, moves: int) -> dict:
+    """Plausible token counts for a simulated model step (deterministic, no RNG draw)."""
+    tin = int(chars / 2.4) + 2600
+    return {"model_calls": 1, "tokens_in": tin, "tokens_out": 90 * max(1, moves) + 60,
+            "max_prompt": tin}
+
+
 # ------------------------------------------------------------------ the simulated year
 
 class _Sim:
@@ -393,7 +411,8 @@ class _Sim:
                 summ = _summary(self.moves[(tafsir, window)])
                 if ok and agent in ("classifier", "verifier"):
                     result = {"moves": summ["move_count"], "auto_candidate": summ["auto_candidate"],
-                              "specialist": summ["specialist"], "flags": summ["flag_count"]}
+                              "specialist": summ["specialist"], "flags": summ["flag_count"],
+                              **sim_usage(u["chars"], summ["move_count"])}
                     u[f"{agent}_at"] = u[f"{agent}_at"] or fin
                     tail = (f"verifier: moves={summ['move_count']} auto={summ['auto_candidate']} "
                             f"specialist={summ['specialist']} flags={summ['flag_count']}")
@@ -736,7 +755,8 @@ def _tick(now: float) -> None:
                   "specialist": s["specialist"], "reasons": s["by_abstention_reason"]}
     else:
         result = {"moves": s["move_count"], "auto_candidate": s["auto_candidate"],
-                  "specialist": s["specialist"], "flags": s["flag_count"]}
+                  "specialist": s["specialist"], "flags": s["flag_count"],
+                  **sim_usage(u["chars"] if u else 4000, s["move_count"])}
     with db.connect() as con:
         con.execute("UPDATE task_steps SET status='done', finished_at=?, duration_ms=?, exit_code=0,"
                     " result=?, output_tail=? WHERE id=?",

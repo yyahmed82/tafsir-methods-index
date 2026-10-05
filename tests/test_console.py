@@ -390,6 +390,13 @@ def test_demo_mode_is_isolated_and_read_only(env):
     assert rv["simulated"] and all(m["text"] is None for m in rv["moves"])  # never tafsir text
     assert env.get("/api/reports").json()["reports"]
     assert env.get("/api/tasks").json()["tasks"]
+    # hover cards read the simulated steps (with simulated token counts) and model memory
+    wk = env.get("/api/agents/classifier").json()["week"]
+    assert wk["n"] > 0 and wk["tokens_in"] > 0 and wk["p95_s"] is not None
+    brain = env.get("/api/agents/model").json()
+    assert brain["ps"]["simulated"] and len(brain["ps"]["models"]) == 2
+    spec = env.get("/api/agents/specialist").json()
+    assert spec["review"]["moves"] >= spec["review"]["decided"] >= 0 and "n" in spec["week"]
     r = env.post("/api/tasks", json={"kind": "dryrun", "scope": "sample"}, headers=H)
     assert r.status_code == 423 and r.json()["detail"]["error"] == "demo_read_only"
     assert env.post("/api/review/decision", json={"tafsir": "al_saadi", "window": "24_35", "move_id": "P-m01",
@@ -490,6 +497,11 @@ class _FakeOllama(BaseHTTPRequestHandler):
                                    {"name": "gemma3:12b", "details": {"family": "gemma3"}}]})
         elif self.path == "/api/version":
             self._json({"version": "0.0-test"})
+        elif self.path == "/api/ps":
+            self._json({"models": [{"name": "qwen2.5:14b", "model": "qwen2.5:14b",
+                                    "size": 9_700_000_000, "size_vram": 9_700_000_000,
+                                    "context_length": 8192,
+                                    "expires_at": "2099-01-01T00:04:00.123456789+03:00"}]})
         else:
             self._json({}, 404)
 
@@ -506,7 +518,8 @@ class _FakeOllama(BaseHTTPRequestHandler):
             "author_verdict_span_ids": [], "references": {"verses": [], "hadith": [],
                                                            "persons": []},
             "alternatives": [], "rationale_ar": "اختبار"}]}
-        self._json({"choices": [{"message": {"content": json.dumps(reply, ensure_ascii=False)}}]})
+        self._json({"choices": [{"message": {"content": json.dumps(reply, ensure_ascii=False)}}],
+                    "usage": {"prompt_tokens": len(user) // 3, "completion_tokens": 120}})
 
 
 def test_committee_runs_pipeline_end_to_end(env, tmp_path, monkeypatch):
@@ -592,6 +605,26 @@ def test_committee_runs_pipeline_end_to_end(env, tmp_path, monkeypatch):
         rep = env.post(f"/api/reports/{day}/generate", headers=H).json()["content"]
         assert rep["agents"]["classifier"]["done"] == 1
         assert rep["agents"]["chair"]["done"] == 1 and rep["committee"]["windows"] == 1
+        # hover cards: real timings and the token counts the model server reported
+        cls = t["steps"][0]["result"]
+        assert cls["model_calls"] == 1 and cls["tokens_out"] == 120 and cls["tokens_in"] > 1000
+        card = env.get("/api/agents/classifier").json()
+        assert card["model"] == "qwen2.5:14b" and card["today"]["ok"] == 1
+        assert card["today"]["tokens_in"] == cls["tokens_in"] and card["today"]["tokens_out"] == 120
+        assert card["today"]["median_s"] is not None and card["today"]["fail_pct"] == 0
+        assert card["loaded"]["context_length"] == 8192 and card["loaded"]["expires_at"] is None
+        assert card["arms_today"] == {"A": 1} and len(card["spark"]) == 1
+        assert card["queue"]["waiting"] == 0 and "now" not in card
+        assert env.get("/api/agents/verifier").json()["loaded"] == {"name": "gemma3:12b",
+                                                                   "loaded": False}
+        chair = env.get("/api/agents/chair").json()
+        assert chair["outcomes_today"]["moves"] >= 1 and chair["today"]["tokens_in"] == 0
+        assert env.get("/api/agents/checker").json()["today"]["ok"] == 2
+        brain = env.get("/api/agents/model").json()
+        assert brain["ps"]["available"] and brain["today"]["calls"] == 2
+        assert brain["per_model"]["qwen2.5:14b"]["tokens_out"] == 120
+        assert brain["llm"]["reachable"]
+        assert env.get("/api/agents/nope").json()["detail"]["error"] == "agent_unknown"
         perf = env.get("/api/llm/perf").json()["agents"]
         assert {a["agent"] for a in perf} == {"classifier", "verifier", "chair"}
         assert all(a["median_s"] is not None for a in perf)
@@ -728,10 +761,17 @@ def test_ab_task_runs_both_arms_blind_review_and_teaching(env, tmp_path, monkeyp
             ("classifier", ""), ("classifier", "profile"), ("method_specialist", "profile"),
             ("verifier", ""), ("verifier", "profile"), ("chair", ""), ("chair", "profile")]
         # the fake model does not answer as a specialist: an untrusted reply never confirms
-        assert t["steps"][2]["result"] == {"moves": 1, "confirm": 0, "reject": 0, "reframe": 0,
-                                           "abstain": 0, "invalid": 1}
+        spec = {k: v for k, v in t["steps"][2]["result"].items()
+                if k not in ("model_calls", "tokens_in", "tokens_out", "max_prompt")}
+        assert spec == {"moves": 1, "confirm": 0, "reject": 0, "reframe": 0, "abstain": 0,
+                        "invalid": 1}
+        assert t["steps"][2]["result"]["model_calls"] == 2  # one retry after an invalid reply
         assert (dst_base / "specialist_profile" / "24_35.json").is_file()
         assert "ملف المفسر" in t["task"]["title_ar"]
+        card = env.get("/api/agents/method_specialist").json()
+        assert card["model"] == "qwen2.5:14b" and card["arms_today"] == {"B": 1}
+        assert card["outcomes_today"]["invalid"] == 1 and card["today"]["model_calls"] >= 1
+        assert env.get("/api/agents/classifier").json()["arms_today"] == {"A": 1, "B": 1}
         # each arm writes its own outputs; arm B packets are rebuilt in the workspace copy
         assert (dst_base / "committee" / "24_35.json").is_file()
         assert (dst_base / "committee_profile" / "24_35.json").is_file()
@@ -833,3 +873,27 @@ def test_deploy_sync_keeps_arm_b_outputs_and_lessons():
         assert pat in script, pat
     pull = (ROOT / "deploy" / "mac" / "pull-runs.sh").read_text(encoding="utf-8")
     assert "committee_profile" in pull and "gold" in pull
+
+
+def test_hover_card_helpers(env):
+    import os
+
+    from console import pipeline
+    # Ollama times carry nanoseconds; year 1 and far-future mean "kept loaded"
+    assert pipeline._epoch("2026-10-05T14:38:31.837534123+03:00") == pytest.approx(1791200311.837534)
+    assert pipeline._epoch("0001-01-01T00:00:00Z") is None
+    assert pipeline._epoch("garbage") is None and pipeline._epoch(None) is None
+    # the running step's process: resident memory and average CPU from /proc
+    if os.path.exists(f"/proc/{os.getpid()}/status"):
+        u = runner._proc_usage(os.getpid(), db.now() - 10)
+        assert u["rss_mb"] > 1 and u["cpu_pct"] >= 0
+    assert runner._proc_usage(None, None) is None
+    assert runner._proc_usage(2 ** 22 + 7, None) is None  # gone
+    m = runner._USAGE_RE.search("x\nusage: calls=3 prompt_tokens=9000 completion_tokens=410"
+                                " max_prompt=3100\n")
+    assert [int(x) for x in m.groups()] == [3, 9000, 410, 3100]
+    # an unknown agent and an empty day
+    with pytest.raises(runner.TaskError):
+        runner.agent_detail("robot")
+    d = runner.agent_detail("verifier")
+    assert d["today"]["n"] == 0 and d["today"]["fail_pct"] is None and d["spark"] == []

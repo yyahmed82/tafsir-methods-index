@@ -6,10 +6,12 @@ only by calling ``src/run_window.py`` (the pinned pipeline).
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -502,4 +504,49 @@ def probe_llm() -> dict:
     names = {x["name"] for x in out["models"]}
     out["classifier_installed"] = llm["classifier_model"] in names
     out["verifier_installed"] = llm["verifier_model"] in names
+    return out
+
+
+_PS_CACHE: dict[str, Any] = {"at": 0.0, "value": None}
+
+
+def _epoch(iso: str | None) -> float | None:
+    """Ollama's RFC 3339 time (nanoseconds allowed) → epoch seconds; None for "forever"."""
+    if not iso:
+        return None
+    s = re.sub(r"(\.\d{6})\d+", r"\1", str(iso)).replace("Z", "+00:00")
+    try:
+        ts = dt.datetime.fromisoformat(s).timestamp()
+    except ValueError:
+        return None
+    return ts if 0 < ts < 4e9 else None  # year 1 / far future = kept loaded
+
+
+def ollama_ps(max_age: float = 4.0) -> dict:
+    """Models the model server holds in memory now (GET /api/ps), cached a few seconds."""
+    d = _demo()
+    if d:
+        return d.ollama_ps()
+    now = time.time()
+    if _PS_CACHE["value"] is not None and now - _PS_CACHE["at"] < max_age:
+        return _PS_CACHE["value"]
+    llm = settings.get("llm")
+    out: dict[str, Any] = {"available": False, "error": None, "models": [], "at": now}
+    if llm["runtime"] != "ollama-local":
+        out["error"] = "hosted_runtime_not_probed"
+    else:
+        try:
+            ps = _get_json(llm["base_url"].rstrip("/") + "/api/ps", timeout=3.0)
+            out["available"] = True
+            for x in ps.get("models") or []:
+                det = x.get("details") or {}
+                out["models"].append({
+                    "name": x.get("name") or x.get("model"), "size": x.get("size"),
+                    "size_vram": x.get("size_vram"), "context_length": x.get("context_length"),
+                    "expires_at": _epoch(x.get("expires_at")),
+                    "parameter_size": det.get("parameter_size"),
+                    "quantization": det.get("quantization_level")})
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            out["error"] = f"{type(e).__name__}: {getattr(e, 'reason', e)}"[:200]
+    _PS_CACHE.update(at=now, value=out)
     return out

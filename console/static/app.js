@@ -263,6 +263,7 @@
   async function render() {
     clearTimers();
     closeModal();
+    hcHide();
     const app = $('#app');
     document.body.classList.toggle('is-view-as', viewingAs());
     document.body.classList.toggle('is-demo', inDemo());
@@ -372,7 +373,7 @@
     const d = await api('/dashboard');
     setPage(dashHTML(d));
     every(5000, async () => {
-      try { const n = await api('/dashboard'); if (parts()[0] === 'dashboard' && !$('.modal')) setPage(dashHTML(n)); } catch { /* next tick */ }
+      try { const n = await api('/dashboard'); if (parts()[0] === 'dashboard' && !$('.modal')) { setPage(dashHTML(n)); hcPlace(); } } catch { /* next tick */ }
     });
   }
   function dashHTML(d) {
@@ -395,11 +396,11 @@
       else if (a.recent && a.recent[0]) {
         const r = a.recent[0];
         bubble = `<span class="faint mono">${esc(fTime(r.finished_at))}</span> ${esc(tafsirName(r.tafsir))} <span class="mono">${esc(r.window)}</span> · ${statusChip(r.status)}`;
-        if (r.result && r.result.moves != null) bubble += `<br>${T('dash.moves')} ${r.result.moves} · ${T('dash.candidates')} ${r.result.auto_candidate}`;
+        if (r.result && r.result.moves != null) bubble += `<br>${resultLine(r.result)}`;
       } else if (a.key === 'checker') bubble = `${T('dash.today')}: ${fNum(a.today.ok)} ${T('dash.ok')}`;
       else if (a.key === 'specialist') bubble = `${T('dash.today')}: ${fNum(a.today.n)} ${T('dash.decisions')} · ✓${fNum(a.today.approve)} ✎${fNum(a.today.needs_edit)} ✕${fNum(a.today.reject)}`;
       else bubble = `<span class="faint">${T('dash.nothing_running')}</span>`;
-      return `<button class="agent ${a.key === sel.key ? 'sel' : ''}" data-act="sel-agent" data-k="${a.key}">${robot(a.color, st === 'running')}
+      return `<button class="agent ${a.key === sel.key ? 'sel' : ''} ${HC.key === a.key ? 'hc-on' : ''}" data-act="sel-agent" data-k="${a.key}" data-hc="${a.key}" aria-describedby="hovercard">${robot(a.color, st === 'running')}
         <span class="agent-name">${T('agent.' + a.key)}</span>
         <span class="agent-state ${stCls}"><span class="dot ${st === 'running' ? 'live' : ''}"></span>${stTxt}${a.next ? ` · ${T('dash.queue_steps', { n: a.next })}` : ''}</span>
         ${a.model ? `<span class="faint mono">${esc(a.model)}</span>` : ''}
@@ -428,7 +429,7 @@
     return `${head('dash.title', 'dash.subtitle', `${pill}
         <button class="btn" data-act="probe">${ico('refresh')} ${T('dash.probe')}</button>${sampleBtn}`)}${offline}
       <section class="card mission">
-        <div class="brain"><div class="brain-orb ${llm.reachable ? '' : 'off'} ${busy ? 'busy' : ''}">${ico('brain')}</div>
+        <div class="brain"><div class="brain-orb ${llm.reachable ? '' : 'off'} ${busy ? 'busy' : ''} ${HC.key === 'model' ? 'hc-on' : ''}" data-hc="model" tabindex="0" role="button" aria-label="${T('dash.llm_layer')}" aria-describedby="hovercard">${ico('brain')}</div>
           <div class="brain-meta"><div class="kicker">${T('dash.llm_layer')} · ${esc(llm.runtime || '')}</div>
             <div class="m">${esc(llm.classifier_model || '')} <span class="faint">+</span> ${esc(llm.verifier_model || '')}</div>
             <div class="faint">${llm.simulated ? T('mode.demo_engine') : `<span class="mono">${esc(llm.base_url || '')}</span>`} · ${llm.reachable ? `<span class="c-green">${T('dash.reachable')}</span>` : `<span style="color:var(--warn)">${T('dash.unreachable')}</span>`}${llm.version && !llm.simulated ? ` · v${esc(llm.version)}` : ''} · ${busy ? `<span class="c-green">${T('dash.brain_busy')}</span>` : T('dash.brain_idle')}</div></div></div>
@@ -456,18 +457,18 @@
   }
   function agentDetail(a, d) {
     const did = (a.recent || []).map((r) => `<div class="ev"><span class="tm">${esc(fTime(r.finished_at))}</span><span>${esc(tafsirName(r.tafsir))} <span class="mono">${esc(r.window)}</span> · ${statusChip(r.status)}
-      ${r.result && r.result.moves != null ? `<span class="faint">${T('dash.moves')} ${r.result.moves} · ${T('dash.candidates')} ${r.result.auto_candidate} · ${T('dash.flags')} ${r.result.flags}</span>` : ''}
+      ${r.result && r.result.moves != null ? `<span class="faint">${resultLine(r.result, true)}</span>` : ''}
       <span class="faint">· ${fDur(r.duration_ms)}</span></span></div>`).join('') || `<p class="faint">—</p>`;
     let now = `<p class="big-next" style="font-size:20px">${T('dash.nothing_running')}</p>`;
     if (a.now) now = `<p class="big-next" style="font-size:20px;color:var(--accent-text)">${esc(tafsirName(a.now.tafsir))} · <span class="mono">${esc(a.now.window)}</span></p><p class="faint">${esc(a.now.title_ar || '')}</p><p class="faint">${T('dash.model')}: <span class="mono">${esc(a.now.model || '')}</span></p>`;
-    else if (!['classifier', 'verifier', 'chair'].includes(a.key)) now = `<p class="muted">${T('agent.' + a.key + '.desc')}</p>`;
+    else if (!['classifier', 'method_specialist', 'verifier', 'chair'].includes(a.key)) now = `<p class="muted">${T('agent.' + a.key + '.desc')}</p>`;
     let next;
     if (a.next) next = `<p class="big-next">${T('dash.queue_steps', { n: a.next })}</p>`;
     else if (a.key === 'specialist') next = `<a class="btn outline-accent" href="#/review">${ico('review')} ${T('nav.review')}</a>`;
     else next = canDo('run_tasks') ? `<button class="btn outline-accent" data-act="new-task">${ico('plus')} ${T('tasks.new')}</button>` : '<p class="faint">—</p>';
     const td = a.today || {};
     let today = '';
-    if (['classifier', 'verifier', 'chair'].includes(a.key)) today = `${T('dash.today')}: ${fNum(td.ok)} ${T('dash.ok')} · ${fNum(td.bad)} ${T('dash.failed')}`;
+    if (['classifier', 'method_specialist', 'verifier', 'chair'].includes(a.key)) today = `${T('dash.today')}: ${fNum(td.ok)} ${T('dash.ok')} · ${fNum(td.bad)} ${T('dash.failed')}`;
     else if (a.key === 'checker') today = `${T('dash.today')}: ${fNum(td.ok)} ${T('dash.ok')}`;
     else if (a.key === 'specialist') today = `${T('dash.today')}: ${fNum(td.n)} ${T('dash.decisions')}`;
     return `<div class="card-h"><div class="row">${robot(a.color, a.status === 'running').replace('class="robot', 'style="width:40px;height:40px" class="robot')}
@@ -476,6 +477,286 @@
       <div class="agent-detail"><div class="card flat"><div class="kicker mb">${ico('check')} ${T('dash.last_runs')}</div>${did}</div>
         <div class="card flat"><div class="kicker mb">${T('dash.now')}</div>${now}</div>
         <div class="card flat"><div class="kicker mb">${T('dash.next')}</div>${next}</div></div>`;
+  }
+
+  function resultLine(res, full = false) {
+    if (!res || res.moves == null) return '';
+    if (res.confirm != null) return ['confirm', 'reject', 'reframe', 'abstain', 'invalid'].filter((k) => res[k]).map((k) => `${T('spec.verdict.' + k)} ${res[k]}`).join(' · ') || `${T('dash.moves')} ${res.moves}`;
+    const parts = [`${T('dash.moves')} ${res.moves}`];
+    if (res.auto_candidate != null) parts.push(`${T('dash.candidates')} ${res.auto_candidate}`);
+    if (full && res.flags != null) parts.push(`${T('dash.flags')} ${res.flags}`);
+    return parts.join(' · ');
+  }
+
+  // ------------------------------------------------------------ hover cards (mission control)
+  // Hover a robot (or the model orb) for its real numbers: step timings, failures, the
+  // tokens the model server reported, what it is doing now. Click pins; Esc closes.
+  // The card lives outside #page so the 5-second dashboard refresh never removes it.
+  const HC = { key: null, pinned: false, data: {}, timer: null, showT: null, hideT: null, el: null, seq: 0 };
+  const canHover = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  // token counts read like the model server reports them (12.3K), in every language
+  const fCompact = (n) => (n == null ? '—' : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n));
+  function fSecs(s) {
+    if (s == null) return '—';
+    if (s < 60) return `${s < 10 ? s : Math.round(s)} ${t('common.seconds')}`;
+    const r = Math.round(s), h = Math.floor(r / 3600), m = Math.floor((r % 3600) / 60), sec = String(r % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+  }
+  const fGB = (b) => (b == null ? '—' : `${(b / 1e9).toFixed(1)} GB`);
+  function fAgo(sec) {
+    if (sec == null) return '—';
+    const rtf = new Intl.RelativeTimeFormat(locale(), { numeric: 'auto', style: 'short' });
+    const s = Math.max(0, Math.round(sec));
+    if (s < 60) return rtf.format(-s, 'second');
+    if (s < 3600) return rtf.format(-Math.round(s / 60), 'minute');
+    if (s < 86400) return rtf.format(-Math.round(s / 3600), 'hour');
+    return rtf.format(-Math.round(s / 86400), 'day');
+  }
+  function hcEl() {
+    if (HC.el) return HC.el;
+    const el = document.createElement('div');
+    el.id = 'hovercard'; el.className = 'hc'; el.setAttribute('role', 'tooltip'); el.hidden = true;
+    el.addEventListener('mouseenter', () => clearTimeout(HC.hideT));
+    el.addEventListener('mouseleave', () => { if (!HC.pinned) hcHideSoon(); });
+    document.body.appendChild(el);
+    HC.el = el;
+    return el;
+  }
+  const hcAnchor = () => (HC.key ? document.querySelector(`[data-hc="${HC.key}"]`) : null);
+  function hcPlace() {
+    if (!HC.key || !HC.el || HC.el.hidden) return;
+    const a = hcAnchor();
+    if (!a) { hcHide(); return; }
+    $$('[data-hc].hc-on').forEach((x) => { if (x !== a) x.classList.remove('hc-on'); });
+    a.classList.add('hc-on');
+    const el = HC.el;
+    const sheet = window.innerWidth <= 640;
+    el.classList.toggle('sheet', sheet);
+    if (sheet) { el.style.left = el.style.top = ''; return; }
+    // beside the robot (never over it), on the side with more room; below/above on narrow screens
+    const r = a.getBoundingClientRect();
+    const g = 10, gap = 10, w = el.offsetWidth, h = el.offsetHeight, vw = document.documentElement.clientWidth, vh = window.innerHeight;
+    const roomL = r.left - gap - g, roomR = vw - r.right - gap - g;
+    let x, y;
+    if (Math.max(roomL, roomR) >= w) {
+      x = roomR >= roomL ? r.right + gap : r.left - gap - w;
+      y = Math.max(g, Math.min(vh - h - g, r.top - 4));
+    } else {
+      x = Math.max(g, Math.min(vw - w - g, r.left + r.width / 2 - w / 2));
+      y = r.bottom + gap;
+      if (y + h > vh - g) { const up = r.top - h - gap; y = up >= g ? up : Math.max(g, vh - h - g); }
+    }
+    el.style.left = `${Math.round(x)}px`; el.style.top = `${Math.round(y)}px`;
+  }
+  async function hcLoad() {
+    const key = HC.key, seq = ++HC.seq;
+    if (!key) return;
+    try {
+      const d = await api('/agents/' + encodeURIComponent(key));
+      HC.data[key] = d;
+      if (HC.key === key && seq === HC.seq) hcPaint();
+    } catch (e) {
+      if (HC.key === key && !HC.data[key]) { HC.el.innerHTML = `<div class="hc-body"><div class="notice bad">${ico('warn')}<span>${esc(errText(e))}</span></div></div>`; hcPlace(); }
+    }
+  }
+  function hcPaint() {
+    const d = HC.data[HC.key];
+    HC.el.innerHTML = d ? hcHTML(HC.key, d) : `<div class="hc-body"><div class="spinner" style="margin:18px auto"></div></div>`;
+    HC.el.classList.toggle('pinned', HC.pinned);
+    hcPlace();
+  }
+  function hcShow(key, pinned = false) {
+    clearTimeout(HC.showT); clearTimeout(HC.hideT);
+    const el = hcEl();
+    const changed = HC.key !== key;
+    HC.key = key; HC.pinned = pinned || (HC.pinned && !changed);
+    el.hidden = false;
+    if (changed || !el.innerHTML) hcPaint(); else { el.classList.toggle('pinned', HC.pinned); hcPlace(); }
+    if (changed) hcLoad();
+    if (!HC.timer) HC.timer = setInterval(() => { if (!document.hidden && HC.key) hcLoad(); }, 3000);
+  }
+  function hcHide() {
+    clearTimeout(HC.showT); clearTimeout(HC.hideT);
+    if (HC.timer) { clearInterval(HC.timer); HC.timer = null; }
+    $$('[data-hc].hc-on').forEach((x) => x.classList.remove('hc-on'));
+    HC.key = null; HC.pinned = false; HC.seq++;
+    if (HC.el) { HC.el.hidden = true; HC.el.innerHTML = ''; }
+  }
+  function hcHideSoon() {
+    clearTimeout(HC.hideT);
+    HC.hideT = setTimeout(() => {
+      // the 5-second refresh replaces the anchor: keep the card while the pointer is still on it
+      const a = hcAnchor();
+      if (HC.pinned || (a && a.matches(':hover')) || (HC.el && HC.el.matches(':hover'))) return;
+      hcHide();
+    }, 220);
+  }
+  function hcPin(key) {
+    if (HC.pinned && HC.key === key) { HC.pinned = false; if (canHover()) hcShow(key); else hcHide(); return; }
+    hcShow(key, true);
+  }
+  document.addEventListener('mouseover', (e) => {
+    if (!canHover()) return;
+    const a = e.target.closest('[data-hc]');
+    if (!a) return;
+    clearTimeout(HC.hideT);
+    if (HC.pinned && HC.key !== a.dataset.hc) return; // a pinned card stays until closed
+    if (HC.key === a.dataset.hc && !HC.el.hidden) return;
+    clearTimeout(HC.showT);
+    HC.showT = setTimeout(() => hcShow(a.dataset.hc), HC.key ? 60 : 160);
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (!canHover()) return;
+    const a = e.target.closest('[data-hc]');
+    if (!a || (e.relatedTarget && (a.contains(e.relatedTarget) || e.relatedTarget.closest?.('#hovercard')))) return;
+    clearTimeout(HC.showT);
+    if (!HC.pinned) hcHideSoon();
+  });
+  document.addEventListener('focusin', (e) => { const a = e.target.closest?.('[data-hc]'); if (a && !HC.pinned) hcShow(a.dataset.hc); });
+  document.addEventListener('focusout', (e) => { const a = e.target.closest?.('[data-hc]'); if (a && !HC.pinned) hcHideSoon(); });
+  window.addEventListener('resize', () => hcPlace());
+  window.addEventListener('scroll', () => hcPlace(), { passive: true });
+
+  function hcTile(label, value, sub = '', cls = '') {
+    return `<div class="hc-tile ${cls}"><div class="k">${label}</div><div class="v">${value}</div>${sub ? `<div class="s">${sub}</div>` : ''}</div>`;
+  }
+  function hcSpark(d) {
+    const pts = d.spark || [];
+    if (!pts.length) return '';
+    const max = Math.max(...pts.map((p) => p.s), 1);
+    const bars = pts.map((p) => `<i class="${p.st !== 'done' ? (p.st === 'failed' ? 'bad' : 'warn') : ''} ${p.arm === 'B' ? 'arm-b' : ''}" style="height:${Math.max(p.st === 'done' ? 6 : 45, Math.round((100 * p.s) / max))}%" title="${esc(tafsirName(p.t))} ${esc(p.w)} · ${esc(fSecs(p.s))}${p.arm === 'B' ? ' · B' : ''}"></i>`).join('');
+    return `<div class="hc-sec"><div class="hc-k">${T('hc.recent', { n: pts.length })}<span class="faint ltr-num">${T('hc.max')} ${esc(fSecs(max))}</span></div><div class="hc-spark">${bars}</div></div>`;
+  }
+  function hcCtx(d) {
+    const maxp = (d.today && d.today.max_prompt) || (d.week && d.week.max_prompt) || 0;
+    const ctx = d.loaded && d.loaded.context_length;
+    if (!maxp) return '';
+    if (!ctx) return `<div class="hc-sec"><div class="hc-k">${T('hc.ctx')}<span class="mono">${fNum(maxp)}</span></div><div class="faint">${T('hc.ctx_unknown')}</div></div>`;
+    const p = Math.min(100, Math.round((100 * maxp) / ctx));
+    const hot = maxp >= 0.98 * ctx;
+    return `<div class="hc-sec"><div class="hc-k">${T('hc.ctx')}<span class="mono">${fNum(maxp)} / ${fNum(ctx)}</span></div>
+      <div class="bar"><i class="${hot ? 'r' : p > 80 ? 'w' : ''}" style="width:${p}%"></i></div>
+      ${hot ? `<div class="hc-warn">${ico('warn')}<span>${T('hc.ctx_warn')}</span></div>` : ''}</div>`;
+  }
+  function hcNow(d) {
+    const n = d.now;
+    if (!n) {
+      const last = (d.spark || []).slice(-1)[0];
+      return `<div class="hc-now idle"><span class="dot"></span><span>${last ? T('hc.idle_since', { ago: fAgo(d.server_time - last.at) }) : T('dash.nothing_running')}</span></div>`;
+    }
+    const lim = n.timeout_s || 0;
+    const p = lim ? Math.min(100, Math.round((100 * n.elapsed_s) / lim)) : 0;
+    const proc = n.proc ? T('hc.process', { pid: n.pid, rss: n.proc.rss_mb ?? '—', cpu: n.proc.cpu_pct }) : n.pid ? `pid ${n.pid}` : '';
+    return `<div class="hc-now"><div class="row"><span class="dot live"></span><b><bdi>${esc(tafsirName(n.tafsir))}</bdi> · <span class="mono">${esc(n.window)}</span></b>${n.variant ? ` <span class="chip info">B</span>` : ` <span class="chip">A</span>`}
+        ${HC.key === 'checker' ? `<span class="faint">${T('hc.checking', { a: t('agent.' + n.agent) })}</span>` : ''}</div>
+      <div class="bar mt-s"><i class="${p > 85 ? 'r' : p > 60 ? 'w' : 'b'}" style="width:${p}%"></i></div>
+      <div class="faint"><span class="ltr-num">${esc(fSecs(n.elapsed_s))}</span> ${T('hc.of_limit', { t: fSecs(lim) })} · ${T('hc.task', { id: n.task_id, done: n.task_done, total: n.task_total })}${n.task_failed ? ` · <span style="color:var(--danger)">${fNum(n.task_failed)}✕</span>` : ''}</div>
+      ${proc ? `<div class="faint mono hc-proc">${proc}</div>` : ''}</div>`;
+  }
+  function hcFoot(d) {
+    const q = d.queue || {};
+    const arms = d.arms_today || {};
+    const armTxt = Object.keys(arms).length ? Object.keys(arms).sort().map((k) => `${k} ${fNum(arms[k])}`).join(' · ') : '—';
+    const lf = d.last_failure;
+    return `<div class="hc-kv">
+      <div><span>${T('hc.queue')}</span><b>${q.waiting ? T('hc.queue_v', { n: fNum(q.waiting), eta: q.eta_s ? fSecs(q.eta_s) : '—' }) : T('hc.queue_empty')}</b></div>
+      <div><span>${T('hc.arms')}</span><b class="mono">${esc(armTxt)}</b></div>
+      <div><span>${T('hc.last_fail')}</span><b>${lf ? `<span class="mono" style="color:var(--danger)">${esc(lf.code)}</span> · <bdi>${esc(tafsirName(lf.tafsir))}</bdi> <span class="mono">${esc(lf.window)}</span> · <bdi>${esc(fAgo(d.server_time - lf.at))}</bdi>` : T('hc.none')}</b></div>
+      ${lf && lf.line ? `<div class="hc-line mono" title="${esc(lf.line)}">${esc(lf.line)}</div>` : ''}</div>`;
+  }
+  function hcOutcomes(key, d) {
+    const o = d.outcomes_today || {};
+    const chips = [];
+    if (key === 'method_specialist') {
+      for (const k of ['confirm', 'reject', 'reframe', 'abstain', 'invalid']) if (o[k]) chips.push(`<span class="chip ${k === 'confirm' ? 'ok' : k === 'invalid' ? 'bad' : 'warn'}">${T('spec.verdict.' + k)} ${fNum(o[k])}</span>`);
+    } else if (key !== 'checker') {
+      if (o.moves != null) chips.push(`<span class="chip">${T('dash.moves')} ${fNum(o.moves)}</span>`);
+      if (o.auto_candidate != null) chips.push(`<span class="chip ok">${T('dash.candidates')} ${fNum(o.auto_candidate)}</span>`);
+      if (o.specialist != null) chips.push(`<span class="chip warn">${T('dash.specialist')} ${fNum(o.specialist)}</span>`);
+      if (o.flags) chips.push(`<span class="chip">${T('dash.flags')} ${fNum(o.flags)}</span>`);
+    }
+    const rs = Object.entries(d.reasons_today || {}).sort((a, b) => b[1] - a[1]).slice(0, 4)
+      .map(([k, v]) => `<span class="chip ${/^[A-Z_]+$/.test(k) ? 'bad' : ''}">${/^[A-Z_]+$/.test(k) ? `<span class="mono">${esc(k)}</span>` : T('review.reason.' + k)} ${fNum(v)}</span>`);
+    if (!chips.length && !rs.length) return '';
+    return `<div class="hc-sec"><div class="hc-k">${T(key === 'checker' ? 'hc.reject_codes' : 'hc.outcomes')}</div><div class="hc-chips">${chips.join('')}${rs.join('')}</div></div>`;
+  }
+  function hcHeadHTML(key, d, title, model, state) {
+    const color = { classifier: 'blue', method_specialist: 'teal', verifier: 'violet', checker: 'green', chair: 'amber', specialist: 'red' }[key];
+    const icon = key === 'model' ? `<span class="hc-orb">${ico('brain')}</span>` : robot(color, state === 'running');
+    const chip = { running: `<span class="chip info"><span class="dot live"></span>${T('dash.status.running')}</span>`, queued: `<span class="chip warn">${T('dash.status.queued')}</span>`,
+      idle: `<span class="chip">${T('dash.status.idle')}</span>`, human: `<span class="chip bad">${T('dash.status.human')}</span>`,
+      on: `<span class="chip ok"><span class="dot live"></span>${T('dash.reachable')}</span>`, off: `<span class="chip warn">${T('dash.unreachable')}</span>` }[state] || '';
+    return `<div class="hc-h">${icon}<div class="hc-t"><b>${title}</b>${model ? `<div class="mono faint">${model}</div>` : ''}</div>${chip}</div>`;
+  }
+  function hcHTML(key, d) {
+    const foot = `<div class="hc-f"><span>${T('hc.caption')}</span><span>${T(!canHover() ? 'hc.tap_close' : HC.pinned ? 'hc.pinned' : 'hc.pin_hint')}</span></div>`;
+    if (key === 'model') return hcModelHTML(d) + foot;
+    if (key === 'specialist') {
+      const td = d.today || {}, wk = d.week || {}, rv = d.review || {};
+      return `${hcHeadHTML(key, d, T('agent.specialist'), '', 'human')}<div class="hc-body">
+        <div class="hc-tiles">
+          ${hcTile(T('hc.decisions'), fNum(td.n), T('hc.d7', { v: fNum(wk.n) }))}
+          ${hcTile(T('hc.verdicts'), `<span class="c-green">✓${fNum(td.approve)}</span> <span class="c-amber">✎${fNum(td.needs_edit)}</span> <span class="c-red">✕${fNum(td.reject)}</span>`, T('dash.today'))}
+          ${hcTile(T('hc.lessons'), fNum(td.lessons), T('hc.d7', { v: fNum(wk.lessons) }))}
+        </div>
+        <div class="hc-sec"><div class="hc-k">${T('hc.review_waiting')}<b>${fNum(rv.waiting)}</b></div>
+          <div class="bar"><i style="width:${pct(rv.decided, rv.moves)}%"></i></div>
+          <div class="faint">${T('hc.review_of', { d: fNum(rv.decided), n: fNum(rv.moves), u: fNum(rv.units) })}</div></div>
+        <div class="hc-kv"><div><span>${T('hc.last_decision')}</span><b>${d.last_decision_at ? esc(fAgo(d.server_time - d.last_decision_at)) : '—'}</b></div></div>
+        <a class="btn sm outline-accent" href="#/review">${ico('review')} ${T('nav.review')}</a></div>${foot}`;
+    }
+    const td = d.today || {}, wk = d.week || {};
+    const state = d.now ? 'running' : (d.queue && d.queue.waiting) ? 'queued' : 'idle';
+    if (!wk.n && !d.now) {
+      return `${hcHeadHTML(key, d, T('agent.' + key), esc(d.model || ''), state)}<div class="hc-body"><p class="muted">${T('agent.' + key + '.desc')}</p><p class="faint">${T('hc.no_steps')}</p></div>${foot}`;
+    }
+    const sub7 = (v) => T('hc.d7', { v });
+    let tiles;
+    if (key === 'checker') {
+      tiles = `${hcTile(T('hc.checked'), fNum(td.ok), sub7(fNum(wk.ok)))}
+        ${hcTile(T('hc.rejected'), fNum(td.failed), sub7(fNum(wk.failed)), td.failed ? 'bad' : '')}
+        ${hcTile(T('hc.fail'), td.fail_pct != null ? `${td.fail_pct}%` : '—', sub7(wk.fail_pct != null ? `${wk.fail_pct}%` : '—'), td.fail_pct > 10 ? 'bad' : '')}`;
+    } else {
+      const model = key !== 'chair';
+      const loaded = d.loaded;
+      const memSub = !loaded ? '' : loaded.loaded === false ? T('hc.not_loaded')
+        : loaded.expires_at ? T('hc.unloads_in', { m: Math.max(0, Math.round((loaded.expires_at - d.server_time) / 60)) }) : T('hc.kept_loaded');
+      tiles = `${hcTile(T('hc.steps'), `${fNum(td.ok)}<small>✓</small>${td.failed ? ` <small style="color:var(--danger)">${fNum(td.failed)}✕</small>` : ''}`, sub7(fNum(wk.n - (wk.skipped || 0))))}
+        ${hcTile(T('hc.fail'), td.fail_pct != null ? `${td.fail_pct}%` : '—', sub7(wk.fail_pct != null ? `${wk.fail_pct}%` : '—'), td.fail_pct > 10 ? 'bad' : '')}
+        ${hcTile(T('hc.median'), `<span class="ltr-num">${esc(fSecs(td.median_s))}</span>`, sub7(fSecs(wk.median_s)))}
+        ${hcTile(T('hc.p95'), `<span class="ltr-num">${esc(fSecs(td.p95_s))}</span>`, sub7(fSecs(wk.p95_s)))}
+        ${model ? hcTile(T('hc.tokens'), fCompact((td.tokens_in || 0) + (td.tokens_out || 0)), `${T('hc.in_out', { i: fCompact(td.tokens_in), o: fCompact(td.tokens_out) })} · ${sub7(fCompact((wk.tokens_in || 0) + (wk.tokens_out || 0)))}`, 'wide')
+          : hcTile(T('hc.max'), `<span class="ltr-num">${esc(fSecs(td.max_s))}</span>`, sub7(fSecs(wk.max_s)))}
+        ${model ? hcTile(T('hc.speed'), td.tokens_per_s != null ? `<span class="ltr-num">${td.tokens_per_s}</span>` : '—', sub7(wk.tokens_per_s ?? '—'))
+          : hcTile(T('hc.busy'), `<span class="ltr-num">${esc(fSecs(td.busy_s))}</span>`, sub7(fSecs(wk.busy_s)))}
+        ${model ? hcTile(T('hc.calls'), fNum(td.model_calls), sub7(fNum(wk.model_calls))) : ''}
+        ${model ? hcTile(T('hc.memory'), loaded && loaded.size ? fGB(loaded.size_vram || loaded.size) : '—', memSub) : ''}`;
+    }
+    return `${hcHeadHTML(key, d, T('agent.' + key), esc(d.model || ''), state)}<div class="hc-body">
+      ${hcNow(d)}<div class="hc-tiles">${tiles}</div>${key !== 'checker' ? hcSpark(d) + hcCtx(d) : ''}${hcOutcomes(key, d)}${hcFoot(d)}</div>${foot}`;
+  }
+  function hcModelHTML(d) {
+    const llm = d.llm || {};
+    const ps = d.ps || {};
+    const loaded = (ps.models || []).map((m) => `<div class="hc-model"><span class="mono">${esc(m.name)}</span>
+        <span class="faint">${fGB(m.size_vram || m.size)}${m.context_length ? ` · ${T('hc.ctx_short', { n: fNum(m.context_length) })}` : ''} · ${m.expires_at ? T('hc.unloads_in', { m: Math.max(0, Math.round((m.expires_at - (ps.at || d.server_time)) / 60)) }) : T('hc.kept_loaded')}</span></div>`).join('')
+      || `<p class="faint">${ps.available ? T('hc.nothing_loaded') : esc(ps.error || '—')}</p>`;
+    const per = Object.entries(d.per_model || {}).map(([name, p]) => `<tr><td class="mono">${esc(name)}</td><td class="num">${fNum(p.steps)}</td><td class="num">${fCompact(p.tokens_in)}</td><td class="num">${fCompact(p.tokens_out)}</td><td class="num">${fNum(p.max_prompt || null)}</td></tr>`).join('');
+    const td = d.today || {};
+    const run = d.running;
+    return `${hcHeadHTML('model', d, T('dash.llm_layer'), `${esc(llm.runtime || '')}${llm.version && !llm.simulated ? ` · v${esc(llm.version)}` : ''}`, llm.reachable ? 'on' : 'off')}
+      <div class="hc-body">
+        ${run ? `<div class="hc-now"><div class="row"><span class="dot live"></span><b>${T('agent.' + run.agent)}</b> · <bdi>${esc(tafsirName(run.tafsir))}</bdi> <span class="mono">${esc(run.window)}</span><span class="faint ltr-num">${esc(fSecs(Math.round(d.server_time - run.started_at)))}</span></div></div>`
+          : `<div class="hc-now idle"><span class="dot"></span><span>${T('dash.brain_idle')}</span></div>`}
+        <div class="hc-tiles">
+          ${hcTile(T('hc.steps'), fNum(td.steps), T('dash.today'))}
+          ${hcTile(T('hc.calls'), fNum(td.calls), T('hc.last5_v', { n: fNum(d.last5 && d.last5.calls) }))}
+          ${hcTile(T('hc.tokens'), fCompact((td.tokens_in || 0) + (td.tokens_out || 0)), T('hc.in_out', { i: fCompact(td.tokens_in), o: fCompact(td.tokens_out) }))}
+        </div>
+        <div class="hc-sec"><div class="hc-k">${T('hc.in_memory')}</div>${loaded}</div>
+        <div class="hc-kv"><div><span>${T('hc.host')}</span><b class="mono">${llm.simulated ? T('mode.demo_engine') : esc(llm.base_url || '—')}</b></div></div>
+        ${per ? `<div class="hc-sec"><div class="hc-k">${T('hc.per_model')}</div><table class="hc-tab"><thead><tr><th>${T('tasks.model')}</th><th>${T('hc.steps')}</th><th>${T('hc.t_in')}</th><th>${T('hc.t_out')}</th><th>${T('hc.max_prompt')}</th></tr></thead><tbody>${per}</tbody></table></div>` : ''}
+      </div>`;
   }
 
   // ------------------------------------------------------------ tasks
@@ -1099,6 +1380,10 @@
     $$('.dropdown.open').forEach((x) => { if (!dd || x !== dd.parentElement) x.classList.remove('open'); });
     if (dd) { dd.parentElement.classList.toggle('open'); return; }
     if (e.target.matches('[data-close-back]')) { closeModal(); return; }
+    const hcA = e.target.closest('[data-hc]');
+    if (hcA && !hcA.dataset.act) { hcPin(hcA.dataset.hc); return; }
+    if (HC.key && !hcA && !e.target.closest('#hovercard')) hcHide();
+    else if (HC.key && !HC.pinned && e.target.closest('#hovercard') && !e.target.closest('a,button')) { HC.pinned = true; hcPaint(); }
     const row = e.target.closest('tr[data-href]');
     if (row && !e.target.closest('a,button,input')) { location.hash = row.dataset.href; return; }
     const el = e.target.closest('[data-act]');
@@ -1149,7 +1434,7 @@
           render(); break;
         }
         case 'probe': await api('/llm/probe'); viewDashboard(); break;
-        case 'sel-agent': S.selAgent = el.dataset.k; { const d = await api('/dashboard'); setPage(dashHTML(d)); } break;
+        case 'sel-agent': S.selAgent = el.dataset.k; hcPin(el.dataset.k); { const d = await api('/dashboard'); setPage(dashHTML(d)); hcPlace(); } break;
         case 'run-sample': newTaskModal({ kind: 'committee', scope: 'sample' }); break;
         case 'new-task': newTaskModal(); break;
         case 'step': stepModal(id); break;
@@ -1190,7 +1475,11 @@
     try { await api('/languages/' + el.dataset.code, { method: 'PATCH', body: { enabled: el.checked } }); S.pub = await api('/public'); toast(t('common.saved'), 'ok'); }
     catch (err) { el.checked = !el.checked; toast(errText(err), 'bad'); }
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeModal(); document.body.classList.remove('nav-open'); $$('.dropdown.open').forEach((x) => x.classList.remove('open')); } });
+  document.addEventListener('keydown', (e) => {
+    const hcA = (e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('[data-hc][role="button"]');
+    if (hcA) { e.preventDefault(); hcPin(hcA.dataset.hc); }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { hcHide(); closeModal(); document.body.classList.remove('nav-open'); $$('.dropdown.open').forEach((x) => x.classList.remove('open')); } });
 
   // ------------------------------------------------------------ boot
   (async function boot() {

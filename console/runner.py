@@ -52,6 +52,8 @@ _VERIFIER_RE = re.compile(
 _SPEC_RE = re.compile(
     r"specialist: moves=(\d+) confirm=(\d+) reject=(\d+) reframe=(\d+) abstain=(\d+)"
     r" invalid=(\d+)")
+_USAGE_RE = re.compile(
+    r"usage: calls=(\d+) prompt_tokens=(\d+) completion_tokens=(\d+) max_prompt=(\d+)")
 _CHAIR_RE = re.compile(
     r"processed (\d+) window\(s\), (\d+) move\(s\): (\d+) auto_candidate, (\d+) specialist")
 _REASON_RE = re.compile(r'"reason_code":\s*"([A-Z_]+)"')
@@ -288,7 +290,8 @@ def _run_step(task: dict, step: dict) -> None:
     started = db.now()
     db.execute("UPDATE task_steps SET status='running', started_at=? WHERE id=?",
                (started, step["id"]))
-    if params.get("skip_done") and step["agent"] in ("classifier", "verifier", "chair"):
+    if params.get("skip_done") and step["agent"] in ("classifier", "method_specialist",
+                                                     "verifier", "chair"):
         variant = step.get("variant") or None
         if step["agent"] == "chair":
             done = pipeline.committee_is_current(step["tafsir"], step["window"], variant)
@@ -369,6 +372,11 @@ def _run_step(task: dict, step: dict) -> None:
     elif step["agent"] == "packet_check" and proc.returncode == 0:
         sm = re.search(r"spans: (\d+)", output or "")
         result = {"spans": int(sm.group(1)) if sm else None}
+    um = _USAGE_RE.search(output or "")
+    if um:  # tokens the model server reported for this step
+        result = dict(result or {})
+        result.update(zip(("model_calls", "tokens_in", "tokens_out", "max_prompt"),
+                          (int(x) for x in um.groups())))
     _record_step(task, step, started, proc.returncode, output, result)
 
 
@@ -430,6 +438,8 @@ def recover_interrupted() -> None:
 AGENTS = [
     {"key": "classifier", "name_ar": "المصنّف", "color": "blue",
      "desc_ar": "يقترح المنهج والدور واليقين وحدود الشاهد بمعرّفات الأجزاء فقط."},
+    {"key": "method_specialist", "name_ar": "أخصائيو المنهج", "color": "teal",
+     "desc_ar": "الذراع B فقط: ستة أخصائيين بسياق صارم يراجعون حركات المصنّف؛ يمنعون ولا يعتمدون."},
     {"key": "verifier", "name_ar": "المدقّق", "color": "violet",
      "desc_ar": "نموذج من عائلة مختلفة يعيد التصنيف دون أن يرى وسوم المصنّف."},
     {"key": "checker", "name_ar": "الفاحص الحتمي", "color": "green",
@@ -452,9 +462,11 @@ def agents_state() -> dict:
     for a in AGENTS:
         key = a["key"]
         info: dict[str, Any] = dict(a)
-        if key in ("classifier", "verifier", "chair"):
+        if key in ("classifier", "verifier", "chair", "method_specialist"):
             if key == "chair":
                 info["model"] = f"{m['classifier']} + {m['verifier']}"
+            elif key == "method_specialist":
+                info["model"] = m["classifier"]
             else:
                 info["model"] = m[key]
                 info["annotator"] = m[f"{key}_slug"]
@@ -492,6 +504,232 @@ def agents_state() -> dict:
         out.append(info)
     return {"agents": out, "queued_steps": queued,
             "running": _event(running) if running else None}
+
+
+MODEL_AGENTS = ("classifier", "method_specialist", "verifier")
+
+
+def _stats(rows: list[dict]) -> dict:
+    """Timing, failure and token facts over finished steps (not accuracy)."""
+    done = [r for r in rows if r["status"] == "done"]
+    failed = [r for r in rows if r["status"] in ("failed", "interrupted")]
+    secs = [r["duration_ms"] / 1000 for r in done if r["duration_ms"] is not None]
+    tin = tout = calls = maxp = 0
+    tok_secs = 0.0
+    for r in rows:
+        res = db.loads(r.get("result"), {}) or {}
+        if res.get("model_calls"):
+            calls += int(res["model_calls"])
+            tin += int(res.get("tokens_in") or 0)
+            tout += int(res.get("tokens_out") or 0)
+            maxp = max(maxp, int(res.get("max_prompt") or 0))
+            if r["status"] == "done" and r["duration_ms"]:
+                tok_secs += r["duration_ms"] / 1000
+    decided = len(done) + len(failed)
+    median = _pct(secs, 0.5)
+    return {
+        "n": len(rows), "ok": len(done), "failed": len(failed),
+        "skipped": sum(1 for r in rows if r["status"] == "skipped"),
+        "fail_pct": round(100 * len(failed) / decided) if decided else None,
+        "median_s": round(median, 1) if median is not None else None,
+        "p95_s": round(_pct(secs, 0.95), 1) if secs else None,
+        "max_s": round(max(secs), 1) if secs else None,
+        "busy_s": round(sum(secs)),
+        "model_calls": calls, "tokens_in": tin, "tokens_out": tout, "max_prompt": maxp,
+        "tokens_per_s": round(tout / tok_secs, 1) if tok_secs and tout else None,
+    }
+
+
+def _proc_usage(pid: int | None, started_wall: float | None) -> dict | None:
+    """RSS and average CPU of the running step's process, read from /proc (Linux only)."""
+    if not pid:
+        return None
+    try:
+        with open(f"/proc/{pid}/status", encoding="utf-8") as f:
+            rss_kb = next((int(line.split()[1]) for line in f if line.startswith("VmRSS:")), None)
+        with open(f"/proc/{pid}/stat", encoding="utf-8") as f:
+            fields = f.read().rsplit(")", 1)[1].split()
+        cpu_s = (int(fields[11]) + int(fields[12])) / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError, StopIteration):
+        return None
+    wall = max(1.0, db.now() - (started_wall or db.now()))
+    return {"rss_mb": round(rss_kb / 1024, 1) if rss_kb else None,
+            "cpu_pct": round(100 * cpu_s / wall, 1)}
+
+
+_REVIEW_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+def _review_counts() -> dict:
+    """Moves waiting for the human specialist (cached 30 s: it reads every window file)."""
+    key = db.mode()
+    hit = _REVIEW_CACHE.get(key)
+    if hit and time.time() - hit[0] < 30:
+        return hit[1]
+    units = pipeline.review_units()
+    decided = {(r["tafsir"], r["window"], r["annotator"]): r["n"] for r in db.rows(
+        "SELECT tafsir, window, annotator, COUNT(DISTINCT move_id) n FROM decisions"
+        " GROUP BY tafsir, window, annotator")}
+    total = sum(u["moves"] for u in units)
+    done = sum(min(u["moves"], decided.get((u["tafsir"], u["window"], u.get("annotator")), 0))
+               for u in units)
+    out = {"units": len(units), "moves": total, "decided": done, "waiting": max(0, total - done)}
+    _REVIEW_CACHE[key] = (time.time(), out)
+    return out
+
+
+def _loaded(model: str | None) -> dict | None:
+    """This model's entry in the model server's memory (GET /api/ps), if loaded."""
+    if not model:
+        return None
+    ps = pipeline.ollama_ps()
+    for x in ps.get("models") or []:
+        if x.get("name") == model:
+            return x
+    return {"name": model, "loaded": False} if ps.get("available") else None
+
+
+def agent_detail(key: str, with_output: bool = False) -> dict:
+    """Everything the mission-control hover card shows for one agent, from real steps.
+
+    Timing, token and routing counts — not accuracy. ``with_output`` adds the last
+    output line of the latest failure (operators only).
+    """
+    keys = {a["key"] for a in AGENTS}
+    if key not in keys:
+        raise TaskError("agent_unknown")
+    m = pipeline.models()
+    now = db.now()
+    start, end = day_bounds(local_now().date().isoformat())
+    week = now - 7 * 86400
+    base: dict[str, Any] = {"key": key, "server_time": now,
+                            "caption_ar": "أعداد توقيت وتوجيه ورموز وليست دقة"}
+    if key in MODEL_AGENTS or key == "chair":
+        agents: tuple[str, ...] = (key,)
+        base["model"] = (m["classifier"] if key in ("classifier", "method_specialist") else
+                         m["verifier"] if key == "verifier" else "")
+    elif key == "checker":  # runs inside every classifier and verifier step
+        agents = ("classifier", "verifier")
+    else:
+        agents = ()
+    if base.get("model"):
+        base["loaded"] = _loaded(base["model"])
+    if agents:
+        ph = ",".join("?" * len(agents))
+        rows_week = db.rows(f"SELECT * FROM task_steps WHERE agent IN ({ph}) AND finished_at >= ?",
+                            (*agents, week))
+        rows_week.sort(key=lambda r: r["finished_at"] or 0)
+        rows_today = [r for r in rows_week if start <= (r["finished_at"] or 0) < end]
+        base["today"] = _stats(rows_today)
+        base["week"] = _stats(rows_week)
+        agg: dict[str, int] = {}
+        reasons: dict[str, int] = {}
+        arms: dict[str, int] = {}
+        for r in rows_today:
+            res = db.loads(r.get("result"), {}) or {}
+            for k in ("moves", "auto_candidate", "specialist", "flags", "confirm", "reject",
+                      "reframe", "abstain", "invalid"):
+                if res.get(k) is not None:
+                    agg[k] = agg.get(k, 0) + int(res[k] or 0)
+            for k, v in (res.get("reasons") or {}).items():
+                if v:
+                    reasons[k] = reasons.get(k, 0) + int(v)
+            if res.get("reason_code"):
+                reasons[res["reason_code"]] = reasons.get(res["reason_code"], 0) + 1
+            if r["status"] != "skipped":
+                arm = "B" if r.get("variant") else "A"
+                arms[arm] = arms.get(arm, 0) + 1
+        base["outcomes_today"] = agg
+        base["reasons_today"] = reasons
+        base["arms_today"] = arms
+        last_fail = next((r for r in reversed(rows_week)
+                          if r["status"] in ("failed", "interrupted")), None)
+        if last_fail:
+            res = db.loads(last_fail.get("result"), {}) or {}
+            fail = {"at": last_fail["finished_at"], "tafsir": last_fail["tafsir"],
+                    "window": last_fail["window"], "agent": last_fail["agent"],
+                    "code": res.get("reason_code") or last_fail["status"]}
+            if with_output:
+                tail = [ln for ln in (last_fail.get("output_tail") or "").strip().splitlines()
+                        if ln.strip() and not _USAGE_RE.match(ln.strip())]
+                fail["line"] = (tail[-1] if tail else "")[:160]
+            base["last_failure"] = fail
+        finished = [r for r in rows_week if r["status"] != "skipped"]
+        base["spark"] = [{"s": round((r["duration_ms"] or 0) / 1000, 1), "st": r["status"],
+                          "arm": "B" if r.get("variant") else "A", "at": r["finished_at"],
+                          "w": r["window"], "t": r["tafsir"]} for r in finished[-24:]]
+        base["recent"] = [{**(_event(r) or {}), "variant": r.get("variant") or ""}
+                          for r in reversed(rows_week[-6:])]
+        waiting = db.scalar(f"SELECT COUNT(*) FROM task_steps WHERE agent IN ({ph}) AND"
+                            " status='queued'", agents) or 0
+        med = base["today"]["median_s"] or base["week"]["median_s"]
+        base["queue"] = {"waiting": waiting,
+                         "eta_s": round(waiting * med) if (waiting and med) else None}
+    running = db.row("SELECT s.*, t.title_ar, t.total_steps, t.done_steps, t.failed_steps,"
+                     " t.skipped_steps FROM task_steps s JOIN tasks t ON t.id=s.task_id"
+                     " WHERE s.status='running' LIMIT 1")
+    if running and running["agent"] in agents:
+        proc = _current.get("proc") if _current.get("step_id") == running["id"] else None
+        pid = getattr(proc, "pid", None)
+        base["now"] = {**(_event(running) or {}), "variant": running.get("variant") or "",
+                       "elapsed_s": round(now - (running["started_at"] or now)),
+                       "pid": pid, "proc": _proc_usage(pid, running["started_at"]),
+                       "task_done": (running["done_steps"] or 0) + (running["skipped_steps"] or 0),
+                       "task_failed": running["failed_steps"] or 0,
+                       "task_total": running["total_steps"] or 0,
+                       "timeout_s": settings.get("llm")["step_timeout_s"]}
+    if key == "specialist":
+        rows = db.rows("SELECT decision, teach, created_at FROM decisions WHERE created_at >= ?",
+                       (week,))
+
+        def count(rs: list[dict]) -> dict:
+            out = {"n": len(rs), "approve": 0, "needs_edit": 0, "reject": 0, "lessons": 0}
+            for d in rs:
+                out[d["decision"]] = out.get(d["decision"], 0) + 1
+                if (db.loads(d.get("teach"), {}) or {}).get("teach"):
+                    out["lessons"] += 1
+            return out
+        base["today"] = count([d for d in rows if start <= d["created_at"] < end])
+        base["week"] = count(rows)
+        base["review"] = _review_counts()
+        last = db.row("SELECT created_at FROM decisions ORDER BY created_at DESC LIMIT 1")
+        base["last_decision_at"] = last["created_at"] if last else None
+    return base
+
+
+def model_layer() -> dict:
+    """The brain orb's card: what the model server holds now and today's model traffic."""
+    m = pipeline.models()
+    now = db.now()
+    start, end = day_bounds(local_now().date().isoformat())
+    rows = db.rows("SELECT agent, model, status, duration_ms, finished_at, result FROM task_steps"
+                   " WHERE agent IN ('classifier','method_specialist','verifier')"
+                   " AND finished_at BETWEEN ? AND ?", (start, end))
+    per: dict[str, dict] = {}
+    for r in rows:
+        name = r["model"] or (m["classifier"] if r["agent"] != "verifier" else m["verifier"])
+        p = per.setdefault(name, {"steps": 0, "calls": 0, "tokens_in": 0, "tokens_out": 0,
+                                  "max_prompt": 0, "busy_s": 0.0})
+        res = db.loads(r.get("result"), {}) or {}
+        if r["status"] != "skipped":
+            p["steps"] += 1
+            p["busy_s"] += (r["duration_ms"] or 0) / 1000
+        p["calls"] += int(res.get("model_calls") or 0)
+        p["tokens_in"] += int(res.get("tokens_in") or 0)
+        p["tokens_out"] += int(res.get("tokens_out") or 0)
+        p["max_prompt"] = max(p["max_prompt"], int(res.get("max_prompt") or 0))
+    last5 = [r for r in rows if (r["finished_at"] or 0) >= now - 300 and r["status"] != "skipped"]
+    running = db.row("SELECT agent, tafsir, window, started_at FROM task_steps"
+                     " WHERE status='running' LIMIT 1")
+    for p in per.values():
+        p["busy_s"] = round(p["busy_s"])
+    return {"server_time": now, "ps": pipeline.ollama_ps(), "per_model": per,
+            "today": {k: sum(p[k] for p in per.values())
+                      for k in ("steps", "calls", "tokens_in", "tokens_out")},
+            "last5": {"steps": len(last5), "calls": sum(
+                int((db.loads(r.get("result"), {}) or {}).get("model_calls") or 0) for r in last5)},
+            "running": running if running and running["agent"] in MODEL_AGENTS else None,
+            "classifier_model": m["classifier"], "verifier_model": m["verifier"]}
 
 
 def _event(s: dict | None) -> dict | None:

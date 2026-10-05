@@ -169,6 +169,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    classify_api.reset_usage()
+    try:
+        return _main(argv)
+    finally:
+        line = classify_api.usage_line()
+        if line:
+            print(line, file=sys.stderr)  # stdout stays the step's own output
+
+
+def _main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     base = resolve_base(args.tafsir, base=args.base)
     variant = args.variant

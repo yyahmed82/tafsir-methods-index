@@ -37,6 +37,35 @@ MOVE_FIELDS = (
 
 SPAN_ID_KEYS = ("span_ids", "evidence_span_ids", "author_verdict_span_ids")
 
+# Token usage reported by the model server for this process (OpenAI-compatible
+# "usage"). Printed once per run as a "usage:" line that the console records.
+USAGE: dict[str, int] = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
+                         "max_prompt_tokens": 0}
+
+
+def _record_usage(data: dict) -> None:
+    u = data.get("usage") if isinstance(data, dict) else None
+    USAGE["calls"] += 1
+    if not isinstance(u, dict):
+        return
+    p = int(u.get("prompt_tokens") or 0)
+    USAGE["prompt_tokens"] += p
+    USAGE["completion_tokens"] += int(u.get("completion_tokens") or 0)
+    USAGE["max_prompt_tokens"] = max(USAGE["max_prompt_tokens"], p)
+
+
+def reset_usage() -> None:
+    for k in USAGE:
+        USAGE[k] = 0
+
+
+def usage_line() -> str | None:
+    """'usage: calls=… prompt_tokens=… completion_tokens=… max_prompt=…' or None."""
+    if not USAGE["calls"]:
+        return None
+    return (f"usage: calls={USAGE['calls']} prompt_tokens={USAGE['prompt_tokens']} "
+            f"completion_tokens={USAGE['completion_tokens']} max_prompt={USAGE['max_prompt_tokens']}")
+
 HttpPost = Callable[[str, dict[str, str], bytes], bytes]
 
 
@@ -348,6 +377,7 @@ def call_chat(
     post = http_post or _default_http_post
     raw = post(url, headers, body)
     data = json.loads(raw.decode("utf-8"))
+    _record_usage(data)
     try:
         return data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as e:

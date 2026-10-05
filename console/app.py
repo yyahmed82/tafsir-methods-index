@@ -536,6 +536,17 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     def llm_probe(user: dict = Depends(need("view_dashboard"))) -> dict:
         return _probe(force=True)
 
+    # ---------- mission-control hover cards (real step timings and token counts)
+    @app.get("/api/agents/{key}")
+    @operational()
+    def agent_card(key: str, user: dict = Depends(need("view_dashboard"))) -> dict:
+        if key == "model":
+            return {**runner.model_layer(), "llm": _probe()}
+        try:
+            return runner.agent_detail(key, with_output="view_tasks" in user["permissions"])
+        except runner.TaskError as e:
+            raise _err(404, str(e)) from e
+
     @app.post("/api/llm/test")
     def llm_test(user: dict = Depends(need("manage_settings"))) -> dict:
         llm = settings.get("llm")

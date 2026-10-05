@@ -251,6 +251,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--model", default=None)
     p.add_argument("--base-url", default=None)
     args = p.parse_args(argv)
+    classify_api.reset_usage()
     model, base_url = classify_api.resolve_env(model=args.model, base_url=args.base_url)
     if not model or not base_url:
         print("set --model/--base-url or LLM_MODEL/LLM_BASE_URL", file=sys.stderr)
@@ -269,6 +270,9 @@ def main(argv: list[str] | None = None) -> int:
     s = out["summary"]
     print(f"specialist: moves={s['moves']} confirm={s['confirm']} reject={s['reject']} "
           f"reframe={s['reframe']} abstain={s['abstain']} invalid={s['invalid']}")
+    line = classify_api.usage_line()
+    if line:
+        print(line, file=sys.stderr)  # the console reads stdout+stderr
     return 0
 
 
