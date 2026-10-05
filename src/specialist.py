@@ -173,13 +173,21 @@ def check_move(*, family: str, profile: dict, move: dict, window: dict, profile_
                                    profile_markers=profile_markers, examples=examples)
     error = None
     transport_failures = 0
+    looped = False
     for attempt in range(2):
         if error:
             messages = messages + [{"role": "user", "content": "تصحيح مطلوب: " + error +
                                     "\nأعد JSON صالحًا فقط."}]
         try:
-            content = classify_api.call_chat(base_url=base_url, api_key=api_key, model=model,
-                                             messages=messages, http_post=http_post)
+            content = classify_api.call_chat(
+                base_url=base_url, api_key=api_key, model=model, messages=messages,
+                http_post=http_post,
+                temperature=classify_api.retry_temperature() if looped else 0.0)
+        except classify_api.RepetitionError as e:
+            # a looping reply is an invalid answer, not a dead engine: ask once more
+            looped = True
+            error = str(e)[:300]
+            continue
         except (classify_api.ClassifyError, OSError) as e:
             # no reply at all (engine down, timeout): fail the step so it can be retried
             transport_failures += 1
