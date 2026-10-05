@@ -295,6 +295,7 @@
     }
     app.innerHTML = shell(loading());
     fitTopbar();
+    watchTopbar();
     refreshBadges();
     try { await entry[0](a, b, c); } catch (e) {
       if (e instanceof ApiError && e.status === 401) return;
@@ -317,6 +318,20 @@
   // web fonts can arrive after the first fit and widen the labels: fit again once they are in
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitTopbar());
   window.addEventListener('load', () => fitTopbar());
+  // and whatever else widens it later (fonts that load after .ready, a nav badge, a
+  // language switch): if the bar ever grows past one row, fit it again
+  let tbObs = null;
+  function watchTopbar() {
+    const bar = $('.topbar-in');
+    if (!bar || !window.ResizeObserver) return;
+    if (tbObs) tbObs.disconnect();
+    tbObs = new ResizeObserver(() => {
+      if (window.innerWidth > 1200 && bar.getBoundingClientRect().height > 72) {
+        clearTimeout(fitT); fitT = setTimeout(fitTopbar, 60);
+      }
+    });
+    tbObs.observe(bar);
+  }
   // windows the chair gave me that still wait for my decision (nav badge)
   async function refreshBadges() {
     const el = $('#nb-review');
