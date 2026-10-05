@@ -411,6 +411,81 @@ def test_model_address_only_for_operators(env):
     assert env.get("/api/dashboard").json()["llm"]["base_url"].endswith(":11434")
 
 
+def test_guest_step_output_hides_engine_address(env, monkeypatch):
+    """A guest sees step text, never the model engine's host or port. An operator does."""
+    from console import pipeline
+    monkeypatch.setattr(pipeline, "ollama_ps", lambda *a, **k: {"available": False, "models": []})
+    settings.update("llm", {"base_url": "http://100.64.1.2:11434"}, None)
+    settings.update("security", {"guest_access": True}, None)
+    add_user("op@x.org", "committee_operator")
+    stamp = int(db.now())
+    while "11434" in str(stamp):
+        stamp -= 1
+    tid = db.execute("INSERT INTO tasks(kind,title_ar,params,status,created_at) VALUES (?,?,?,?,?)",
+                     ("classifier", "t", "{}", "failed", stamp))
+    tail = ("base_url: http://100.64.1.2:11434\n"
+            "Connection refused http://100.64.1.2:11434/api/chat")
+    err = "Connection refused http://100.64.1.2:11434/api/chat"
+    db.execute("INSERT INTO task_steps(task_id,seq,agent,tafsir,window,model,status,finished_at,"
+               "exit_code,result,output_tail,last_error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+               (tid, 1, "classifier", "al_saadi", "24_35", "qwen2.5:14b", "failed", stamp, 1,
+                db.dumps({"error": err}), tail, err))
+    assert env.post("/api/auth/guest", headers=H).status_code == 200
+    raw = env.get(f"/api/tasks/{tid}").text
+    assert "100.64.1.2" not in raw and "11434" not in raw
+    step = env.get(f"/api/tasks/{tid}").json()["steps"][0]
+    assert step["output_tail"] == "[مخفي]\nConnection refused [مخفي]"
+    assert step["last_error"] == "Connection refused [مخفي]"
+    assert step["result"]["error"] == "Connection refused [مخفي]"
+    calls = env.get("/api/llm/calls").text
+    assert "100.64.1.2" not in calls and "11434" not in calls
+    line = env.get("/api/agents/classifier").json()["last_failure"]["line"]
+    assert line == "Connection refused [مخفي]"
+    env.post("/api/auth/logout", headers=H)
+    login(env, "op@x.org")
+    seen = env.get(f"/api/tasks/{tid}").text
+    assert "base_url: http://100.64.1.2:11434" in seen
+    assert "100.64.1.2" in seen and "11434" in seen
+
+
+def test_publish_candidate_requires_source_comparison(env, tmp_path, monkeypatch):
+    import hashlib
+    from console import publish
+    root = tmp_path / "repo"
+    base = root / "data" / "nur" / "al_saadi"
+    (base / "raw").mkdir(parents=True)
+    (base / "verified" / "qwen2_5_14b").mkdir(parents=True)
+    raw = b"aaaa bbbb cccc"
+    (base / "raw" / "24_35.txt").write_bytes(raw)
+    sha = hashlib.sha256(raw).hexdigest()
+    text = raw.decode("ascii")
+    moves = [
+        {"move_id": mid, "span_ids": [sid], "start": start, "end": end, "text": text[start:end],
+         "primary": primary, "certainty": "explicit", "secondary": []}
+        for mid, sid, start, end, primary in (
+            ("m01", "s001", 0, 4, "M_ATHAR"),
+            ("m02", "s002", 5, 9, "M_LUGHA"),
+            ("m03", "s003", 10, 14, "M_NAHW"),
+        )
+    ]
+    (base / "verified" / "qwen2_5_14b" / "24_35.json").write_text(json.dumps({
+        "window_id": "24_35", "ayah": "24:35",
+        "source_file": "data/nur/al_saadi/raw/24_35.txt", "source_sha256": sha, "moves": moves,
+    }), encoding="utf-8")
+    monkeypatch.setattr(config, "REPO_ROOT", root)
+    monkeypatch.setattr(config, "work_root", lambda: root)
+    uid = add_user("dr@example.com", "specialist")
+    now = db.now()
+    # m01 never compared; m03 was, then a later approve dropped the comparison
+    for move, compared in (("m01", 0), ("m03", 1), ("m03", 0), ("m02", 1)):
+        db.execute("INSERT INTO decisions(tafsir,window,annotator,move_id,decision,"
+                   "compared_with_source,user_id,created_at) VALUES ('al_saadi','24_35',"
+                   "'qwen2_5_14b',?,'approve',?,?,?)", (move, compared, uid, now))
+    cand = publish.candidate()
+    assert {u["move"] for u in cand["units"]} == {"m02"}
+    assert [f["id"] for f in cand["failed"] if f["id"].rsplit("/", 1)[-1] in ("m01", "m03")] == []
+
+
 def test_demo_built_by_an_older_release_still_opens(env):
     """A demo.db seeded before tasks.origin_id existed must not break demo mode
     after an upgrade (Internal Server Error on the dashboard and tasks, 5 Oct)."""

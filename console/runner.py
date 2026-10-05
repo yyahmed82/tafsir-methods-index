@@ -226,6 +226,78 @@ def failure_cause(s: dict) -> str | None:
     return "error"
 
 
+_HIDDEN = "[مخفي]"
+# A full URL: host (or [IPv6]), optional :port, optional path. Used only to hide the engine.
+_ENGINE_URL_RE = re.compile(
+    r"https?://(?:\[[0-9A-Fa-f:]+\]|[^/\s?#:]+)(?::\d+)?(?:/[^\s\"'<>]*)?",
+    re.IGNORECASE)
+
+
+def redact_engine(value: Any, user: dict | None) -> Any:
+    """Hide the model engine's address from anyone who cannot run tasks.
+
+    Judges, guests, viewers and specialists keep the step text, with three
+    substitutions: a line that starts with ``base_url:``, the configured engine
+    URL itself, and any http(s) URL on that host or that port. Each becomes
+    ``[مخفي]``. Operators (``run_tasks``) see the original.
+    """
+    if "run_tasks" in (user or {}).get("permissions", ()):
+        return value
+    base = ((settings.get("llm") or {}).get("base_url") or "").strip()
+    host, port = _engine_endpoint(base)
+    return _redact_value(value, base, host, port)
+
+
+def _engine_endpoint(url: str) -> tuple[str, str]:
+    """(host, port) of an http(s) URL. Port is '' when the URL does not name one."""
+    m = re.match(r"https?://(\[[^\]]+\]|[^/:?#]+)", url or "", re.IGNORECASE)
+    if not m:
+        return "", ""
+    rest = url[m.end():]
+    pm = re.match(r":(\d+)", rest)
+    return m.group(1).strip("[]"), (pm.group(1) if pm else "")
+
+
+def _redact_text(text: str, base: str, host: str, port: str) -> str:
+    pieces: list[str] = []
+    for line in text.splitlines(keepends=True):
+        nl = ""
+        body = line
+        if body.endswith("\r\n"):
+            body, nl = body[:-2], "\r\n"
+        elif body.endswith("\n"):
+            body, nl = body[:-1], "\n"
+        if body.lstrip().startswith("base_url:"):
+            pieces.append(_HIDDEN + nl)
+            continue
+
+        def repl(m: re.Match[str], _host: str = host, _port: str = port) -> str:
+            uhost, uport = _engine_endpoint(m.group(0))
+            if (_port and uport == _port) or (_host and uhost.lower() == _host.lower()):
+                return _HIDDEN
+            return m.group(0)
+
+        body = _ENGINE_URL_RE.sub(repl, body)
+        if base:
+            body = body.replace(base, _HIDDEN)
+            bare = base.rstrip("/")
+            if bare and bare != base:
+                body = body.replace(bare, _HIDDEN)
+        pieces.append(body + nl)
+    return "".join(pieces)
+
+
+def _redact_value(value: Any, base: str, host: str, port: str) -> Any:
+    if isinstance(value, str):
+        return _redact_text(value, base, host, port)
+    if isinstance(value, dict):
+        return {_redact_value(k, base, host, port) if isinstance(k, str) else k:
+                _redact_value(v, base, host, port) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_value(v, base, host, port) for v in value]
+    return value
+
+
 def _chain_rows(origin: int) -> list[dict]:
     return db.rows("SELECT t.*, u.name AS created_by_name FROM tasks t LEFT JOIN users u"
                    " ON u.id=t.created_by WHERE t.id=? OR t.origin_id=? ORDER BY t.id",

@@ -574,12 +574,15 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     @app.get("/api/agents/{key}")
     @operational()
     def agent_card(key: str, user: dict = Depends(need("view_dashboard"))) -> dict:
-        if key == "model":
-            return {**runner.model_layer(), "llm": _llm_for(user, _probe())}
         try:
-            return runner.agent_detail(key, with_output="view_tasks" in user["permissions"])
+            if key == "model":
+                payload = {**runner.model_layer(), "llm": _llm_for(user, _probe())}
+            else:
+                payload = runner.agent_detail(
+                    key, with_output="view_tasks" in user["permissions"])
         except runner.TaskError as e:
             raise _err(404, str(e)) from e
+        return runner.redact_engine(payload, user)
 
     @app.post("/api/llm/test")
     def llm_test(user: dict = Depends(need("manage_settings"))) -> dict:
@@ -667,7 +670,8 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         for s in steps:
             s["cause"] = runner.failure_cause(s)
             s["result"] = db.loads(s["result"])
-        return {"task": t, "steps": steps, "chain": runner.task_chain(task_id)}
+        return runner.redact_engine(
+            {"task": t, "steps": steps, "chain": runner.task_chain(task_id)}, user)
 
     @app.post("/api/tasks/{task_id}/cancel")
     @operational(write=True)
@@ -710,7 +714,9 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         rec = db.row("SELECT * FROM reports WHERE day=?", (_day(day),))
         if rec is None:
             raise _err(404, "report_not_found")
-        return {"day": day, "content": db.loads(rec["content"]), "mailed_at": rec["mailed_at"]}
+        return {"day": day,
+                "content": runner.redact_engine(db.loads(rec["content"]), user),
+                "mailed_at": rec["mailed_at"]}
 
     @app.get("/api/reports/{day}/markdown")
     @operational()
@@ -719,7 +725,8 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         if rec is None:
             raise _err(404, "report_not_found")
         return PlainTextResponse(
-            runner.report_markdown(db.loads(rec["content"])), media_type="text/markdown",
+            runner.report_markdown(runner.redact_engine(db.loads(rec["content"]), user)),
+            media_type="text/markdown",
             headers={"Content-Disposition": f'attachment; filename="report-{day}.md"'})
 
     @app.post("/api/reports/{day}/generate")
@@ -1409,4 +1416,4 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                        " ORDER BY finished_at DESC LIMIT ?", (min(limit, 500),))
         for r in rows:
             r["result"] = db.loads(r["result"])
-        return {"calls": rows}
+        return runner.redact_engine({"calls": rows}, user)

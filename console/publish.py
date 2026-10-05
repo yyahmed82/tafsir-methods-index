@@ -55,13 +55,13 @@ def _source(tafsir: str, rel: str | None) -> tuple[str | None, str | None]:
 
 
 def candidate() -> dict[str, Any]:
-    """Every approved unit (latest decision = approve), re-verified against its source."""
+    """Every unit whose latest decision is approve and was compared with the source."""
     units: list[dict] = []
     failed: list[dict] = []
     sources: dict[str, tuple[str | None, str | None]] = {}
     payloads: dict[tuple, tuple] = {}
     for d in _latest_decisions():
-        if d["decision"] != "approve":
+        if d["decision"] != "approve" or not d.get("compared_with_source"):
             continue
         key = (d["tafsir"], d["annotator"], d["window"])
         if key not in payloads:
