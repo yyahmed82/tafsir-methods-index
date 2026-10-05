@@ -21,8 +21,6 @@ SKILLS = (
     "vibe-coding-project-auditor",
     "web-design-guidelines",
     "impeccable",
-    "clean-code-guard",
-    "test-guard",
 )
 
 

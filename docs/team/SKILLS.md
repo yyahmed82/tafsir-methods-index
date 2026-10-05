@@ -11,10 +11,7 @@
 | `mirqah-deck-build` «في PR #8» | بناء العرض النهائي عبر `build_final.py` مع `fix_bidi.py` | M Rezk (العرض والفيديو) | `docs/team/skills/mirqah-deck-build/` |
 | `mirqah-demo-recording` «في PR #8» | تسجيل الفيديو التعريفي (≤ دقيقتين) مع VO v3 ولقطات Playwright | M Rezk (العرض والفيديو) | `docs/team/skills/mirqah-demo-recording/` |
 | `mirqah-pr-review` «في PR #8» | المراجعة العدائية لطلبات السحب وحكم PASS/BLOCK | أبو أنس (مراجعة المتخصص) | `docs/team/skills/mirqah-pr-review/` |
-| `clean-code-guard` | مراجعة الكود بعد الكتابة (SOLID/DRY/KISS) قبل العرض أو الدمج | يسري · خالد | `docs/team/skills/clean-code-guard/` |
-| `test-guard` | مراجعة الاختبارات ومنع التضخم | يسري · شريف | `docs/team/skills/test-guard/` |
 
 ## المصادر والتراخيص
 - `impeccable` v4.0.2 — Apache 2.0 (الترخيص في ترويسة SKILL.md).
 - `web-design-guidelines` — من Vercel (`vercel-labs/agent-skills`)، بالترخيص المعلن في مستودعها.
-- `clean-code-guard` و`test-guard` — من تأليف خالد الرفاعي، MIT (ملف LICENSE داخل كل مجلد).
