@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import io
+import json
 import re
+import sys
 import threading
 import unittest
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
@@ -437,6 +441,50 @@ class TestUxApplyPlaywright(unittest.TestCase):
                 browser.close()
         finally:
             server.shutdown()
+
+
+def _import_build_index():
+    src = str(ROOT / "src")
+    if src not in sys.path:
+        sys.path.insert(0, src)
+    import build_index
+
+    return build_index
+
+
+class TestBuildIndexNoSilentFallback(unittest.TestCase):
+    def test_without_flag_forced_failure_exits_nonzero(self) -> None:
+        bi = _import_build_index()
+        with mock.patch.object(
+            bi, "build_index_data", side_effect=FileNotFoundError("missing 17_105.txt")
+        ):
+            with mock.patch.object(bi, "write_outputs") as write:
+                with self.assertRaises(FileNotFoundError):
+                    bi.main([])
+                write.assert_not_called()
+
+    def test_with_flag_uses_cached_json(self) -> None:
+        bi = _import_build_index()
+        cached = json.loads((ROOT / "web" / "index_data.json").read_text(encoding="utf-8"))
+        captured: dict = {}
+
+        def fake_write(data):
+            captured["data"] = data
+            return ROOT / "web" / "index_data.json", ROOT / "web" / "index.html"
+
+        err = io.StringIO()
+        with mock.patch.object(
+            bi, "build_index_data", side_effect=AssertionError("must not rebuild from raw")
+        ):
+            with mock.patch.object(bi, "write_outputs", side_effect=fake_write):
+                with mock.patch.object(sys, "stderr", err):
+                    rc = bi.main(["--from-cached-json"])
+        self.assertEqual(rc, 0)
+        warning = err.getvalue()
+        self.assertIn("WARNING", warning)
+        self.assertIn("--from-cached-json", warning)
+        self.assertEqual(captured["data"]["ayat"], cached["ayat"])
+        self.assertEqual(captured["data"]["title_ar"], "فهرس مناهج التفسير")
 
 
 if __name__ == "__main__":
