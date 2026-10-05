@@ -137,6 +137,47 @@ class TestClassifyApi(unittest.TestCase):
             self.assertIn("s_FAKE", seen_bodies[1])  # error fed back
             self.assertTrue(result["path"].is_file())
 
+    def test_copied_choice_list_as_primary_is_asked_again(self) -> None:
+        echo = _valid_payload()
+        echo["moves"][0]["primary"] = ("M_QURAN|M_SUNNAH|M_SAHABA|M_TABIIN|M_LUGHA|M_QIRAAT"
+                                       "|M_NUZUL|M_SIRA|M_ISRAILIYYAT|M_RAY|null")
+        good = _valid_payload()
+        bodies = [_fake_openai_body(echo), _fake_openai_body(good)]
+        seen: list[str] = []
+
+        def http_post(url: str, headers: dict, body: bytes) -> bytes:
+            seen.append(body.decode("utf-8"))
+            return bodies.pop(0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = classify_api.classify(
+                PACKET, model="echo-model", base_url="https://example.test/v1",
+                out_dir=tmp, api_key=SECRET, http_post=http_post)
+            self.assertEqual(len(seen), 2)
+            self.assertIn("copied the list of choices", seen[1])
+            self.assertEqual(result["payload"]["moves"][0]["primary"], "M_LUGHA")
+
+    def test_second_copied_list_is_kept_for_the_verifier_to_flag(self) -> None:
+        echo = _valid_payload()
+        echo["moves"][0]["primary"] = "M_QURAN|M_SUNNAH|null"
+        bodies = [_fake_openai_body(echo), _fake_openai_body(echo)]
+
+        def http_post(url: str, headers: dict, body: bytes) -> bytes:
+            return bodies.pop(0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = classify_api.classify(
+                PACKET, model="echo-model", base_url="https://example.test/v1",
+                out_dir=tmp, api_key=SECRET, http_post=http_post)
+            self.assertTrue(result["path"].is_file())
+            self.assertEqual(result["payload"]["moves"][0]["primary"], "M_QURAN|M_SUNNAH|null")
+
+    def test_null_as_text_is_stored_as_null(self) -> None:
+        p = _valid_payload()
+        p["moves"][0]["primary"] = "null"
+        self.assertEqual(classify_api.validate_primary(p), [])
+        self.assertIsNone(classify_api.sanitize_moves_payload(p, "2_102")["moves"][0]["primary"])
+
     def test_api_key_never_logged(self) -> None:
         def http_post(url: str, headers: dict, body: bytes) -> bytes:
             return _fake_openai_body(_valid_payload())

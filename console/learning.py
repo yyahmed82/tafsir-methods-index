@@ -16,11 +16,18 @@ from . import config, db, pipeline
 
 import ab_report  # noqa: E402  (src/ is on sys.path via pipeline)
 import gold_bank  # noqa: E402
+import v2_packets  # noqa: E402
 import v2_profiles  # noqa: E402
 
 log = logging.getLogger("mirqah.console")
 
 METHODS = gold_bank.METHODS
+# Arabic names shown to reviewers instead of the codes (same names the agents read).
+METHOD_NAMES_AR = {d["id"]: d["name_ar"] for d in v2_packets.DEFINITIONS_AR}
+
+
+def method_names() -> dict[str, str]:
+    return {m: METHOD_NAMES_AR.get(m, m) for m in METHODS}
 
 
 def error_types() -> dict[str, str]:

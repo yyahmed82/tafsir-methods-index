@@ -327,6 +327,7 @@ table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
 /* ---------- review */
 .move { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--surface-2); }
 .move + .move { margin-top: 12px; }
+.move, .move-fold { scroll-margin-top: 84px; }
 .move-text { font-family: "Noto Naskh Arabic", "Amiri", serif; font-size: 18px; line-height: 2; direction: rtl; text-align: right;
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
 .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 10px 0; }
@@ -334,6 +335,30 @@ table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
 .kv .k { font-size: 12px; color: var(--text-3); }
 .kv .v { font-weight: 600; font-size: 14px; }
 .decide { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; margin-top: 12px; }
+.decide[hidden] { display: none; }
+/* a decision that is saved: say so, keep the buttons behind «change decision» */
+.decided-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 12px; padding: 10px 12px;
+  border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
+.decided-bar .saved { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; }
+.decided-bar .saved svg { width: 16px; height: 16px; }
+.decided-bar .saved.approve { color: var(--accent-text); }
+.decided-bar .saved.needs_edit { color: var(--warn); }
+.decided-bar .saved.reject { color: var(--danger); }
+.decided-bar .note { flex: 1 1 180px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.decided-bar .btn { margin-inline-start: auto; }
+.decide .btn.on { box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 4px currentColor; }
+.decide .btn.primary.on { box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 4px var(--accent); }
+/* decided moves fold to one line */
+.move-fold { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+.move-fold + .move-fold, .move + .move-fold, .move-fold + .move { margin-top: 12px; }
+.move-fold > summary { display: flex; gap: 10px; align-items: center; padding: 10px 14px; list-style: none; color: var(--text); font-weight: 400; min-height: 44px; }
+.move-fold > summary::-webkit-details-marker { display: none; }
+.move-fold > summary .fold-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3);
+  font-family: "Noto Naskh Arabic", "Amiri", serif; direction: rtl; }
+.move-fold[open] > summary { border-bottom: 1px solid var(--border); }
+.move-fold > .move { border: 0; border-radius: 0 0 12px 12px; }
+.review-progress { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; font-weight: 600; }
+.notice .btn.sm { margin-inline-start: auto; align-self: center; }
 /* the reviewer's lesson for the agents (review → teaching examples) */
 .lesson { border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--surface); }
 .lesson > summary { cursor: pointer; display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--accent-text); font-weight: 600; list-style: none; }

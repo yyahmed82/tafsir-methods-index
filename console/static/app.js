@@ -1339,15 +1339,18 @@
   async function viewReview() {
     const d = await api('/review/units');
     const meId = S.me.id;
-    if (!S.reviewFilter) S.reviewFilter = d.can_decide && d.my_open_windows ? 'mine' : 'all';
-    const filters = [['all', 'review.filter.all']];
+    const open = (u) => (u.decided || 0) < (u.moves || 0);
+    if (!S.reviewFilter) S.reviewFilter = d.can_decide && d.my_open_windows ? 'mine' : d.units.some(open) ? 'pending' : 'all';
+    const filters = [['pending', 'review.filter.pending'], ['all', 'review.filter.all']];
     if (d.can_decide) filters.unshift(['mine', 'review.filter.mine']);
     if (d.can_assign) filters.push(['unassigned', 'review.filter.unassigned']);
     if (!filters.some(([k]) => k === S.reviewFilter)) S.reviewFilter = filters[0][0];
     const units = d.units.filter((u) => S.reviewFilter === 'mine' ? u.assigned && u.assigned.user_id === meId && u.assigned.status === 'open'
+      : S.reviewFilter === 'pending' ? open(u)
       : S.reviewFilter === 'unassigned' ? !u.assigned || u.assigned.status !== 'open' : true);
     const counts = { mine: d.units.filter((u) => u.assigned && u.assigned.user_id === meId && u.assigned.status === 'open').length,
-      unassigned: d.units.filter((u) => u.committee && (!u.assigned || u.assigned.status !== 'open') && u.decided < u.moves).length, all: d.units.length };
+      unassigned: d.units.filter((u) => u.committee && (!u.assigned || u.assigned.status !== 'open') && u.decided < u.moves).length,
+      pending: d.units.filter(open).length, all: d.units.length };
     const armChip = (u) => u.arm ? `<span class="chip info" title="${T('review.arm_note')}">${T('review.arm', { a: u.arm })}${d.reveals_arms && u.variant ? ` · ${T('variant.short.' + u.variant)}` : ''}</span>` : '';
     const who = (u) => {
       const a = u.assigned;
@@ -1358,7 +1361,7 @@
     const rows = units.length ? units.map((u) => `<tr class="click" data-href="#/review/${u.tafsir}/${u.window}${u.arm ? '/' + u.arm : ''}"><td class="mono">${esc(u.ayah)}</td><td>${esc(u.name_ar)}</td>
       <td class="mono">${esc(u.window)} ${u.committee ? `<span class="chip violet">${T('dash.committee')}</span>` : ''} ${armChip(u)}</td><td class="num">${fNum(u.moves)}</td><td class="num hide-sm">${fNum(u.auto_candidate)}</td><td class="num hide-sm">${fNum(u.specialist)}</td>
       <td class="num hide-sm">${u.flags == null ? '—' : fNum(u.flags)}</td><td>${who(u)}</td><td class="num">${u.decided ? `<span class="chip ok">${fNum(u.decided)}/${fNum(u.moves)}</span>` : `<span class="chip">0/${fNum(u.moves)}</span>`}</td></tr>`).join('')
-      : `<tr><td colspan="9" class="empty">${T(S.reviewFilter === 'mine' ? 'review.mine_empty' : 'review.empty')}</td></tr>`;
+      : `<tr><td colspan="9" class="empty">${T(S.reviewFilter === 'mine' ? 'review.mine_empty' : S.reviewFilter === 'pending' && d.units.length ? 'review.pending_empty' : 'review.empty')}</td></tr>`;
     const tabs = `<div class="seg mb" role="tablist">${filters.map(([k, key]) => `<button type="button" role="tab" class="${S.reviewFilter === k ? 'on' : ''}" data-act="review-filter" data-f="${k}">${T(key)} <span class="chip">${fNum(counts[k])}</span></button>`).join('')}</div>`;
     const decideNote = !d.can_decide && has('review_units') ? `<div class="notice mb">${ico('shield')}<span>${T('review.specialists_only')}</span></div>` : '';
     setPage(`${head('review.title', 'review.subtitle', `<a class="btn outline-accent" href="#/review/learning">${ico('chart')} ${T('learn.title')}</a>${has('review_units') ? `<a class="btn" href="/api/review/export">${ico('download')} ${T('review.export')}</a>` : ''}`)}
@@ -1370,17 +1373,39 @@
     const d = await api(`/review/${encodeURIComponent(tafsir)}/${encodeURIComponent(win)}${arm ? '?arm=' + encodeURIComponent(arm) : ''}`);
     const errTypes = d.error_types || {};
     const methods = d.methods || [];
-    const lesson = (m) => !Object.keys(errTypes).length ? '' : `<details class="lesson"><summary>${ico('flask')} ${T('learn.lesson')}</summary>
+    const names = d.method_names || {};
+    // a method code shown by its Arabic name; a reply that is not one code (e.g. the copied list) says so
+    const mName = (code) => !code ? '—' : names[code] ? `<span title="${esc(code)}">${esc(names[code])}</span>`
+      : `<span class="chip bad" title="${esc(code)}">${T('review.invalid_output')}</span>`;
+    const certName = (c) => !c ? '—' : ['explicit', 'strong', 'weak', 'insufficient'].includes(c) ? `<span title="${esc(c)}">${T('review.cert.' + c)}</span>` : esc(c);
+    const lesson = (m, dec) => {
+      if (!Object.keys(errTypes).length) return '';
+      const t0 = (dec && dec.teach) || {};
+      return `<details class="lesson"${t0.error_type || t0.teach || t0.correct_primary ? ' open' : ''}><summary>${ico('flask')} ${T('learn.lesson')}</summary>
         <div class="lesson-grid"><label class="field"><span class="label">${T('learn.error_type')}</span><select class="input" data-error>
-          <option value="">${T('learn.error_none')}</option>${Object.entries(errTypes).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('')}</select></label>
+          <option value="">${T('learn.error_none')}</option>${Object.entries(errTypes).map(([k, v]) => `<option value="${esc(k)}"${t0.error_type === k ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
         <label class="field"><span class="label">${T('learn.correct')}</span><select class="input" data-correct>
-          <option value="">${T('learn.correct_none')}</option>${methods.map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select></label></div>
-        <label class="check"><input type="checkbox" data-teach><span>${T('learn.teach')}</span></label>
+          <option value="">${T('learn.correct_none')}</option>${methods.map((x) => `<option value="${esc(x)}"${t0.correct_primary === x ? ' selected' : ''}>${esc(names[x] || x)}</option>`).join('')}</select></label></div>
+        <label class="check"><input type="checkbox" data-teach${t0.teach ? ' checked' : ''}><span>${T('learn.teach')}</span></label>
         <p class="faint">${T('learn.teach_note')}</p></details>`;
+    };
+    const decBtn = (dec, v, cls, label) => {
+      const on = !!dec && dec.decision === v;
+      return `<button class="btn ${cls}${on ? ' on' : ''}" data-act="decide" data-d="${v}" aria-pressed="${on}">${label}</button>`;
+    };
+    // after a decision: what was saved, and the controls folded behind «change decision»
+    const decideBlock = (m, dec) => {
+      const controls = `<div class="decide"${dec ? ' hidden' : ''}><div class="stack"><label class="check"><input type="checkbox" data-compare${dec && dec.compared_with_source ? ' checked' : ''}><span>${T('review.compare')}</span></label>
+            <input class="input" data-note placeholder="${T('review.note_ph')}" maxlength="1000" value="${esc((dec && dec.note) || '')}">${lesson(m, dec)}</div>
+          <div class="row">${decBtn(dec, 'approve', 'primary', `${ico('check')} ${T('review.approve')}`)}${decBtn(dec, 'needs_edit', 'warn', T('review.needs_edit'))}${decBtn(dec, 'reject', 'danger', `${ico('x')} ${T('review.reject')}`)}</div></div>`;
+      if (!dec) return controls;
+      return `<div class="decided-bar"><span class="saved ${dec.decision}">${ico('check')} ${T('review.saved_as', { d: t('review.decision.' + dec.decision) })}</span>${dec.note ? `<span class="faint note">${esc(dec.note)}</span>` : ''}
+          <button type="button" class="btn sm" data-act="change-decision">${T('review.change')}</button></div>${controls}`;
+    };
     const lessonChip = (dec) => {
       const t0 = (dec && dec.teach) || {};
       if (!t0.error_type && !t0.teach) return '';
-      return `<span class="chip ${t0.teach ? 'ok' : ''}">${t0.teach ? T('learn.taught') : T('learn.lesson')}${t0.error_type ? ' · ' + esc(errTypes[t0.error_type] || t0.error_type) : ''}${t0.correct_primary ? ' → <span class="mono">' + esc(t0.correct_primary) + '</span>' : ''}</span>`;
+      return `<span class="chip ${t0.teach ? 'ok' : ''}">${t0.teach ? T('learn.taught') : T('learn.lesson')}${t0.error_type ? ' · ' + esc(errTypes[t0.error_type] || t0.error_type) : ''}${t0.correct_primary ? ' → ' + esc(names[t0.correct_primary] || t0.correct_primary) : ''}</span>`;
     };
     const preview = {};
     (d.chair ? d.chair.moves : []).forEach((c) => { preview[c.move_id] = c; });
@@ -1395,31 +1420,35 @@
       let chairChip = '';
       if (c) chairChip = `<span class="chip ${c.committee_route === 'auto_candidate' ? 'ok' : 'violet'}">${T('review.committee')}: ${c.committee_route === 'auto_candidate' ? T('route.auto_candidate') : T('review.reason.' + ((c.abstention_reasons || [])[0] || 'weak_evidence'))}</span>`;
       else if (p) chairChip = `<span class="chip ${p.committee_route === 'auto_candidate' ? 'ok' : 'violet'}" title="${T('review.chair_note')}">${T('review.chair')}: ${p.reason ? T('review.reason.' + p.reason) : T('route.auto_candidate')}</span>`;
-      const agents = c ? `<div class="kv"><div><div class="k">${T('agent.classifier')}</div><div class="v mono">${esc(c.primary_proposer || '—')} · ${c.score_proposer ?? '—'}</div></div>
-          <div><div class="k">${T('agent.verifier')}</div><div class="v mono">${esc(c.primary_reviewer || '—')} · ${c.score_reviewer ?? '—'}</div></div>
-          <div><div class="k">${T('review.certainty')}</div><div class="v">${esc(m.certainty || '—')}</div></div>
+      const agents = c ? `<div class="kv"><div><div class="k">${T('agent.classifier')}</div><div class="v">${mName(c.primary_proposer)} · ${c.score_proposer ?? '—'}</div></div>
+          <div><div class="k">${T('agent.verifier')}</div><div class="v">${mName(c.primary_reviewer)} · ${c.score_reviewer ?? '—'}</div></div>
+          <div><div class="k">${T('review.certainty')}</div><div class="v">${certName(m.certainty)}</div></div>
           <div><div class="k">${T('review.flags')}</div><div class="v mono" style="font-size:12px">${esc((m.flags || []).join(', ') || '—')}</div></div></div>`
-        : `<div class="kv"><div><div class="k">${T('review.primary')}</div><div class="v mono">${esc(m.primary || '—')}</div></div>
-          <div><div class="k">${T('review.certainty')}</div><div class="v">${esc(m.certainty || '—')}</div></div>
+        : `<div class="kv"><div><div class="k">${T('review.primary')}</div><div class="v">${mName(m.primary)}</div></div>
+          <div><div class="k">${T('review.certainty')}</div><div class="v">${certName(m.certainty)}</div></div>
           <div><div class="k">${T('review.score')}</div><div class="v">${score ?? '—'}</div></div>
           <div><div class="k">${T('review.flags')}</div><div class="v mono" style="font-size:12px">${esc((m.flags || []).join(', ') || '—')}</div></div></div>`;
-      return `<article class="move" data-move="${esc(m.key)}">
+      const article = `<article class="move" data-move="${esc(m.key)}"${dec ? ' data-decided="1"' : ''}>
         <div class="row between"><div class="row"><b class="mono">${esc(m.key)}</b><span class="chip ${m.route === 'auto_candidate' ? 'ok' : 'warn'}">${T('route.' + (m.route || 'specialist'))}</span>
           ${chairChip}${reasonChip(m.reason_code)}</div>
           <div class="row">${dec ? `<span class="chip ${dec.decision === 'approve' ? 'ok' : dec.decision === 'reject' ? 'bad' : 'warn'}">${T('review.decision.' + dec.decision)} · ${esc(dec.user_name)} · ${esc(fDT(dec.created_at))}</span>` : ''}${lessonChip(dec)}</div></div>
         ${agents}
         ${c && c.abstention_ar ? `<p class="faint mb" dir="rtl">${esc(c.abstention_ar)}</p>` : ''}
-        ${m.method_specialist ? (() => { const sv = m.method_specialist; return `<div class="spec-note"><span class="chip ${sv.verdict === 'confirm' ? 'ok' : sv.verdict === 'invalid' ? 'bad' : 'warn'}">${ico('flask')} ${T('spec.title', { f: T('learn.family.' + sv.family) })}: ${T('spec.verdict.' + sv.verdict)}${sv.primary ? ` · <span class="mono">${esc(sv.primary)}</span>` : ''}</span>${sv.reason_code && sv.reason_code !== 'ok' ? ` <span class="chip">${esc(errTypes[sv.reason_code] || sv.reason_code)}</span>` : ''}${sv.note_ar ? `<span class="faint" dir="rtl">${esc(sv.note_ar)}</span>` : ''}</div>`; })() : ''}
+        ${m.method_specialist ? (() => { const sv = m.method_specialist; return `<div class="spec-note"><span class="chip ${sv.verdict === 'confirm' ? 'ok' : sv.verdict === 'invalid' ? 'bad' : 'warn'}">${ico('flask')} ${T('spec.title', { f: T('learn.family.' + sv.family) })}: ${T('spec.verdict.' + sv.verdict)}${sv.primary ? ` · ${mName(sv.primary)}` : ''}</span>${sv.reason_code && sv.reason_code !== 'ok' ? ` <span class="chip">${esc(errTypes[sv.reason_code] || sv.reason_code)}</span>` : ''}${sv.note_ar ? `<span class="faint" dir="rtl">${esc(sv.note_ar)}</span>` : ''}</div>`; })() : ''}
         <div class="label mb">${T('review.text')} <span class="faint mono">${esc((m.span_ids || []).join(' '))}</span></div>
         ${d.simulated ? `<div class="move-text sim">${ico('flask')} ${T('demo.text_hidden')}</div>` : `<div class="move-text">${esc(m.text || '')}</div>`}
         ${m.rationale_ar ? `<p class="faint mt-s"><b>${T('review.rationale')}</b> (${T('review.rationale_note')}): <span dir="rtl">${esc(m.rationale_ar)}</span></p>` : ''}
-        ${canDecide ? `<div class="decide"><div class="stack"><label class="check"><input type="checkbox" data-compare><span>${T('review.compare')}</span></label>
-            <input class="input" data-note placeholder="${T('review.note_ph')}" maxlength="1000">${lesson(m)}</div>
-          <div class="row"><button class="btn primary" data-act="decide" data-d="approve">${ico('check')} ${T('review.approve')}</button>
-            <button class="btn warn" data-act="decide" data-d="needs_edit">${T('review.needs_edit')}</button>
-            <button class="btn danger" data-act="decide" data-d="reject">${ico('x')} ${T('review.reject')}</button></div></div>` : ''}
+        ${canDecide ? decideBlock(m, dec) : ''}
       </article>`;
+      if (!dec || S.reviewShowDecided) return article;
+      // decided moves fold to one line so what is still open stands out
+      return `<details class="move-fold"><summary><b class="mono">${esc(m.key)}</b><span class="chip ${dec.decision === 'approve' ? 'ok' : dec.decision === 'reject' ? 'bad' : 'warn'}">${T('review.decision.' + dec.decision)}</span>
+        <span class="fold-text">${d.simulated ? '' : esc((m.text || '').slice(0, 120))}</span></summary>${article}</details>`;
     }).join('') || `<div class="empty">${T('common.empty')}</div>`;
+    const nDone = d.moves.filter((m) => m.decision).length;
+    const progress = d.moves.length ? `<div class="review-progress mb"><span>${T('review.progress', { done: fNum(nDone), total: fNum(d.moves.length) })}</span>
+        ${nDone ? `<button type="button" class="btn sm" data-act="toggle-decided">${T(S.reviewShowDecided ? 'review.hide_decided' : 'review.show_decided', { n: fNum(nDone) })}</button>` : ''}</div>
+      ${nDone === d.moves.length ? `<div class="notice mb">${ico('check')}<span>${T('review.window_done')}</span><a class="btn sm" href="#/review">${T('review.back_to_list')}</a></div>` : ''}` : '';
     const sum = d.summary || {};
     const reasons = Object.entries(sum.by_abstention_reason || {}).filter(([, v]) => v).map(([k, v]) => `<span class="chip violet">${T('review.reason.' + k)} ${fNum(v)}</span>`).join(' ');
     const mdl = d.models ? `${T('agent.classifier')}: <span class="mono">${esc((d.models.proposer || {}).tag || '')}</span> · ${T('agent.verifier')}: <span class="mono">${esc((d.models.reviewer || {}).tag || '')}</span>` : '';
@@ -1439,7 +1468,12 @@
       ${d.is_committee ? `<section class="card mb"><div class="row between"><div class="row"><b>${T('review.committee')}</b> ${mdl}</div>
         <span class="faint">${T('dash.moves')} ${fNum(sum.move_count)} · ${T('dash.candidates')} ${fNum(sum.auto_candidate)} · ${T('dash.specialist')} ${fNum(sum.specialist)} · ${esc(sum.caption || '')}</span></div>
         ${reasons ? `<div class="row mt-s">${reasons}</div>` : ''}</section>` : ''}
-      ${moves}`);
+      ${progress}${moves}`);
+    if (S.reviewFocus) {
+      const next = $(`[data-move="${CSS.escape(S.reviewFocus)}"]`);
+      S.reviewFocus = null;
+      if (next) next.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
   }
 
   async function viewLearning() {
@@ -1900,8 +1934,20 @@
           const body = { tafsir: S.reviewCtx.tafsir, window: S.reviewCtx.win, move_id: art.dataset.move, decision: el.dataset.d,
             compared_with_source: $('[data-compare]', art).checked, note: $('[data-note]', art).value, arm: S.reviewCtx.arm || '',
             error_type: val('[data-error]') || '', correct_primary: val('[data-correct]') || '', teach: !!val('[data-teach]') };
-          await api('/review/decision', { method: 'POST', body }); toast(t('common.saved'), 'ok'); render(); break;
+          await api('/review/decision', { method: 'POST', body });
+          // land on the next move that still waits for a decision
+          const open = $$('article.move:not([data-decided])').map((x) => x.dataset.move).filter((k) => k !== art.dataset.move);
+          const after = open.find((k) => $$('article.move').findIndex((x) => x.dataset.move === k) > $$('article.move').indexOf(art));
+          S.reviewFocus = after || open[0] || null;
+          toast(t('review.saved'), 'ok'); render(); break;
         }
+        case 'change-decision': {
+          const box = $('.decide', el.closest('[data-move]'));
+          box.hidden = !box.hidden;
+          el.textContent = box.hidden ? t('review.change') : t('common.cancel');
+          break;
+        }
+        case 'toggle-decided': S.reviewShowDecided = !S.reviewShowDecided; render(); break;
         case 'add-user': userModal(null); break;
         case 'edit-user': userModal((S.usersCache || []).find((u) => String(u.id) === id)); break;
         case 'revoke-user': await api(`/users/${id}/revoke-sessions`, { method: 'POST' }); toast(t('common.saved'), 'ok'); break;

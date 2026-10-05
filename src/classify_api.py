@@ -170,6 +170,34 @@ def validate_span_ids(packet: dict, payload: dict) -> list[str]:
     return errors
 
 
+PRIMARY_CODES = ("M_QURAN", "M_SUNNAH", "M_SAHABA", "M_TABIIN", "M_LUGHA", "M_QIRAAT",
+                 "M_NUZUL", "M_SIRA", "M_ISRAILIYYAT", "M_RAY")
+
+
+def validate_primary(payload: dict) -> list[str]:
+    """Each move's primary is ONE code from the list, or null.
+
+    Small models sometimes copy the whole list from the answer template
+    ("M_QURAN|M_SUNNAH|…") instead of choosing. That reply is asked again once;
+    if the second reply still has it, the verifier flags ``unknown_primary`` and
+    the move goes to a specialist.
+    """
+    errors: list[str] = []
+    moves = payload.get("moves")
+    if not isinstance(moves, list):
+        return errors
+    for i, move in enumerate(moves):
+        if not isinstance(move, dict):
+            continue
+        p = move.get("primary")
+        if p is None or p in PRIMARY_CODES or (isinstance(p, str) and p.strip().lower() == "null"):
+            continue
+        shown = str(p)[:80]
+        hint = " (you copied the list of choices)" if "|" in str(p) else ""
+        errors.append(f"move[{i}].primary is {shown!r}{hint}")
+    return errors
+
+
 def sanitize_moves_payload(payload: dict, window_id: str) -> dict:
     """Keep moves schema fields only — never store model text as source."""
     cleaned_moves: list[dict] = []
@@ -191,6 +219,8 @@ def sanitize_moves_payload(payload: dict, window_id: str) -> dict:
                 out[key] = [str(x) for x in (val or [])]
             elif key in ("secondary", "content_tags", "alternatives"):
                 out[key] = list(val or [])
+            elif key == "primary" and isinstance(val, str) and val.strip().lower() in ("null", ""):
+                out[key] = None
             else:
                 out[key] = val
         # Defaults so file matches existing moves shape
@@ -622,6 +652,12 @@ def classify(
             errors = validate_span_ids(packet, payload)
             if errors:
                 first_error = "Invalid span ids:\n- " + "\n- ".join(errors)
+            else:
+                bad_primary = validate_primary(payload)
+                if bad_primary:
+                    first_error = ("Invalid primary method:\n- " + "\n- ".join(bad_primary[:8])
+                                   + "\nFor each move choose exactly ONE code from the list"
+                                   " (for example \"M_LUGHA\"), or null when no method applies.")
         except ClassifyError as e:
             first_error = f"Invalid JSON reply: {e}"
 

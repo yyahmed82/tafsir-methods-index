@@ -1006,6 +1006,11 @@ def test_ab_task_runs_both_arms_blind_review_and_teaching(env, tmp_path, monkeyp
         assert rv["arm"] == b_arm and rv["variant"] is None and rv["annotator"] is None
         assert "annotator" not in json.dumps(rv["models"])
         assert "verse_in_report" in rv["error_types"] and "M_SUNNAH" in rv["methods"]
+        # reviewers read method names in Arabic, and can name the new error kinds
+        assert rv["method_names"]["M_SUNNAH"] == "السنة"
+        assert rv["method_names"]["M_LUGHA"].startswith("اللغة")
+        assert {"secondary_tag", "certainty_wrong", "invalid_output", "text_mismatch"} <= set(rv["error_types"])
+        assert list(rv["error_types"])[-1] == "other"
         assert env.get("/api/review/al_saadi/24_35?arm=Z").json()["detail"]["error"] == "bad_arm"
 
         body = {"tafsir": "al_saadi", "window": "24_35", "move_id": "P-m01", "arm": b_arm,
