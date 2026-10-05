@@ -546,7 +546,7 @@ def build_index_data() -> dict:
     summary = _summary_from_reports(comparison, recon)
     summary["source_a_suspect_typos"] = _collect_suspect_typos(ayat, src_b_by_ayah)
     return {
-        "title_ar": "فهرس تفسير ابن كثير — نموذج تجريبي",
+        "title_ar": "فهرس مناهج التفسير",
         "summary": summary,
         "tags": TAG_INFO,
         "ayat": ayat,
@@ -578,8 +578,27 @@ def write_outputs(data: dict) -> tuple[Path, Path]:
 
 
 def main() -> int:
-    data = build_index_data()
+    injected = False
+    try:
+        data = build_index_data()
+    except (OSError, SystemExit, FileNotFoundError, KeyError, ValueError) as exc:
+        existing = ROOT / "web" / "index_data.json"
+        if not existing.is_file():
+            raise
+        print(
+            "build_index_data failed ("
+            + str(exc)
+            + "); injecting existing web/index_data.json into the template"
+        )
+        data = json.loads(existing.read_text(encoding="utf-8"))
+        injected = True
+    data["title_ar"] = "فهرس مناهج التفسير"
     json_path, html_path = write_outputs(data)
+    if injected:
+        print(f"Wrote {html_path.relative_to(ROOT)} from injected JSON")
+        print(f"html_bytes={html_path.stat().st_size}")
+        return 0
+
 
     n_units = sum(len(a["units"]) for a in data["ayat"])
     n_agreed = sum(1 for a in data["ayat"] for u in a["units"] if u["status"] == "agreed")

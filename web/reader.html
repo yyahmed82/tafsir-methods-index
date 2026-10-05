@@ -287,6 +287,67 @@ button.brand-lockup:focus-visible {
   gap: 8px;
   flex-wrap: wrap;
 }
+.sbs-switch {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 4px 10px;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.sbs-switch .sw-track { flex: 0 0 auto; }
+.read-split { display: block; }
+.read-split.is-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+@media (max-width: 900px) {
+  .read-split.is-split { grid-template-columns: 1fr; }
+}
+.read-pane-h {
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--sub);
+  margin: 0 0 10px;
+  line-height: 1.35;
+}
+.read-pane-orig {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+  min-width: 0;
+}
+.read-split.is-split .read-pane-tagged,
+.read-split.is-split .read-pane-orig {
+  max-height: min(70vh, 720px);
+  overflow: auto;
+}
+.read-split.is-split .reading-article {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+.orig-article {
+  font-family: var(--font-text);
+  font-size: var(--tafsir-size);
+  line-height: 2.3;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.orig-article .src-run:not(.layout-br) { display: inline; }
 
 .btn {
   font-family: var(--font-ui);
@@ -527,15 +588,26 @@ article.reading-article p {
   vertical-align: super;
   cursor: pointer;
 }
-.hide-footnotes .fn { display: none; }
+.hide-footnotes .fn { display: none !important; }
 
 .br-src { display: none; }
 .layout-br { display: block; height: 0.6em; }
 
-/* Highlight spans */
+article.reading-article .src-run:not(.layout-br),
+article.reading-article .hl {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Highlight spans: colour lives inside running prose */
 .hl {
-  border-radius: 2px;
-  padding: 1px 1px;
+  display: inline;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
   border: 0;
   box-shadow: none;
   cursor: pointer;
@@ -544,7 +616,7 @@ article.reading-article p {
   position: relative;
   color: var(--ink) !important;
   text-decoration-line: underline;
-  text-decoration-thickness: 1.5px;
+  text-decoration-thickness: 2px;
   text-underline-offset: 0.2em;
   text-decoration-skip-ink: none;
   transition: outline 0.15s ease, background-color 0.15s ease;
@@ -733,9 +805,16 @@ article.reading-article p {
   line-height: 1.5;
 }
 .src-run.cite-evidence, .cite-evidence {
-  background: color-mix(in srgb, var(--teal) 18%, transparent);
-  box-shadow: inset 0 -2px 0 var(--teal);
+  background: color-mix(in srgb, var(--cite, var(--teal)) 16%, transparent);
+  box-shadow: none;
+  outline: none;
+  border: 0;
   border-radius: 2px;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--cite, var(--teal));
+  text-underline-offset: 0.18em;
+  text-decoration-skip-ink: none;
 }
 .src-run.cite-verdict, .cite-verdict {
   background: color-mix(in srgb, var(--warn) 18%, transparent);
@@ -849,9 +928,35 @@ aside.reader-aside {
 .switch-wrap {
   display: flex;
   align-items: center;
+  gap: 8px;
   cursor: pointer;
 }
 .switch-wrap input { display: none; }
+.fn-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+}
+.fn-switch-label {
+  font-size: 0.82rem;
+  color: var(--sub);
+  font-weight: 600;
+  line-height: 1.35;
+}
+.switch-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 2px;
+  min-width: 40px;
+  min-height: 24px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
 .sw-track {
   width: 36px;
   height: 20px;
@@ -859,6 +964,7 @@ aside.reader-aside {
   background: #D5D9EA;
   position: relative;
   transition: background 0.2s ease;
+  pointer-events: none;
 }
 .sw-track::after {
   content: "";
@@ -871,10 +977,12 @@ aside.reader-aside {
   background: #FFFFFF;
   transition: transform 0.2s ease;
 }
-.switch-wrap input:checked + .sw-track {
+.switch-wrap input:checked + .sw-track,
+.switch-btn[aria-checked="true"] .sw-track {
   background: var(--accent);
 }
-.switch-wrap input:checked + .sw-track::after {
+.switch-wrap input:checked + .sw-track::after,
+.switch-btn[aria-checked="true"] .sw-track::after {
   transform: translateX(-16px);
 }
 .font-scale-btns {
@@ -948,33 +1056,45 @@ aside.reader-aside {
   overflow: hidden;
 }
 .queue-header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   padding: 14px 14px 8px;
   border-bottom: 1px solid var(--line);
 }
 .queue-header h4 {
+  display: block;
   font-size: 0.88rem;
   font-weight: 700;
-  margin-bottom: 8px;
+  margin: 0;
+  line-height: 1.4;
+  width: 100%;
 }
 .queue-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
+  width: 100%;
   background: var(--base);
   padding: 3px;
   border-radius: 8px;
 }
 .queue-tabs button {
-  flex: 1;
+  flex: 1 1 auto;
   text-align: center;
   font-size: 0.74rem;
   font-family: inherit;
-  padding: 5px 0;
+  padding: 6px 8px;
+  min-height: 24px;
+  min-width: 24px;
   border-radius: 6px;
   border: none;
   background: transparent;
   color: var(--sub);
   cursor: pointer;
   font-weight: 500;
+  white-space: nowrap;
 }
 .queue-tabs button.is-on {
   background: var(--surface);
@@ -1074,7 +1194,7 @@ aside.reader-aside {
   position: relative;
 }
 .paper-box p { margin-bottom: 14px; }
-.cur-move {
+.cur-move.pass-frame {
   color: var(--ink);
   background: var(--accent-bg);
   outline: 2px solid var(--accent);
@@ -1083,6 +1203,9 @@ aside.reader-aside {
   padding: 1px 3px;
   position: relative;
   font-weight: 500;
+}
+.cur-move.pass-frame .cite-evidence {
+  outline: none;
 }
 .sid {
   font-family: var(--font-ui);
@@ -1437,8 +1560,12 @@ aside.reader-aside {
 }
 @media (min-width: 993px) {
   .mobile-queue-toggle { display: none !important; }
-  .queue-panel.is-collapsed .queue-header,
-  .queue-panel.is-collapsed .queue-items { display: flex !important; }
+  .queue-panel.is-collapsed .queue-header {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .queue-panel.is-collapsed .queue-items { display: grid !important; }
 }
 </style>
 
@@ -1455,7 +1582,7 @@ aside.reader-aside {
         <span class="brand-product brand-title">فهرس مناهج التفسير</span>
         </span>
       </button>
-      <span class="mode-badge" id="header-mode-badge" hidden>وضع المراجعة</span>
+      <span class="mode-badge" id="header-mode-badge" hidden>وضع المختص</span>
     </div>
 
     <div class="pick-group">
@@ -1490,8 +1617,12 @@ aside.reader-aside {
     </div>
 
     <div class="header-actions">
+      <button type="button" class="sbs-switch" id="toggle-sbs" role="switch" aria-checked="false" aria-label="اعرض الأصل بجانبه">
+        <span>اعرض الأصل بجانبه</span>
+        <span class="sw-track" aria-hidden="true"></span>
+      </button>
       <button type="button" class="btn" id="btn-export-decisions" hidden title="تصدير قرارات المتخصص بصيغة JSON">صدّر القرارات</button>
-      <button type="button" class="btn btn-primary" id="btn-toggle-mode">وضع المراجعة ←</button>
+      <button type="button" class="btn btn-primary" id="btn-toggle-mode">وضع المختص ←</button>
       <button type="button" class="ib-btn" id="btn-theme-toggle" aria-pressed="false" aria-label="تبديل المظهر" title="تبديل المظهر الفاتح/الداكن">◐</button>
       <a href="fahras.html" class="btn btn-ghost" title="الرجوع إلى الواجهة الكلاسيكية">الواجهة الكلاسيكية</a>
     </div>
@@ -1514,9 +1645,18 @@ aside.reader-aside {
 
       <div class="info-banner" id="reader-info-banner"></div>
 
-      <article class="reading-article" id="reading-article">
-        <!-- Reconstructed text with highlights -->
-      </article>
+      <div class="read-split" id="read-split">
+        <div class="read-pane read-pane-tagged" id="tagged-pane">
+          <h3 class="read-pane-h" id="tagged-pane-h" hidden>النص الملوّن بالمناهج</h3>
+          <article class="reading-article" id="reading-article">
+            <!-- Reconstructed text with highlights -->
+          </article>
+        </div>
+        <div class="read-pane read-pane-orig" id="orig-pane" hidden>
+          <h3 class="read-pane-h">النص الأصلي كما في المصدر</h3>
+          <div class="orig-article" id="orig-article"></div>
+        </div>
+      </div>
 
       <!-- Floating Evidence Card Popover -->
       <div class="evidence-card" id="evidence-card" hidden>
@@ -1554,12 +1694,11 @@ aside.reader-aside {
       </div>
 
       <div class="aside-card">
-        <div class="tg-row">
-          <span>حواشي المحقق</span>
-          <label class="switch-wrap">
-            <input type="checkbox" id="toggle-footnotes" checked>
-            <span class="sw-track"></span>
-          </label>
+        <div class="tg-row fn-switch-row">
+          <span class="fn-switch-label" id="fn-switch-label">إظهار حواشي المحقق</span>
+          <button type="button" class="switch-btn" id="toggle-footnotes" role="switch" aria-checked="true" aria-labelledby="fn-switch-label">
+            <span class="sw-track" aria-hidden="true"></span>
+          </button>
         </div>
         <div class="tg-row">
           <span>حجم الخط</span>
@@ -1579,11 +1718,11 @@ aside.reader-aside {
   <!-- REVIEW MODE VIEW -->
   <main class="review-container" id="review-view" hidden>
     <!-- Column 1: Queue -->
-    <section class="queue-panel is-collapsed" id="review-queue-panel">
+    <section class="queue-panel" id="review-queue-panel">
       <button type="button" class="btn mobile-queue-toggle" id="btn-toggle-mobile-queue">طابور المواضع ▾</button>
       <div class="queue-header">
-        <h4>طابور المواضع</h4>
-        <div class="queue-tabs">
+        <h4 id="queue-heading">طابور المواضع</h4>
+        <div class="queue-tabs" id="queue-tabs">
           <button type="button" class="is-on" data-tab="pending" id="tab-pending">بانتظارك <span id="cnt-pending"></span></button>
           <button type="button" data-tab="candidate" id="tab-candidate">مرشّح <span id="cnt-candidate"></span></button>
           <button type="button" data-tab="done" id="tab-done">تمّ <span id="cnt-done"></span></button>
@@ -1741,6 +1880,7 @@ aside.reader-aside {
   var STORAGE_KEY = "tafsir-fahras-v1-log";
   var THEME_KEY = "tafsir-fahras-v1-theme";
   var TYPE_KEY = "tafsir-fahras-v1-type-scale";
+  var SBS_KEY = "tafsir-reader-v2-sbs";
   var TYPE_STEPS = [1.05, 1.15, 1.25, 1.38, 1.5];
 
   var METHODS = [
@@ -2008,6 +2148,8 @@ aside.reader-aside {
     activeMethodFilter: null, // null for all
     colorEnabled: true,
     footnotesVisible: true,
+    sideBySide: false,
+    syncScrollLock: false,
     typeStep: 2,
     queueTab: "pending", // "pending" | "candidate" | "done"
     log: [],
@@ -2118,6 +2260,111 @@ aside.reader-aside {
   function currentRaw() {
     var T = activeTafsir();
     return (T && T.raw && T.raw[state.windowId]) || null;
+  }
+
+  function loadSideBySide() {
+    try {
+      var v = localStorage.getItem(SBS_KEY);
+      if (v === "1" || v === "true") {
+        state.sideBySide = true;
+        return;
+      }
+      if (v === "0" || v === "false") {
+        state.sideBySide = false;
+        return;
+      }
+    } catch (e) { /* ignore */ }
+    var mobile = false;
+    try { mobile = window.matchMedia && window.matchMedia("(max-width: 900px)").matches; } catch (e2) { /* ignore */ }
+    state.sideBySide = false;
+    if (mobile) state.sideBySide = false;
+  }
+
+  function saveSideBySide() {
+    try { localStorage.setItem(SBS_KEY, state.sideBySide ? "1" : "0"); } catch (e) { /* ignore */ }
+  }
+
+  function windowSpansInOrder(w) {
+    return ((w && w.spans) || []).slice().sort(function (a, b) { return a.start - b.start; });
+  }
+
+  function concatSpanText(w) {
+    w = w || currentWindow();
+    if (!w) return "";
+    var text = w.window_text || "";
+    var base = w.window_start || 0;
+    return windowSpansInOrder(w).map(function (sp) {
+      return text.slice(sp.start - base, sp.end - base);
+    }).join("");
+  }
+
+  function makePlainRun(absStart, slice) {
+    if (slice === "<br>") {
+      var br = document.createElement("span");
+      br.className = "layout-br src-run";
+      br.setAttribute("data-abs-start", String(absStart));
+      var brSrc = document.createElement("span");
+      brSrc.className = "br-src";
+      brSrc.textContent = "<br>";
+      br.appendChild(brSrc);
+      return br;
+    }
+    var run = document.createElement("span");
+    run.className = "src-run orig-run";
+    run.setAttribute("data-abs-start", String(absStart));
+    run.textContent = slice;
+    return run;
+  }
+
+  function renderOrigColumn() {
+    var pane = document.getElementById("orig-pane");
+    var art = document.getElementById("orig-article");
+    var split = document.getElementById("read-split");
+    var taggedH = document.getElementById("tagged-pane-h");
+    var btn = document.getElementById("toggle-sbs");
+    var on = !!state.sideBySide && state.mode === "reader";
+    if (pane) pane.hidden = !on;
+    if (taggedH) taggedH.hidden = !on;
+    if (split) split.classList.toggle("is-split", on);
+    if (btn) {
+      btn.setAttribute("aria-checked", on ? "true" : "false");
+      btn.hidden = state.mode !== "reader";
+    }
+    if (!art) return;
+    if (!on) {
+      art.textContent = "";
+      return;
+    }
+    var w = currentWindow();
+    art.textContent = "";
+    if (!w) return;
+    var text = w.window_text || "";
+    var base = w.window_start || 0;
+    var frag = document.createDocumentFragment();
+    windowSpansInOrder(w).forEach(function (sp) {
+      frag.appendChild(makePlainRun(sp.start, text.slice(sp.start - base, sp.end - base)));
+    });
+    art.appendChild(frag);
+  }
+
+  function bindSbsScroll() {
+    var tagged = document.getElementById("tagged-pane");
+    var orig = document.getElementById("orig-pane");
+    if (!tagged || !orig || tagged._sbsBound) return;
+    tagged._sbsBound = true;
+    function syncFrom(src, dst) {
+      return function () {
+        if (!state.sideBySide || state.syncScrollLock || state.mode !== "reader") return;
+        var maxS = src.scrollHeight - src.clientHeight;
+        var maxD = dst.scrollHeight - dst.clientHeight;
+        if (maxS <= 0 || maxD <= 0) return;
+        state.syncScrollLock = true;
+        dst.scrollTop = (src.scrollTop / maxS) * maxD;
+        state.syncScrollLock = false;
+      };
+    }
+    tagged.addEventListener("scroll", syncFrom(tagged, orig), { passive: true });
+    orig.addEventListener("scroll", syncFrom(orig, tagged), { passive: true });
   }
 
   var STATUS = {
@@ -2530,12 +2777,12 @@ aside.reader-aside {
       infoEl.classList.add("has-approved");
       b.textContent = "معتمد: " + toArabicDigits(approvedCount);
       infoEl.appendChild(b);
-      infoEl.appendChild(document.createTextNode(" بواسطة متخصص · باقي الوسوم (" + toArabicDigits(proposedCount) + ") مقترحة آلياً · النص مطابق للمصدر حرفاً بحرف (sha256 " + res.sha + ")"));
+      infoEl.appendChild(document.createTextNode(" بواسطة متخصص · باقي الوسوم (" + toArabicDigits(proposedCount) + ") اقتراح آلي · غير معتمد بعد · النص مطابق للمصدر حرفاً بحرف (sha256 " + res.sha + ")"));
     } else {
       infoEl.classList.remove("has-approved");
-      b.textContent = "الوسوم مقترحة آلياً";
+      b.textContent = "اقتراح آلي";
       infoEl.appendChild(b);
-      infoEl.appendChild(document.createTextNode(" ولم يعتمدها متخصص بعد · النص نفسه مطابق للمصدر حرفاً بحرف (sha256 " + res.sha + ")"));
+      infoEl.appendChild(document.createTextNode(" · غير معتمد بعد · النص مطابق للمصدر حرفاً بحرف (sha256 " + res.sha + ")"));
     }
   }
 
@@ -2772,6 +3019,8 @@ aside.reader-aside {
       exportBtn.hidden = false;
       toggleModeBtn.textContent = "خروج إلى القراءة";
       toggleModeBtn.classList.remove("btn-primary");
+      var sbsHide = document.getElementById("toggle-sbs");
+      if (sbsHide) sbsHide.hidden = true;
       try {
         var url = new URL(window.location.href);
         url.searchParams.set("mode", "review");
@@ -2784,8 +3033,10 @@ aside.reader-aside {
       modeBadge.hidden = true;
       headerStats.hidden = true;
       exportBtn.hidden = true;
-      toggleModeBtn.textContent = "وضع المراجعة ←";
+      toggleModeBtn.textContent = "وضع المختص ←";
       toggleModeBtn.classList.add("btn-primary");
+      var sbsShow = document.getElementById("toggle-sbs");
+      if (sbsShow) sbsShow.hidden = false;
       try {
         var url2 = new URL(window.location.href);
         url2.searchParams.delete("mode");
@@ -2878,6 +3129,7 @@ aside.reader-aside {
 
     // Build Reader Text Article letter-by-letter with reconstruction checking
     renderReaderArticle();
+    renderOrigColumn();
     updateReaderReconstructionBanner();
     observeReaderArticle();
 
@@ -3056,6 +3308,7 @@ aside.reader-aside {
       });
 
       if (isNonAuth) {
+        if (!state.footnotesVisible) continue;
         var fn = document.createElement("span");
         fn.className = "fn src-run";
         fn.setAttribute("data-abs-start", String(base + a));
@@ -3353,6 +3606,7 @@ aside.reader-aside {
     var paper = document.getElementById("review-paper");
     if (!paper) return;
     paper.textContent = "";
+    paper.style.removeProperty("--cite");
 
     var w = currentWindow();
     if (!w) return;
@@ -3363,6 +3617,10 @@ aside.reader-aside {
     moves.forEach(function (m) {
       if ((m.move_id || m.id) === state.selectedId) curMove = m;
     });
+    if (curMove) {
+      var citeMeta = METHOD_MAP[curMove.primary];
+      paper.style.setProperty("--cite", citeMeta && citeMeta.color ? citeMeta.color : "var(--teal)");
+    }
 
     var cuts = {};
     cuts[0] = true;
@@ -3400,12 +3658,34 @@ aside.reader-aside {
     var pts = Object.keys(cuts).map(Number).sort(function (a, b) { return a - b; });
 
     var frag = document.createDocumentFragment();
+    var passFrame = null;
+    var sidDone = false;
+
+    function closePassFrame() {
+      passFrame = null;
+    }
+    function ensurePassFrame() {
+      if (passFrame) return passFrame;
+      passFrame = document.createElement("span");
+      passFrame.className = "cur-move pass-frame";
+      if (!sidDone && curMove) {
+        var sid = document.createElement("span");
+        sid.className = "sid";
+        sid.textContent = (curMove.span_ids && curMove.span_ids[0]) || "span";
+        passFrame.appendChild(sid);
+        sidDone = true;
+      }
+      frag.appendChild(passFrame);
+      return passFrame;
+    }
 
     for (var i = 0; i < pts.length - 1; i++) {
       var a = pts[i];
       var b = pts[i + 1];
       if (a >= b) continue;
       var slice = text.slice(a, b);
+      var isCurMove = !!(curMove && (curMove.start - base) <= a && (curMove.end - base) >= b);
+      var host = isCurMove ? ensurePassFrame() : (closePassFrame(), frag);
 
       if (slice === "<br>") {
         var br = document.createElement("span");
@@ -3415,7 +3695,7 @@ aside.reader-aside {
         brSrc.className = "br-src";
         brSrc.textContent = "<br>";
         br.appendChild(brSrc);
-        frag.appendChild(br);
+        host.appendChild(br);
         continue;
       }
 
@@ -3428,21 +3708,11 @@ aside.reader-aside {
         fn.className = "fn src-run";
         fn.setAttribute("data-abs-start", String(base + a));
         fn.textContent = slice;
-        frag.appendChild(fn);
+        host.appendChild(fn);
         continue;
       }
 
-      var isCurMove = curMove && (curMove.start - base) <= a && (curMove.end - base) >= b;
-
       if (isCurMove) {
-        var spanWrap = document.createElement("span");
-        spanWrap.className = "cur-move";
-        if (a === (curMove.start - base)) {
-          var sid = document.createElement("span");
-          sid.className = "sid";
-          sid.textContent = (curMove.span_ids && curMove.span_ids[0]) || "span";
-          spanWrap.appendChild(sid);
-        }
         var run = document.createElement("span");
         run.className = "src-run";
         run.setAttribute("data-abs-start", String(base + a));
@@ -3455,14 +3725,13 @@ aside.reader-aside {
         verdRanges.forEach(function (r) {
           if (r.start <= absA && r.end >= absB) run.classList.add("cite-verdict");
         });
-        spanWrap.appendChild(run);
-        frag.appendChild(spanWrap);
+        host.appendChild(run);
       } else {
         var plain = document.createElement("span");
         plain.className = "other-move src-run";
         plain.setAttribute("data-abs-start", String(base + a));
         plain.textContent = slice;
-        frag.appendChild(plain);
+        host.appendChild(plain);
       }
     }
 
@@ -3766,6 +4035,9 @@ aside.reader-aside {
     // Mobile queue toggle
     var btnMobileQ = document.getElementById("btn-toggle-mobile-queue");
     var queuePanel = document.getElementById("review-queue-panel");
+    if (queuePanel && window.matchMedia && window.matchMedia("(max-width: 992px)").matches) {
+      queuePanel.classList.add("is-collapsed");
+    }
     if (btnMobileQ && queuePanel) {
       btnMobileQ.addEventListener("click", function () {
         queuePanel.classList.toggle("is-collapsed");
@@ -4017,6 +4289,15 @@ aside.reader-aside {
   }
 
   function setupReaderEvents() {
+    var toggleSbs = document.getElementById("toggle-sbs");
+    if (toggleSbs) {
+      toggleSbs.addEventListener("click", function () {
+        state.sideBySide = !state.sideBySide;
+        saveSideBySide();
+        renderOrigColumn();
+      });
+    }
+    bindSbsScroll();
     var chipNone = document.getElementById("chip-none");
     if (chipNone) {
       chipNone.addEventListener("click", function () {
@@ -4028,8 +4309,9 @@ aside.reader-aside {
 
     var toggleFootnotes = document.getElementById("toggle-footnotes");
     if (toggleFootnotes) {
-      toggleFootnotes.addEventListener("change", function () {
-        state.footnotesVisible = toggleFootnotes.checked;
+      toggleFootnotes.addEventListener("click", function () {
+        state.footnotesVisible = !state.footnotesVisible;
+        toggleFootnotes.setAttribute("aria-checked", state.footnotesVisible ? "true" : "false");
         var rvFnLabel = document.getElementById("rv-fn-label");
         if (rvFnLabel) rvFnLabel.textContent = state.footnotesVisible ? "ظاهرة" : "مخفية";
         renderReaderArticle();
@@ -4087,6 +4369,7 @@ aside.reader-aside {
     loadLog();
     loadTheme();
     loadTypeScale();
+    loadSideBySide();
 
     // Check URL mode parameter
     try {
@@ -4139,7 +4422,10 @@ aside.reader-aside {
     runCompareWithSource: runCompareWithSource,
     getRenderedMoveText: getRenderedMoveText,
     updateReaderReconstructionBanner: updateReaderReconstructionBanner,
-    checkReconstructionFidelity: checkReconstructionFidelity
+    checkReconstructionFidelity: checkReconstructionFidelity,
+    collectSourceRunText: collectSourceRunText,
+    concatSpanText: concatSpanText,
+    renderOrigColumn: renderOrigColumn
   };
   window.getSelectedMove = getSelectedMove;
   window.recordDecision = recordDecision;
