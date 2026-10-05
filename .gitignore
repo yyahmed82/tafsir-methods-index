@@ -24,7 +24,9 @@ deck/video/opening/full/concat.txt
 deck/video/opening/full/qa_list.txt
 
 # local editor config, scratch scripts, and personal notes
-.claude/
+# (.claude/skills/ mirrors are tracked: canonical source docs/team/skills/)
+.claude/*
+!.claude/skills/
 _*.py
 _*/
 *khaled*
