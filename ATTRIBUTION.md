@@ -13,6 +13,8 @@
 
 الكود في هذا المستودع مرخّص بـ **MIT** ([`LICENSE`](LICENSE))، وهو منفصل عن شروط نص التفسير والبيانات.
 
+**Licensing scope.** The MIT license in [`LICENSE`](LICENSE) covers the source code in this repository (Python, JavaScript, HTML/CSS, shell scripts and tests). It does not cover the tafsir text or any data derived from it (layers, spans, windows, tags, the approved index): those follow the source terms in this file — CC BY 4.0 on the dataset card, with prior permission required for commercial redistribution under Tafsir Center's `DATA_SOURCES.md`.
+
 ## نص التفسير — المصدر الأساسي
 
 راجعتُ بطاقة المجموعة (https://huggingface.co/datasets/tafsircenter/tafsir-mcp-data) وملف `DATA_SOURCES.md` (https://github.com/tafsircenter/tafsir-mcp/blob/main/DATA_SOURCES.md) في ٢٠٢٦-٠٩-٢٩. يذكران اسم العمل والمؤلف وسنة الوفاة، ولا يذكران طبعة مطبوعة (دار النشر أو المحقق أو سنة الطبع) لأي من التفاسير الأربعة. لذلك تبقى **الطبعة المطبوعة** لكل منها **قيد التحقق**، والمرجع المعتمد هنا هو النسخة الرقمية المثبتة بالبصمة.
@@ -53,6 +55,11 @@
 
 - **quran.com API v4** — مورد تفسير ابن كثير بالعربية.
 - **لا نعيد نشر نصه الكامل** في هذا المستودع إلى حين التحقق من شروط الاستخدام. نحتفظ فقط بنتائج المطابقة والكلمات المختلفة.
+
+## مراجع للقراءة — روابط فقط
+
+- **«آيات» — مشروع المصحف الإلكتروني بجامعة الملك سعود:** https://quran.ksu.edu.sa — نعدّه أبرز مبادرة لقراءة التفاسير، وفيه التفاسير الأربعة التي نفهرسها. نضع رابط «اقرأ في آيات» من كل موضع إلى الآية نفسها، ونقارن به يدوياً عند الحاجة.
+- **لا نعيد نشر أي نص منه** في هذا المستودع: لم نجد على الموقع ترخيصاً صريحاً لإعادة الاستخدام، ولا نقارن به آلياً قبل إذن مكتوب من فريق المشروع.
 
 ## جدول الفريق التجريبي
 

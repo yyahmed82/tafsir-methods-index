@@ -38,7 +38,8 @@ CLAIM_STRINGS = (
 )
 
 CTA_READ = "افتح وضع القراءة"
-CTA_REVIEW = "افتح وضع المختص"
+CTA_COMMITTEE = "لوحة اللجنة (للمتخصص)"
+CONSOLE_HREF = "https://console.mirqah.app"
 TRUST = "الوسوم مقترحة آلياً ولم يعتمدها متخصص بعد · النص مطابق للمصدر حرفاً بحرف"
 COUNTS_CAPTION = "أعداد توجيه وليست دقة"
 NO_APPROVAL = "لا اعتماد إلا من المتخصص"
@@ -126,9 +127,11 @@ class TestUxApplyStatic(unittest.TestCase):
         )
         self.assertRegex(
             html,
-            r'<a\b[^>]*href="reader\.html\?mode=review"[^>]*>\s*'
-            + re.escape(CTA_REVIEW),
+            r'<a\b[^>]*href="https://console\.mirqah\.app"[^>]*>\s*'
+            + re.escape(CTA_COMMITTEE),
         )
+        self.assertNotIn("reader.html?mode=review", html)
+        self.assertNotIn("افتح وضع المختص", html)
         self.assertIn(TRUST, html)
         self.assertIn(COUNTS_CAPTION, html)
         self.assertIn(NO_APPROVAL, html)
@@ -143,7 +146,9 @@ class TestUxApplyStatic(unittest.TestCase):
     def test_index_template_matches_built(self) -> None:
         tpl = TPL_INDEX.read_text(encoding="utf-8")
         self.assertIn(CTA_READ, tpl)
-        self.assertIn('href="reader.html?mode=review"', tpl)
+        self.assertIn(f'href="{CONSOLE_HREF}"', tpl)
+        self.assertIn(CTA_COMMITTEE, tpl)
+        self.assertNotIn('href="reader.html?mode=review"', tpl)
         self.assertNotIn("فهرس تفسير ابن كثير — نموذج تجريبي", tpl)
 
     def test_footnote_switch_markup(self) -> None:
@@ -209,6 +214,54 @@ class TestUxApplyStatic(unittest.TestCase):
             self.assertIn("function concatSpanText", html, path.name)
             self.assertIn("function renderOrigColumn", html, path.name)
             self.assertIn("SBS_KEY", html, path.name)
+
+    def test_public_review_closed_export_kept(self) -> None:
+        for path in (TPL_READER, READER):
+            html = path.read_text(encoding="utf-8")
+            self.assertIn("var REVIEW_OPEN = false;", html, path.name)
+            self.assertIn(
+                'if (REVIEW_OPEN && params.get("mode") === "review")',
+                html,
+                path.name,
+            )
+            self.assertIn('id="btn-export-log"', html, path.name)
+            self.assertIn("صدّر قراراتك المحفوظة", html, path.name)
+            self.assertIn("mirqah-reader-decisions.json", html, path.name)
+            self.assertRegex(
+                html,
+                r'<button\b[^>]*\bid="btn-toggle-mode"[^>]*\bhidden\b',
+                path.name,
+            )
+            self.assertNotRegex(
+                html,
+                r'<button\b(?![^>]*\bhidden\b)[^>]*\bid="btn-toggle-mode"',
+                path.name,
+            )
+
+
+def _public_review_stays_closed(page) -> None:
+    """?mode=review must not open the browser review UI on the public reader."""
+    page.wait_for_function(
+        """() => {
+          var review = document.getElementById('review-view');
+          var reader = document.getElementById('reader-view');
+          var toggle = document.getElementById('btn-toggle-mode');
+          return review && review.hidden && reader && !reader.hidden
+            && toggle && toggle.hidden;
+        }"""
+    )
+
+
+def _open_dormant_review_for_layout(page) -> None:
+    """Measure markup that remains in the page after the public entry was closed."""
+    _public_review_stays_closed(page)
+    page.evaluate("() => document.getElementById('btn-toggle-mode').click()")
+    page.wait_for_function(
+        """() => {
+          var v = document.getElementById('review-view');
+          return v && !v.hidden;
+        }"""
+    )
 
 
 class TestUxApplyPlaywright(unittest.TestCase):
@@ -284,12 +337,7 @@ class TestUxApplyPlaywright(unittest.TestCase):
                 for width, height in ((1440, 900), (375, 812)):
                     page.set_viewport_size({"width": width, "height": height})
                     page.goto(url, wait_until="domcontentloaded")
-                    page.wait_for_function(
-                        """() => {
-                          var v = document.getElementById('review-view');
-                          return v && !v.hidden;
-                        }"""
-                    )
+                    _open_dormant_review_for_layout(page)
                     if width == 375:
                         toggle = page.locator("#btn-toggle-mobile-queue")
                         if toggle.is_visible():
@@ -327,12 +375,7 @@ class TestUxApplyPlaywright(unittest.TestCase):
                 page = browser.new_page()
                 page.set_viewport_size({"width": 1440, "height": 900})
                 page.goto(url, wait_until="domcontentloaded")
-                page.wait_for_function(
-                    """() => {
-                      var v = document.getElementById('review-view');
-                      return v && !v.hidden;
-                    }"""
-                )
+                _open_dormant_review_for_layout(page)
                 page.wait_for_selector("#review-paper")
                 page.wait_for_timeout(200)
                 counts = page.evaluate(

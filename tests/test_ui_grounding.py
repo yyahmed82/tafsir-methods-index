@@ -336,6 +336,17 @@ class TestUiGroundingPlaywright(unittest.TestCase):
                             "(t) => document.documentElement.setAttribute('data-theme', t)",
                             theme,
                         )
+                        # Public ?mode=review stays closed. The fixture still checks
+                        # the review markup by opening that dormant surface in-test.
+                        page.wait_for_function(
+                            """() => {
+                              var v = document.getElementById('review-view');
+                              return v && v.hidden;
+                            }"""
+                        )
+                        page.evaluate(
+                            "() => document.getElementById('btn-toggle-mode').click()"
+                        )
                         page.wait_for_selector("#dec-route-host .g-route")
                         page.evaluate(
                             """() => {
