@@ -61,8 +61,21 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "reports": {
         "auto_daily": True,
-        "daily_time": "23:30",
+        "daily_time": "21:00",
         "mail_roles": ["super_admin", "committee_operator"],
+    },
+    # the committee chair's human side: who reviews what, reminders, retries, alerts
+    "workflow": {
+        "auto_assign": True,
+        "reminders": True,
+        "reminder_time": "09:00",
+        "min_specialists": 3,
+        "auto_retry": True,
+        "retry_max": 2,
+        "retry_first_min": 5,
+        "retry_second_min": 30,
+        "failure_alerts": True,
+        "alert_roles": ["super_admin", "committee_operator"],
     },
 }
 
@@ -235,6 +248,16 @@ def _validate(section: str, values: dict[str, Any]) -> None:
             raise SettingsError("demo.guest_mode must be live or demo")
         if not 3 <= values["months"] <= 18:
             raise SettingsError("demo.months must be 3–18")
+    if section == "workflow":
+        if not _TIME_RE.match(values["reminder_time"]):
+            raise SettingsError("workflow.reminder_time must be HH:MM")
+        if not 0 <= values["retry_max"] <= 5:
+            raise SettingsError("workflow.retry_max must be 0–5")
+        for k in ("retry_first_min", "retry_second_min"):
+            if not 1 <= values[k] <= 1440:
+                raise SettingsError(f"workflow.{k} must be 1–1440 minutes")
+        if not 1 <= values["min_specialists"] <= 20:
+            raise SettingsError("workflow.min_specialists must be 1–20")
     if section == "gates" and not 1 <= values["sample_max_windows"] <= 60:
         raise SettingsError("gates.sample_max_windows must be 1–60")
 

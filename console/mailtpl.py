@@ -337,6 +337,20 @@ def report(c: dict, text: str) -> Mail:
                   ul(f"#{f['task_id']} {e(AGENT_AR.get(f['agent'], f['agent']))} · {e(names.get(f['tafsir'], f['tafsir']))} "
                      f'<span dir="ltr">{e(f["window"])}</span> — <span style="color:{C["muted"]};">{e(f["last_line"])}</span>'
                      for f in c["failures"][:10])]
+    ch = c.get("chair") or {}
+    if ch.get("specialists") is not None and (ch.get("specialists") or ch.get("suggestions_ar")):
+        rows = [(sp["name"], f"<b>{sp['open_moves']}</b> حركة مفتوحة في {sp['open_windows']} نافذة"
+                 f" · أقدمها {sp['oldest_days']:.0f} يوم · قرارات اليوم {sp['decided_today']}")
+                for sp in ch.get("specialists") or []]
+        parts += [section("المتخصصون — ما على مكتب كل واحد"),
+                  kv(rows) if rows else p("لا يوجد متخصص بعد.", size=13.5, color=C["bad"])]
+        pub = ch.get("publish") or {}
+        live = pub.get("live")
+        parts.append(p(f"النشر: {'الإصدار v' + str(live['version']) + ' حيّ · ' + str(live['units']) + ' وحدة' if live else 'لم يُنشر شيء بعد'}"
+                       f" · بانتظار النشر {pub.get('pending', 0)}", size=13.5, color=C["muted"]))
+        if ch.get("suggestions_ar"):
+            parts += [section("مقترحات رئيس اللجنة"),
+                      callout("ما نقترح فعله", ul(e(x) for x in ch["suggestions_ar"]), "gold")]
     if c.get("next_ar"):
         parts += [section("الخطوة التالية"), ul(e(x) for x in c["next_ar"])]
     parts.append(p(f"النماذج: المصنّف <span dir=\"ltr\">{e(c['models']['classifier'])}</span> · المدقّق "
@@ -347,3 +361,85 @@ def report(c: dict, text: str) -> Mail:
     return Mail(subject, text, shell(f"التقرير اليومي — {c['day']}", "".join(parts), pill=pill, pill_color=color,
                                      preheader=f"خطوات {st['total']} · نجحت {st['done']} · فشلت {st['failed']}"),
                 kind="report", inline=_logo())
+
+
+def review_reminder(name: str, items: list[dict]) -> Mail:
+    """Morning reminder to one specialist: the windows the chair gave them, still open."""
+    team = settings.get("general")["team_name"]
+    url = console_url()
+    names = config.TAFSIR_NAMES_AR
+    total = sum(int(x.get("open") or 0) for x in items)
+    subject = f"بانتظار قرارك: {total} حركة في {len(items)} نافذة — {team}"
+    lines = []
+    text_lines = []
+    for x in sorted(items, key=lambda x: -float(x.get("age_days") or 0)):
+        link = f"{url}/#/review/{x['tafsir']}/{x['window']}" if url else ""
+        label = (f"{e(names.get(x['tafsir'], x['tafsir']))} · <span dir=\"ltr\">{e(x['window'])}</span>"
+                 f" · الآية <span dir=\"ltr\">{e(x.get('ayah') or '')}</span>")
+        lines.append((f'<a href="{e(link)}" style="color:{C["green"]};font-weight:700;">{label}</a>' if link
+                      else label)
+                     + f' — <b>{int(x.get("open") or 0)}</b> من {int(x.get("moves") or 0)}'
+                     + (f' · {"نسختان X وY" if len(x.get("arms") or []) > 1 else ""}' if x.get("arms") else "")
+                     + f' <span style="color:{C["muted"]};">· منذ {float(x.get("age_days") or 0):.0f} يوم</span>')
+        text_lines.append(f"- {names.get(x['tafsir'], x['tafsir'])} {x['window']} ({x.get('ayah')}):"
+                          f" {x.get('open')} of {x.get('moves')} — {link}")
+    body = (p(f"السلام عليكم <b>{e(name)}</b>،")
+            + p(f"أسند إليك رئيس اللجنة هذه النوافذ، وما زالت <b>{total}</b> حركة بانتظار قرارك:")
+            + ul(lines)
+            + callout("تذكير بالقاعدة", "قارن كل وحدة بالنص المصدر قبل الاعتماد. في نوافذ A/B راجع X وY"
+                      " كلًّا على حدة (مراجعة عمياء).", "green")
+            + button("فتح مراجعاتي", f"{url}/#/review" if url else ""))
+    text = (f"السلام عليكم {name}،\n\nبانتظار قرارك {total} حركة في {len(items)} نافذة:\n"
+            + "\n".join(text_lines) + "\n\nReminder: windows assigned to you are waiting for your"
+            " decision.\n")
+    return Mail(subject, text, shell("نوافذ بانتظار قرارك", body, pill=f"{total} حركة", pill_color="gold",
+                                     preheader=f"{len(items)} نافذة بانتظار قرارك"),
+                kind="reminder", inline=_logo())
+
+
+def failure_alert(rows: list[dict]) -> Mail:
+    """Steps that failed after the automatic retries (one batched message)."""
+    team = settings.get("general")["team_name"]
+    url = console_url()
+    names = config.TAFSIR_NAMES_AR
+    n = len(rows)
+    subject = f"تنبيه: {n} خطوة فشلت بعد إعادة المحاولة — {team}"
+    items = []
+    text_lines = []
+    for r in rows[:25]:
+        tail = [ln for ln in (r.get("output_tail") or "").strip().splitlines()
+                if ln.strip() and not ln.startswith("usage:")]
+        last = (tail[-1] if tail else (r.get("last_error") or ""))[:220]
+        link = f"{url}/#/tasks/{r['task_id']}" if url else ""
+        items.append(f'<a href="{e(link)}" style="color:{C["green"]};font-weight:700;">#{r["task_id"]}</a> '
+                     f'{e(AGENT_AR.get(r["agent"], r["agent"]))} · {e(names.get(r["tafsir"], r["tafsir"]))} '
+                     f'<span dir="ltr">{e(r["window"])}</span>'
+                     f'{" · B" if r.get("variant") else ""} · المحاولة {int(r.get("attempt") or 1)}'
+                     f'<br><span dir="ltr" style="font-family:{MONO};font-size:12px;color:{C["muted"]};">{e(last)}</span>')
+        text_lines.append(f"- #{r['task_id']} {r['agent']} {r['tafsir']} {r['window']}"
+                          f" (attempt {r.get('attempt') or 1}): {last}")
+    body = (p(f"فشلت <b>{n}</b> خطوة بعد المحاولات التلقائية، وتحتاج نظرة:")
+            + ul(items)
+            + (p(f"و{n - 25} خطوة أخرى في اللوحة.", size=13.5, color=C["muted"]) if n > 25 else "")
+            + callout("ماذا أفعل؟", "افتح المهمة واقرأ آخر سطر من مخرج الخطوة، ثم «إعادة الخطوات الفاشلة» بعد"
+                      " إصلاح السبب. لا شيء يُعتمد آليًا.", "warn")
+            + button("فتح المهام", f"{url}/#/tasks" if url else ""))
+    text = f"{n} step(s) failed after the automatic retries:\n" + "\n".join(text_lines) + "\n"
+    return Mail(subject, text, shell("خطوات فشلت بعد إعادة المحاولة", body, pill="تنبيه", pill_color="red",
+                                     preheader=f"{n} خطوة فشلت"), kind="alert", inline=_logo())
+
+
+def engine_alert(waiting: int, base_url: str) -> Mail:
+    team = settings.get("general")["team_name"]
+    url = console_url()
+    subject = f"تنبيه: محرّك النماذج غير متصل — {team}"
+    body = (p(f"لا تصل اللوحة إلى محرّك النماذج، و<b>{waiting}</b> خطوة تنتظره. لا تُستهلك محاولات الإعادة"
+              " أثناء الانقطاع؛ تستأنف المهام وحدها عند عودته.")
+            + kv([("العنوان", f'<span dir="ltr">{e(base_url)}</span>'), ("الوقت", e(_when()))])
+            + callout("ماذا أفعل؟", "تأكد أن الماك مستيقظ ومتصل بـ Tailscale وأن Ollama يعمل، ثم «فحص الاتصال» في"
+                      " غرفة القيادة.", "warn")
+            + button("فتح غرفة القيادة", f"{url}/#/dashboard" if url else ""))
+    text = (f"The model engine is unreachable ({base_url}); {waiting} step(s) are waiting. Retries are"
+            " not used up while it is offline.\n")
+    return Mail(subject, text, shell("محرّك النماذج غير متصل", body, pill="تنبيه", pill_color="red",
+                                     preheader=f"{waiting} خطوة تنتظر المحرّك"), kind="alert", inline=_logo())

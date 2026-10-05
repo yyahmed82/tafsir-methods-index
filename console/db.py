@@ -71,6 +71,17 @@ CREATE TABLE IF NOT EXISTS demo_units (
   PRIMARY KEY (tafsir, window)
 );
 CREATE TABLE IF NOT EXISTS demo_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS assignments (
+  tafsir TEXT NOT NULL, window TEXT NOT NULL, user_id INTEGER NOT NULL, assigned_at REAL NOT NULL,
+  assigned_by INTEGER, status TEXT NOT NULL DEFAULT 'open', done_at REAL, last_reminder_at REAL,
+  PRIMARY KEY (tafsir, window)
+);
+CREATE TABLE IF NOT EXISTS publications (
+  id INTEGER PRIMARY KEY, version INTEGER UNIQUE NOT NULL, created_at REAL NOT NULL,
+  created_by INTEGER, note TEXT NOT NULL DEFAULT '', units INTEGER NOT NULL DEFAULT 0,
+  sha256 TEXT NOT NULL DEFAULT '', path TEXT NOT NULL DEFAULT '', live INTEGER NOT NULL DEFAULT 0,
+  made_live_at REAL, made_live_by INTEGER, summary TEXT NOT NULL DEFAULT ''
+);
 """
 
 SCHEMA = """
@@ -202,6 +213,45 @@ CREATE TABLE IF NOT EXISTS audit (
   ip TEXT
 );
 CREATE INDEX IF NOT EXISTS audit_at ON audit(at);
+-- a user may hold several roles; users.role_id stays the primary (shown first)
+CREATE TABLE IF NOT EXISTS user_roles (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  role_id INTEGER NOT NULL REFERENCES roles(id),
+  PRIMARY KEY (user_id, role_id)
+);
+-- the committee chair gives each reviewed window (both blind versions) to one specialist
+CREATE TABLE IF NOT EXISTS assignments (
+  tafsir TEXT NOT NULL,
+  window TEXT NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  assigned_at REAL NOT NULL,
+  assigned_by INTEGER,
+  status TEXT NOT NULL DEFAULT 'open',
+  done_at REAL,
+  last_reminder_at REAL,
+  PRIMARY KEY (tafsir, window)
+);
+CREATE INDEX IF NOT EXISTS assignments_user ON assignments(user_id, status);
+-- what mirqah.app shows: versioned snapshots of approved units; one is live
+CREATE TABLE IF NOT EXISTS publications (
+  id INTEGER PRIMARY KEY,
+  version INTEGER UNIQUE NOT NULL,
+  created_at REAL NOT NULL,
+  created_by INTEGER,
+  note TEXT NOT NULL DEFAULT '',
+  units INTEGER NOT NULL DEFAULT 0,
+  sha256 TEXT NOT NULL DEFAULT '',
+  path TEXT NOT NULL DEFAULT '',
+  live INTEGER NOT NULL DEFAULT 0,
+  made_live_at REAL,
+  made_live_by INTEGER,
+  summary TEXT NOT NULL DEFAULT ''
+);
+-- small scheduler state: last reminder day, last alert time…
+CREATE TABLE IF NOT EXISTS meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS outbox (
   id INTEGER PRIMARY KEY,
   at REAL NOT NULL,
@@ -239,7 +289,14 @@ def _add_columns(con: sqlite3.Connection, table: str, columns: dict[str, str]) -
 
 # step arm (''=baseline, 'profile'=arm B) and the reviewer's lesson for the agents
 _STEP_DECISION_COLUMNS = {
-    "task_steps": {"variant": "TEXT NOT NULL DEFAULT ''"},
+    # attempt/not_before/last_error: automatic retries; alerted_at: failure mail sent;
+    # interruptions: killed by a restart (not the step's fault, no attempt used)
+    "task_steps": {"variant": "TEXT NOT NULL DEFAULT ''",
+                   "attempt": "INTEGER NOT NULL DEFAULT 1",
+                   "not_before": "REAL",
+                   "last_error": "TEXT",
+                   "alerted_at": "REAL",
+                   "interruptions": "INTEGER NOT NULL DEFAULT 0"},
     "decisions": {"teach": "TEXT NOT NULL DEFAULT ''"},
 }
 
@@ -249,6 +306,8 @@ def _migrate(con: sqlite3.Connection) -> None:
     _add_columns(con, "outbox", {"html": "TEXT"})
     for table, columns in _STEP_DECISION_COLUMNS.items():
         _add_columns(con, table, columns)
+    # every user's primary role is also one of their roles
+    con.execute("INSERT OR IGNORE INTO user_roles(user_id, role_id) SELECT id, role_id FROM users")
 
 
 def demo_path() -> Path:
@@ -346,6 +405,20 @@ def loads(value: str | None, default: Any = None) -> Any:
         return json.loads(value)
     except (TypeError, ValueError):
         return default
+
+
+# A user's roles: the user_roles rows plus the primary users.role_id (always one of them,
+# even for rows written by older code or tests). Use in FROM/JOIN as a table.
+USER_ROLES = "(SELECT user_id, role_id FROM user_roles UNION SELECT id, role_id FROM users)"
+
+
+def meta_get(key: str, default: Any = None) -> Any:
+    return loads(scalar("SELECT value FROM meta WHERE key=?", (key,)), default)
+
+
+def meta_set(key: str, value: Any) -> None:
+    execute("INSERT INTO meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET"
+            " value=excluded.value", (key, dumps(value)))
 
 
 def audit(action: str, *, user_id: int | None = None, target: str | None = None,

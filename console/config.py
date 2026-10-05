@@ -56,6 +56,7 @@ PERMISSIONS = (
     "view_reports",
     "generate_reports",
     "review_units",
+    "publish_units",
     "view_audit",
     "manage_users",
     "manage_roles",
@@ -66,6 +67,12 @@ PERMISSIONS = (
 # Methods that the verifier always routes to the specialist (src/v2_verify.py
 # FORCE_SPECIALIST_METHODS + M_RAY). Used only by the read-only chair preview.
 FORCE_SPECIALIST = {"M_ISRAILIYYAT", "M_NUZUL", "M_QIRAAT", "M_RAY"}
+
+# Only users holding this role decide (approve / needs edit / reject) — whatever other
+# roles or permissions they have. A super admin who also reviews gets it as a second role.
+DECIDER_ROLE = "specialist"
+# Role order used to pick a user's primary role (shown first) from several.
+ROLE_ORDER = ("super_admin", "committee_operator", "specialist", "viewer")
 COMMITTEE_THRESHOLD = 85
 
 

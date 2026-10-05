@@ -67,7 +67,9 @@ EOF
 | Deploy now (still CI-gated) | `sudo mirqah-deploy run --wait 600` |
 | Deploy the head even if CI is red/pending | `sudo mirqah-deploy run --force` |
 | Roll back | `sudo mirqah-deploy rollback` (or `rollback <release>` from `mirqah-deploy releases`) |
-| Add a teammate | `sudo mirqah create-user --email … --name "…" --role committee_operator` (or `specialist`, `viewer`) |
+| Add a teammate | `sudo mirqah create-user --email … --name "…" --role committee_operator` (or `specialist`, `viewer`; several: `--role super_admin,specialist` — an existing user gains these roles) |
+| Review workflow, reminders, retries, publishing | see [docs/WORKFLOW.md](../docs/WORKFLOW.md); times in Settings → Workflow and → Reports |
+| Published snapshot (what mirqah.app may show) | `curl -s https://console.<domain>/public/v1/manifest.json` |
 | Judges' view-only button | `sudo mirqah guest on` · after judging `sudo mirqah guest off` |
 | Rotate the SMTP key | `sudo mirqah set-env MIRQAH_SMTP_PASSWORD` |
 | Hosted model key (team decision first) | `sudo mirqah set-env LLM_API_KEY` |

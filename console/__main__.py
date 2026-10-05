@@ -21,32 +21,51 @@ import sys
 
 
 def _create_user(args: argparse.Namespace) -> int:
-    from . import auth, db, settings
+    """Add a user, or give an existing one more roles (roles are added, never removed here)."""
+    from . import auth, config, db, settings
     db.init()
     settings.seed()
     email = auth.normalize_email(args.email)
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         print("invalid email", file=sys.stderr)
         return 2
-    role = db.row("SELECT * FROM roles WHERE key=?", (args.role,))
-    if role is None:
-        print(f"unknown role {args.role!r}", file=sys.stderr)
+    keys = [k.strip() for k in (args.role or "").split(",") if k.strip()]
+    roles = []
+    for k in keys:
+        role = db.row("SELECT * FROM roles WHERE key=?", (k,))
+        if role is None:
+            print(f"unknown role {k!r}", file=sys.stderr)
+            return 2
+        roles.append(role)
+    if not roles:
+        print("give at least one role with --role", file=sys.stderr)
         return 2
     existing = db.row("SELECT id FROM users WHERE email=?", (email,))
     if existing:
-        db.execute("UPDATE users SET role_id=?, name=?, active=1 WHERE id=?",
-                   (role["id"], args.name, existing["id"]))
-        print(f"updated {email} → {args.role}")
+        uid = existing["id"]
+        db.execute("UPDATE users SET name=?, active=1 WHERE id=?", (args.name, uid))
     else:
-        db.execute("INSERT INTO users(email,name,role_id,lang,active,created_at) VALUES"
-                   " (?,?,?,?,1,?)", (email, args.name, role["id"], args.lang, db.now()))
-        print(f"created {email} as {args.role}")
-    db.audit("user.cli_create", target=email, detail={"role": args.role})
+        uid = db.execute("INSERT INTO users(email,name,role_id,lang,active,created_at) VALUES"
+                         " (?,?,?,?,1,?)", (email, args.name, roles[0]["id"], args.lang, db.now()))
+    with db.connect() as con:
+        con.executemany("INSERT OR IGNORE INTO user_roles(user_id, role_id) VALUES (?,?)",
+                        [(uid, r["id"]) for r in roles])
+        held = [r[0] for r in con.execute(
+            f"SELECT r.key FROM {db.USER_ROLES} ur JOIN roles r ON r.id=ur.role_id"
+            " WHERE ur.user_id=?",
+            (uid,)).fetchall()]
+        order = {k: i for i, k in enumerate(config.ROLE_ORDER)}
+        primary = sorted(held, key=lambda k: order.get(k, 99))[0]
+        con.execute("UPDATE users SET role_id=(SELECT id FROM roles WHERE key=?) WHERE id=?",
+                    (primary, uid))
+    print(f"{'updated' if existing else 'created'} {email} → {', '.join(sorted(held))}")
+    db.audit("user.cli_create", target=email, detail={"roles": sorted(held)})
     if args.notify:
         from . import mailer, mailtpl
         try:
-            mailer.send_mail(email, mailtpl.welcome(args.name, email, role["name_ar"],
-                                                    role["description_ar"], None))
+            mailer.send_mail(email, mailtpl.welcome(
+                args.name, email, " + ".join(r["name_ar"] for r in roles),
+                " ".join(r["description_ar"] for r in roles), None))
             print(f"welcome mail sent to {email}")
         except mailer.MailError as e:
             print(f"welcome mail failed: {e}", file=sys.stderr)
@@ -56,9 +75,11 @@ def _create_user(args: argparse.Namespace) -> int:
 def _list_users(_args: argparse.Namespace) -> int:
     from . import db
     db.init()
-    for u in db.rows("SELECT u.email,u.name,u.active,r.key FROM users u JOIN roles r ON"
-                     " r.id=u.role_id ORDER BY u.id"):
-        print(f"{u['email']:<40} {u['key']:<20} {'active' if u['active'] else 'disabled':<9}"
+    for u in db.rows("SELECT u.id,u.email,u.name,u.active FROM users u ORDER BY u.id"):
+        keys = ",".join(r["key"] for r in db.rows(
+            f"SELECT r.key FROM {db.USER_ROLES} ur JOIN roles r ON r.id=ur.role_id"
+            " WHERE ur.user_id=? ORDER BY r.id", (u["id"],)))
+        print(f"{u['email']:<40} {keys:<34} {'active' if u['active'] else 'disabled':<9}"
               f" {u['name']}")
     return 0
 
@@ -187,7 +208,9 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("create-user", help="add or update a registered user")
     c.add_argument("--email", required=True)
     c.add_argument("--name", required=True)
-    c.add_argument("--role", default="super_admin")
+    c.add_argument("--role", default="super_admin",
+                   help="one role or several, comma-separated (e.g. super_admin,specialist);"
+                        " an existing user keeps the roles they have and gains these")
     c.add_argument("--lang", default="")
     c.add_argument("--notify", action="store_true", help="e-mail a welcome message with the sign-in steps")
     sub.add_parser("list-users")

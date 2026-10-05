@@ -20,7 +20,7 @@ import threading
 import time
 from typing import Any
 
-from . import config, db, mailer, mailtpl, pipeline, settings
+from . import config, db, mailer, mailtpl, pipeline, settings, workflow
 
 log = logging.getLogger("mirqah.console")
 
@@ -342,10 +342,14 @@ def _run_step(task: dict, step: dict) -> None:
                 if cancelled or _stop.is_set() or time.monotonic() > deadline:
                     proc.kill()
                     output, _ = proc.communicate()
-                    reason = "timeout" if time.monotonic() > deadline else "cancelled"
+                    reason = ("timeout" if time.monotonic() > deadline else
+                              "cancelled" if cancelled else "stopped")
                     output = (output or "") + f"\n[console] step {reason}"
-                    _record_step(task, step, started, -9, output, None,
-                                 status="cancelled" if reason == "cancelled" else "failed")
+                    if reason == "cancelled":
+                        _record_step(task, step, started, -9, output, None, status="cancelled")
+                    else:  # a console stop re-queues the step; a timeout may be retried
+                        _record_step(task, step, started, -9, output, None,
+                                     killed_externally=reason == "stopped")
                     return
     finally:
         _current.update(proc=None, step_id=None)
@@ -377,14 +381,55 @@ def _run_step(task: dict, step: dict) -> None:
         result = dict(result or {})
         result.update(zip(("model_calls", "tokens_in", "tokens_out", "max_prompt"),
                           (int(x) for x in um.groups())))
-    _record_step(task, step, started, proc.returncode, output, result)
+    # SIGTERM/SIGKILL from outside (systemd stopping the console): not the step's fault
+    killed = proc.returncode in (-15, -9, -2)  # our own kills (timeout, cancel) return above
+    _record_step(task, step, started, proc.returncode, output, result, killed_externally=killed)
+    if step["agent"] == "chair" and proc.returncode == 0:
+        try:  # the chair hands the window to a specialist straight away
+            workflow.sweep(only=(step["tafsir"], step["window"]))
+        except Exception:  # pragma: no cover - assignment never fails a step
+            log.exception("assignment after chair step %s", step["id"])
+
+
+_ENGINE: dict[str, Any] = {"at": 0.0, "up": True}
+
+
+def _engine_up(force: bool = False) -> bool:
+    """Is the local model server reachable? (cached 20 s; hosted runtimes count as up)."""
+    if settings.get("llm")["runtime"] != "ollama-local":
+        return True
+    if force or time.time() - _ENGINE["at"] > 20:
+        _ENGINE.update(at=time.time(), up=bool(pipeline.probe_llm().get("reachable")))
+    return _ENGINE["up"]
 
 
 def _record_step(task: dict, step: dict, started: float, code: int, output: str,
-                 result: dict | None, status: str | None = None) -> None:
+                 result: dict | None, status: str | None = None,
+                 killed_externally: bool = False) -> None:
     status = status or ("done" if code == 0 else "failed")
     tail = "\n".join((output or "").strip().splitlines()[-25:])[-4000:]
     fin = db.now()
+    if status == "failed":
+        engine_up = None
+        if step["agent"] in workflow.MODEL_AGENTS and workflow.ENGINE_DOWN_RE.search(output or ""):
+            engine_up = _engine_up(force=True)
+        plan = workflow.plan_failure(step, code, output, killed_externally=killed_externally,
+                                     engine_up=engine_up)
+        if plan["action"] != "final":
+            last = next((ln for ln in reversed(tail.splitlines())
+                         if ln.strip() and not _USAGE_RE.match(ln.strip())), "")
+            db.execute(
+                "UPDATE task_steps SET status='queued', started_at=NULL, finished_at=NULL,"
+                " duration_ms=?, exit_code=?, result=?, output_tail=?, attempt=?, not_before=?,"
+                " last_error=?, interruptions=interruptions+? WHERE id=?",
+                (int((fin - started) * 1000), code,
+                 db.dumps(result) if result is not None else None, tail, plan["attempt"],
+                 plan["not_before"], f"{plan['reason']} — {last[:200]}",
+                 1 if plan["action"] == "requeue" else 0, step["id"]))
+            if plan["action"] == "wait" and not db.meta_get("engine_down_since"):
+                db.meta_set("engine_down_since", fin)
+            log.info("step %s %s: %s", step["id"], plan["action"], plan["reason"])
+            return
     db.execute(
         "UPDATE task_steps SET status=?, finished_at=?, duration_ms=?, exit_code=?, result=?,"
         " output_tail=? WHERE id=?",
@@ -406,16 +451,27 @@ def _worker() -> None:
         if task["status"] == "queued":
             db.execute("UPDATE tasks SET status='running', started_at=? WHERE id=?",
                        (db.now(), task["id"]))
-        step = db.row("SELECT * FROM task_steps WHERE task_id=? AND status='queued'"
-                      " ORDER BY seq LIMIT 1", (task["id"],))
+        step, wait_s = _next_step(task["id"])
         cancelled = db.scalar("SELECT cancel_requested FROM tasks WHERE id=?", (task["id"],))
         if cancelled:
             _finish_task(task["id"], "cancelled")
             continue
         if step is None:
+            if wait_s:  # a retry or the model engine is not due yet
+                _stop.wait(wait_s)
+                continue
             t = db.row("SELECT * FROM tasks WHERE id=?", (task["id"],))
             _finish_task(task["id"], "failed" if t["failed_steps"] else "done")
             continue
+        if step["agent"] in workflow.MODEL_AGENTS and not _engine_up():
+            # the Mac is asleep or offline: wait for it without using up an attempt
+            db.execute("UPDATE task_steps SET not_before=?, last_error=? WHERE id=?",
+                       (db.now() + 60, "model engine offline — waiting", step["id"]))
+            if not db.meta_get("engine_down_since"):
+                db.meta_set("engine_down_since", db.now())
+            continue
+        if step["agent"] in workflow.MODEL_AGENTS and db.meta_get("engine_down_since"):
+            db.meta_set("engine_down_since", None)
         try:
             _run_step(task, step)
         except Exception as e:  # keep the worker alive; record the failure honestly
@@ -423,9 +479,38 @@ def _worker() -> None:
             _record_step(task, step, db.now(), 1, f"console error: {type(e).__name__}: {e}", None)
 
 
+# a step waits for these agents of the same window and arm (retries may reorder steps)
+PREREQ = {"method_specialist": ("classifier",),
+          "chair": ("classifier", "method_specialist", "verifier")}
+
+
+def _next_step(task_id: int) -> tuple[dict | None, float]:
+    """The next due step of a task, or (None, seconds to wait) while retries are pending."""
+    now = db.now()
+    queued = db.rows("SELECT * FROM task_steps WHERE task_id=? AND status='queued' ORDER BY seq",
+                     (task_id,))
+    if not queued:
+        return None, 0.0
+    for s in queued:
+        if s.get("not_before") and s["not_before"] > now:
+            continue
+        need = PREREQ.get(s["agent"], ())
+        if any(q["id"] != s["id"] and q["agent"] in need and q["seq"] < s["seq"]
+               and q["tafsir"] == s["tafsir"] and q["window"] == s["window"]
+               and (q.get("variant") or "") == (s.get("variant") or "") for q in queued):
+            continue
+        return s, 0.0
+    soonest = min((s["not_before"] for s in queued if s.get("not_before")), default=now + 5)
+    return None, max(1.0, min(30.0, soonest - now))
+
+
 def recover_interrupted() -> None:
-    """Called on start: steps that were running when the server stopped."""
+    """Called on start: steps that were running when the server stopped run again
+    (a restart is not the step's fault); after three restarts in a row they fail."""
     with db.connect() as con:
+        con.execute("UPDATE task_steps SET status='queued', started_at=NULL, not_before=NULL,"
+                    " interruptions=interruptions+1, last_error='interrupted by a console restart'"
+                    " WHERE status='running' AND interruptions < 3")
         con.execute("UPDATE task_steps SET status='interrupted', finished_at=?"
                     " WHERE status='running'", (db.now(),))
         con.execute("UPDATE tasks SET failed_steps=(SELECT COUNT(*) FROM task_steps s"
@@ -692,6 +777,7 @@ def agent_detail(key: str, with_output: bool = False) -> dict:
         base["today"] = count([d for d in rows if start <= d["created_at"] < end])
         base["week"] = count(rows)
         base["review"] = _review_counts()
+        base["people"] = workflow.team_load() if db.mode() != "demo" else []
         last = db.row("SELECT created_at FROM decisions ORDER BY created_at DESC LIMIT 1")
         base["last_decision_at"] = last["created_at"] if last else None
     return base
@@ -898,6 +984,7 @@ def build_report(day: str, as_of: float | None = None) -> dict:
         "gates": {"phase0_merged": gates["phase0_merged"],
                   "sample_reviewed": gates["sample_reviewed"]},
         "next_ar": nxt,
+        "chair": workflow.chair_section(start, end, as_of),
     }
 
 
@@ -962,6 +1049,15 @@ def report_markdown(c: dict) -> str:
             lines.append(f"- #{f['task_id']} {agent_ar.get(f['agent'], f['agent'])} · "
                          f"{names.get(f['tafsir'], f['tafsir'])} {f['window']} · "
                          f"{f['model'] or ''} · {f['last_line']}")
+    ch = c.get("chair") or {}
+    if ch.get("specialists"):
+        lines += ["", "## المتخصصون"]
+        for sp in ch["specialists"]:
+            lines.append(f"- {sp['name']}: {sp['open_moves']} حركة مفتوحة في {sp['open_windows']}"
+                         f" نافذة · أقدمها {sp['oldest_days']:.0f} يوم · قرارات اليوم"
+                         f" {sp['decided_today']}")
+    if ch.get("suggestions_ar"):
+        lines += ["", "## مقترحات رئيس اللجنة"] + [f"- {x}" for x in ch["suggestions_ar"]]
     lines += ["", "## الخطوة التالية"] + [f"- {x}" for x in c["next_ar"] or ["—"]]
     lines += ["", f"النماذج: المصنّف {c['models']['classifier']} · المدقّق "
               f"{c['models']['verifier']}"]
@@ -974,9 +1070,7 @@ def mail_report(day: str, user_id: int | None) -> dict:
     roles = settings.get("reports")["mail_roles"]
     if not roles:
         return {"sent": 0, "failed": 0}
-    q = ",".join("?" * len(roles))
-    users = db.rows(f"SELECT u.email FROM users u JOIN roles r ON r.id=u.role_id"
-                    f" WHERE u.active=1 AND r.key IN ({q})", roles)
+    users = workflow.users_with_roles(roles)
     mail = mailtpl.report(content, report_markdown(content))
     sent = failed = 0
     for u in users:
@@ -990,19 +1084,54 @@ def mail_report(day: str, user_id: int | None) -> dict:
     return {"sent": sent, "failed": failed}
 
 
+def scheduler_tick(state: dict | None = None) -> dict:
+    """One pass of the background clock: daily report, reminders, assignment sweep,
+    failure and engine alerts. Each part is independent; one failing never stops the rest."""
+    state = state if state is not None else {}
+    did: dict[str, Any] = {}
+    now = local_now()
+    day = now.date().isoformat()
+    try:
+        cfg = settings.get("reports")
+        if cfg["auto_daily"] and now.strftime("%H:%M") >= cfg["daily_time"]:
+            rec = db.row("SELECT mailed_at FROM reports WHERE day=?", (day,))
+            if rec is None or rec["mailed_at"] is None:
+                save_report(day, None)
+                did["report"] = mail_report(day, None)
+    except Exception:  # pragma: no cover - never kill the scheduler
+        log.exception("daily report")
+    try:
+        wf = settings.get("workflow")
+        if wf["reminders"] and now.strftime("%H:%M") >= wf["reminder_time"] \
+                and db.meta_get("reminders_day") != day:
+            db.meta_set("reminders_day", day)
+            did["reminders"] = workflow.send_reminders()
+    except Exception:  # pragma: no cover
+        log.exception("reminders")
+    try:
+        if time.time() - state.get("swept", 0) > 300:
+            state["swept"] = time.time()
+            did["sweep"] = workflow.sweep()
+    except Exception:  # pragma: no cover
+        log.exception("assignment sweep")
+    try:
+        did["alerts"] = workflow.failure_alerts()
+        if db.meta_get("engine_down_since"):
+            waiting = db.scalar("SELECT COUNT(*) FROM task_steps WHERE status='queued' AND agent IN"
+                                " ('classifier','method_specialist','verifier')") or 0
+            if waiting and not _engine_up(force=True):
+                did["engine"] = workflow.engine_alert(waiting)
+            elif _engine_up():
+                db.meta_set("engine_down_since", None)
+    except Exception:  # pragma: no cover
+        log.exception("alerts")
+    return did
+
+
 def _scheduler() -> None:
+    state: dict = {}
     while not _stop.is_set():
-        try:
-            cfg = settings.get("reports")
-            now = local_now()
-            if cfg["auto_daily"] and now.strftime("%H:%M") >= cfg["daily_time"]:
-                day = now.date().isoformat()
-                rec = db.row("SELECT mailed_at FROM reports WHERE day=?", (day,))
-                if rec is None or rec["mailed_at"] is None:
-                    save_report(day, None)
-                    mail_report(day, None)
-        except Exception:  # pragma: no cover - never kill the scheduler
-            log.exception("daily report scheduler")
+        scheduler_tick(state)
         _stop.wait(30)
 
 

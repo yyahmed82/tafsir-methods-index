@@ -19,7 +19,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import __version__, auth, config, db, demo, learning, mailer, mailtpl, pipeline, runner, settings
+from . import (__version__, auth, config, db, demo, learning, mailer, mailtpl, pipeline, publish,
+               runner, settings, workflow)
 
 
 # ------------------------------------------------------------------ setup
@@ -170,13 +171,13 @@ def current_user(request: Request) -> dict:
     """
     real = real_user(request)
     target = auth.normalize_email(request.headers.get(config.VIEW_AS_HEADER) or "")
-    if not target or real.get("role_key") != "super_admin" or target == real["email"]:
+    if not target or not auth.has_role(real, "super_admin") or target == real["email"]:
         return real
     eff = auth.user_by_email(target)
     if eff is None:
         return real
     eff["real_user"] = {"id": real["id"], "email": real["email"], "name": real["name"],
-                        "role_key": real["role_key"]}
+                        "role_key": real["role_key"], "role_keys": real.get("role_keys")}
     eff["mode"] = real["mode"]
     if request.method not in ("GET", "HEAD", "OPTIONS") and request.url.path not in VIEW_AS_ALLOW:
         raise HTTPException(423, {"error": "view_as_read_only", "view_as": eff["email"]})
@@ -258,7 +259,8 @@ class DecisionIn(BaseModel):
 class UserIn(BaseModel):
     email: str = Field(max_length=200)
     name: str = Field(max_length=80)
-    role_id: int
+    role_id: int | None = None
+    role_ids: list[int] = []  # several roles; the primary is picked by rank
     lang: str = ""
     active: bool = True
     notify: bool = True
@@ -267,6 +269,7 @@ class UserIn(BaseModel):
 class UserPatch(BaseModel):
     name: str | None = Field(default=None, max_length=80)
     role_id: int | None = None
+    role_ids: list[int] | None = None
     lang: str | None = None
     active: bool | None = None
 
@@ -301,6 +304,16 @@ class LangPatch(BaseModel):
     enabled: bool | None = None
     is_default: bool | None = None
     sort: int | None = None
+
+
+class AssignIn(BaseModel):
+    tafsir: str = Field(max_length=20)
+    window: str = Field(max_length=20)
+    user_id: int
+
+
+class PublishIn(BaseModel):
+    note: str = Field(default="", max_length=500)
 
 
 class SmtpTestIn(BaseModel):
@@ -472,7 +485,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     # ---------- view as another user (super admin only, read-only, audited)
     def real_super(request: Request) -> dict:
         u = real_user(request)
-        if u.get("role_key") != "super_admin":
+        if not auth.has_role(u, "super_admin"):
             db.audit("view_as.denied", user_id=u["id"], ip=_ip(request))
             raise _err(403, "forbidden")
         return u
@@ -702,8 +715,10 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
 
     # ---------- review
     def _reveals_arms(user: dict) -> bool:
-        """Operators may see which blind arm is the profile run; reviewers may not."""
-        return "generate_reports" in user["permissions"]
+        """Operators may see which blind arm is the profile run; reviewers may not —
+        and anyone holding the specialist role decides blind, whatever else they hold."""
+        return ("generate_reports" in user["permissions"]
+                and not auth.has_role(user, config.DECIDER_ROLE))
 
     def _variant(tafsir: str, window: str, arm: str | None) -> str | None:
         try:
@@ -719,13 +734,20 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
             "SELECT tafsir, window, annotator, COUNT(DISTINCT move_id) AS decided FROM decisions"
             " GROUP BY tafsir, window, annotator")}
         reveal = _reveals_arms(user)
+        amap = workflow.assignments_map()
         for u in units:
             u["decided"] = (counts.get((u["tafsir"], u["window"], u.get("annotator"))) or {}
                             ).get("decided", 0)
+            a = amap.get((u["tafsir"], u["window"]))
+            u["assigned"] = ({"user_id": a["user_id"], "name": a.get("user_name"),
+                              "status": a["status"], "assigned_at": a["assigned_at"]} if a else None)
             if not reveal:
                 u.pop("variant", None)
                 u.pop("annotator", None)
-        return {"units": units, "models": pipeline.models(), "reveals_arms": reveal}
+        mine = sum(1 for k, a in amap.items() if a["user_id"] == user["id"] and a["status"] == "open")
+        return {"units": units, "models": pipeline.models(), "reveals_arms": reveal,
+                "can_decide": auth.can_decide(user), "my_open_windows": mine,
+                "can_assign": "manage_tasks" in user["permissions"]}
 
     _units = pipeline.unit_rows
 
@@ -774,7 +796,16 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         models = (com or {}).get("models")
         if models and not reveal:
             models = {k: {"tag": (x or {}).get("tag")} for k, x in models.items()}
+        a = workflow.assignment(tafsir, window)
+        mine_or_free = a is None or a["status"] != "open" or a["user_id"] == user["id"]
         return {"tafsir": tafsir, "name_ar": config.TAFSIR_NAMES_AR[tafsir], "window": window,
+                "assignment": ({"user_id": a["user_id"], "name": a.get("user_name"),
+                                "status": a["status"], "assigned_at": a["assigned_at"],
+                                "assigned_by": a.get("assigned_by")} if a else None),
+                "can_decide": auth.can_decide(user) and mine_or_free,
+                "is_specialist": auth.has_role(user, config.DECIDER_ROLE),
+                "specialists": ([{"id": p["id"], "name": p["name"]} for p in workflow.specialists()]
+                                if "manage_tasks" in user["permissions"] else []),
                 "ayah": v.get("ayah"), "annotator": annotator if reveal else None,
                 "arm": arm or None, "variant": variant if reveal else None,
                 "source_file": v.get("source_file"), "source_sha256": v.get("source_sha256"),
@@ -791,10 +822,15 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     @operational(write=True)
     def review_decide(body: DecisionIn, request: Request,
                       user: dict = Depends(need("review_units"))) -> dict:
+        if not auth.can_decide(user):
+            raise _err(403, "specialists_only")  # only the specialist role decides
         if body.decision not in ("approve", "needs_edit", "reject"):
             raise _err(400, "bad_decision")
         if body.tafsir not in config.TAFSIRS or not pipeline.WINDOW_RE.match(body.window):
             raise _err(400, "bad_unit")
+        held = workflow.assignment(body.tafsir, body.window)
+        if held and held["status"] == "open" and held["user_id"] != user["id"]:
+            raise _err(403, "assigned_to_other", name=held.get("user_name"))
         if body.decision == "approve" and not body.compared_with_source:
             raise _err(400, "compare_first")
         if body.error_type and body.error_type not in learning.error_types():
@@ -820,12 +856,15 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
             (body.tafsir, body.window, annotator, body.move_id, body.decision,
              int(body.compared_with_source), body.note.strip(), user["id"], db.now(),
              db.dumps(teach) if teach else ""))
+        if held is None:
+            workflow.claim(body.tafsir, body.window, user["id"])
         db.audit("review.decision", user_id=user["id"], ip=_ip(request),
                  target=f"{body.tafsir}/{body.window}/{body.move_id}",
                  detail={"decision": body.decision, "annotator": annotator,
                          "teach": bool(body.teach), "error_type": body.error_type or None})
         bank = learning.rebuild_bank(body.tafsir)
-        return {"ok": True, "teaching_examples": bank}
+        done = workflow.close_if_done(body.tafsir, body.window)
+        return {"ok": True, "teaching_examples": bank, "window_done": done}
 
     @app.get("/api/review/export")
     @operational()
@@ -843,13 +882,118 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         return JSONResponse(payload, headers={
             "Content-Disposition": 'attachment; filename="mirqah-decisions.json"'})
 
+    # ---------- assignment: the chair gives each window to one specialist
+    @app.get("/api/review/assignments")
+    @operational()
+    def review_assignments(user: dict = Depends(need("view_tasks")), mine: bool = False) -> dict:
+        rows = workflow.desk(user["id"] if mine else None)
+        everyone = "manage_tasks" in user["permissions"]
+        if not everyone and not mine:
+            rows = [r for r in rows if r["user_id"] == user["id"]]
+        return {"assignments": rows,
+                "team": workflow.team_load() if everyone and db.mode() != "demo" else [],
+                "can_assign": everyone, "can_decide": auth.can_decide(user)}
+
+    @app.post("/api/review/assign")
+    @operational(write=True)
+    def review_assign(body: AssignIn, request: Request,
+                      user: dict = Depends(need("manage_tasks"))) -> dict:
+        if body.tafsir not in config.TAFSIRS or not pipeline.WINDOW_RE.match(body.window):
+            raise _err(400, "bad_unit")
+        try:
+            a = workflow.reassign(body.tafsir, body.window, body.user_id, user["id"])
+        except ValueError as e:
+            raise _err(400, str(e)) from e
+        return {"ok": True, "assignment": a}
+
+    @app.get("/api/workflow")
+    @operational()
+    def workflow_status(user: dict = Depends(need("view_dashboard"))) -> dict:
+        return workflow.status()
+
+    @app.post("/api/workflow/sweep")
+    @operational(write=True)
+    def workflow_sweep(user: dict = Depends(need("manage_tasks"))) -> dict:
+        out = workflow.sweep()
+        db.audit("review.sweep", user_id=user["id"], detail=out)
+        return out
+
+    @app.post("/api/workflow/remind")
+    @operational(write=True)
+    def workflow_remind(user: dict = Depends(need("manage_tasks"))) -> dict:
+        return workflow.send_reminders()
+
+    # ---------- publishing to mirqah.app (super admins; no git merge)
+    @app.get("/api/publish")
+    @operational()
+    def publish_view(user: dict = Depends(need("publish_units"))) -> dict:
+        if db.mode() == "demo":
+            return {"simulated": True, "history": [], "live": None}
+        return {**publish.preview(), "history": publish.history()}
+
+    @app.post("/api/publish")
+    @operational(write=True)
+    def publish_now(body: PublishIn, request: Request,
+                    user: dict = Depends(need("publish_units"))) -> dict:
+        try:
+            return {"ok": True, "live": publish.publish(user, body.note)}
+        except ValueError as e:
+            raise _err(400, str(e)) from e
+
+    @app.post("/api/publish/{version}/live")
+    @operational(write=True)
+    def publish_make_live(version: int, user: dict = Depends(need("publish_units"))) -> dict:
+        try:
+            return {"ok": True, "live": publish.make_live(version, user)}
+        except ValueError as e:
+            raise _err(404, str(e)) from e
+
+    @app.get("/api/publish/{version}/download")
+    def publish_download(version: int, user: dict = Depends(need("publish_units"))) -> Response:
+        snap = publish.load(version)
+        if snap is None:
+            raise _err(404, "version_not_found")
+        return JSONResponse(snap, headers={
+            "Content-Disposition": f'attachment; filename="mirqah-published-v{version}.json"'})
+
+    # ---------- public, read-only: what mirqah.app shows (no login, no names)
+    def _public_json(body: bytes | dict, etag: str | None = None, status: int = 200) -> Response:
+        raw = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode()
+        headers = {"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=60",
+                   "X-Robots-Tag": "noindex"}
+        if etag:
+            headers["ETag"] = f'"{etag}"'
+        return Response(raw, status_code=status, media_type="application/json; charset=utf-8",
+                        headers=headers)
+
+    @app.get("/public/v1/published.json", include_in_schema=False)
+    def public_published(request: Request) -> Response:
+        got = publish.live_bytes()
+        if got is None:
+            return _public_json({"error": "not_published"}, status=404)
+        raw, meta = got
+        if request.headers.get("if-none-match") == f'"{meta["sha256"]}"':
+            return Response(status_code=304, headers={"ETag": f'"{meta["sha256"]}"',
+                                                      "Access-Control-Allow-Origin": "*"})
+        return _public_json(raw, meta["sha256"])
+
+    @app.get("/public/v1/manifest.json", include_in_schema=False)
+    def public_manifest() -> Response:
+        meta = publish.live()
+        if meta is None:
+            return _public_json({"error": "not_published"}, status=404)
+        return _public_json({"version": meta["version"], "published_at": meta["made_live_at"],
+                             "units": meta["units"], "sha256": meta["sha256"],
+                             "counts": (meta.get("summary") or {}).get("counts"),
+                             "url": "/public/v1/published.json"}, meta["sha256"])
+
     # ---------- learning (how reviews teach the agents)
     @app.get("/api/learning")
     @operational()
     def learning_view(user: dict = Depends(need("view_tasks"))) -> dict:
         return learning.overview(reveal_arms=_reveals_arms(user))
 
-    # ---------- users
+    # ---------- users (a user may hold several roles)
     def _role(role_id: int) -> dict:
         r = db.row("SELECT * FROM roles WHERE id=?", (role_id,))
         if r is None:
@@ -861,8 +1005,32 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         return set(role["permissions"]) <= set(actor["permissions"])
 
     def _super_admins(active_only: bool = True) -> int:
-        return db.scalar("SELECT COUNT(*) FROM users u JOIN roles r ON r.id=u.role_id WHERE"
+        return db.scalar(f"SELECT COUNT(DISTINCT u.id) FROM users u JOIN {db.USER_ROLES} ur ON"
+                         " ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE"
                          " r.key='super_admin'" + (" AND u.active=1" if active_only else "")) or 0
+
+    def _roles_of(user_id: int) -> list[dict]:
+        return db.rows(f"SELECT r.id, r.key, r.name_ar, r.name_en FROM {db.USER_ROLES} ur JOIN"
+                       " roles r ON r.id=ur.role_id WHERE ur.user_id=? ORDER BY r.id", (user_id,))
+
+    def _pick_roles(ids: list[int], actor: dict) -> list[dict]:
+        ids = sorted(set(ids))
+        if not ids:
+            raise _err(400, "bad_role")
+        roles = [_role(i) for i in ids]
+        for r in roles:
+            if not _can_assign(actor, r):
+                raise _err(403, "role_escalation")
+        order = {k: i for i, k in enumerate(config.ROLE_ORDER)}
+        roles.sort(key=lambda r: (order.get(r["key"], 99), r["id"]))  # primary first
+        return roles
+
+    def _set_roles(user_id: int, roles: list[dict]) -> None:
+        with db.connect() as con:
+            con.execute("UPDATE users SET role_id=? WHERE id=?", (roles[0]["id"], user_id))
+            con.execute("DELETE FROM user_roles WHERE user_id=?", (user_id,))
+            con.executemany("INSERT INTO user_roles(user_id, role_id) VALUES (?,?)",
+                            [(user_id, r["id"]) for r in roles])
 
     @app.get("/api/users")
     def users(user: dict = Depends(need("manage_users"))) -> dict:
@@ -871,6 +1039,8 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                        " role_name_en FROM users u JOIN roles r ON r.id=u.role_id ORDER BY u.id")
         for r in rows:
             r["active"] = bool(r["active"])
+            r["roles"] = _roles_of(r["id"])
+            r["role_ids"] = [x["id"] for x in r["roles"]]
         return {"users": rows}
 
     @app.post("/api/users")
@@ -879,22 +1049,23 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         email = auth.normalize_email(body.email)
         if not EMAIL_RE.match(email):
             raise _err(400, "bad_email")
-        role = _role(body.role_id)
-        if not _can_assign(user, role):
-            raise _err(403, "role_escalation")
+        roles = _pick_roles(body.role_ids or ([body.role_id] if body.role_id else []), user)
         if db.row("SELECT 1 FROM users WHERE email=?", (email,)):
             raise _err(409, "email_exists")
         uid = db.execute("INSERT INTO users(email,name,role_id,lang,active,created_at,created_by)"
                          " VALUES (?,?,?,?,?,?,?)",
-                         (email, body.name.strip(), role["id"], body.lang or "",
+                         (email, body.name.strip(), roles[0]["id"], body.lang or "",
                           int(body.active), db.now(), user["id"]))
+        _set_roles(uid, roles)
         db.audit("user.create", user_id=user["id"], target=email, ip=_ip(request),
-                 detail={"role": role["key"]})
+                 detail={"roles": [r["key"] for r in roles]})
         mailed = None
         if body.notify and body.active:
+            names = " + ".join(r["name_ar"] for r in roles)
+            desc = " ".join(r["description_ar"] for r in roles if r["description_ar"])
             try:
-                mailer.send_mail(email, mailtpl.welcome(body.name.strip(), email, role["name_ar"],
-                                                        role["description_ar"], user["name"]))
+                mailer.send_mail(email, mailtpl.welcome(body.name.strip(), email, names, desc,
+                                                        user["name"]))
                 mailed = True
             except mailer.MailError:
                 mailed = False
@@ -907,22 +1078,27 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                         " r.id=u.role_id WHERE u.id=?", (user_id,))
         if target is None:
             raise _err(404, "user_not_found")
+        current = _roles_of(user_id)
+        target_super = any(r["key"] == "super_admin" for r in current)
         changes: dict[str, Any] = {}
-        if target["role_key"] == "super_admin" and "super_admin" != user["role_key"]:
+        if target_super and not auth.has_role(user, "super_admin"):
             raise _err(403, "role_escalation")
-        if body.role_id is not None and body.role_id != target["role_id"]:
-            if user_id == user["id"]:
+        new_ids = body.role_ids if body.role_ids is not None else (
+            [body.role_id] if body.role_id is not None else None)
+        new_roles = None
+        if new_ids is not None and sorted(set(new_ids)) != sorted(r["id"] for r in current):
+            new_roles = _pick_roles(new_ids, user)
+            keeps_super = any(r["key"] == "super_admin" for r in new_roles)
+            if user_id == user["id"] and not keeps_super and target_super:
+                raise _err(400, "own_role")  # nobody removes their own super admin role
+            if user_id == user["id"] and auth.has_role(user, "super_admin") is False:
                 raise _err(400, "own_role")
-            role = _role(body.role_id)
-            if not _can_assign(user, role):
-                raise _err(403, "role_escalation")
-            if target["role_key"] == "super_admin" and _super_admins() <= 1:
+            if target_super and not keeps_super and _super_admins() <= 1:
                 raise _err(400, "last_super_admin")
-            changes["role_id"] = role["id"]
         if body.active is not None and bool(body.active) != bool(target["active"]):
             if user_id == user["id"]:
                 raise _err(400, "own_active")
-            if not body.active and target["role_key"] == "super_admin" and _super_admins() <= 1:
+            if not body.active and target_super and _super_admins() <= 1:
                 raise _err(400, "last_super_admin")
             changes["active"] = int(body.active)
         if body.name:
@@ -932,10 +1108,19 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         if changes:
             sets = ", ".join(f"{k}=?" for k in changes)
             db.execute(f"UPDATE users SET {sets} WHERE id=?", (*changes.values(), user_id))
-            if changes.get("active") == 0 or "role_id" in changes:
+        if new_roles is not None:
+            _set_roles(user_id, new_roles)
+            changes["roles"] = [r["key"] for r in new_roles]
+        if changes:
+            lost = new_roles is not None and bool({r["id"] for r in current}
+                                                  - {r["id"] for r in new_roles})
+            # permissions are read on every request; sessions end only when access shrinks
+            if changes.get("active") == 0 or (lost and user_id != user["id"]):
                 auth.revoke_user_sessions(user_id)
             db.audit("user.update", user_id=user["id"], target=target["email"], ip=_ip(request),
                      detail={k: v for k, v in changes.items()})
+            if "roles" in changes or "active" in changes:
+                workflow.sweep()  # work held by someone who is no longer a specialist moves on
         return {"ok": True}
 
     @app.post("/api/users/{user_id}/revoke-sessions")
@@ -947,7 +1132,8 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     # ---------- roles
     @app.get("/api/roles")
     def roles(user: dict = Depends(need("view_dashboard"))) -> dict:
-        rows = db.rows("SELECT r.*, (SELECT COUNT(*) FROM users u WHERE u.role_id=r.id) AS users"
+        rows = db.rows(f"SELECT r.*, (SELECT COUNT(*) FROM {db.USER_ROLES} ur JOIN users u ON"
+                       " u.id=ur.user_id WHERE ur.role_id=r.id AND u.active=1) AS users"
                        " FROM roles r ORDER BY r.system DESC, r.id")
         for r in rows:
             r["permissions"] = db.loads(r["permissions"], [])
@@ -1006,7 +1192,8 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
             raise _err(404, "role_not_found")
         if r["system"]:
             raise _err(400, "system_role")
-        if db.scalar("SELECT COUNT(*) FROM users WHERE role_id=?", (role_id,)):
+        if db.scalar("SELECT COUNT(*) FROM user_roles WHERE role_id=?", (role_id,)) or \
+                db.scalar("SELECT COUNT(*) FROM users WHERE role_id=?", (role_id,)):
             raise _err(400, "role_in_use")
         db.execute("DELETE FROM roles WHERE id=?", (role_id,))
         db.audit("role.delete", user_id=user["id"], target=r["key"])

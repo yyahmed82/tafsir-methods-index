@@ -44,17 +44,20 @@
       const d = data && data.detail !== undefined ? data.detail : data;
       const key = typeof d === 'string' ? d : (d && (d.error || d.detail)) || (data && data.error) || 'error';
       if (res.status === 401 && key === 'login_required' && S.me) { S.me = null; toast(t('auth.session_expired'), 'bad'); render(); }
-      throw new ApiError(res.status, key, d && d.detail);
+      const err = new ApiError(res.status, key, d && d.detail);
+      err.raw = d;
+      throw err;
     }
     return data;
   }
   function errText(e) {
     if (!(e instanceof ApiError)) return t('common.error');
     if (e.status === 403 && e.key === 'forbidden') return t('common.forbidden');
-    for (const ns of ['auth.err.', 'tasks.err.', 'users.err.', 'roles.err.', 'lang.err.', 'review.err.', 'common.err.']) {
+    for (const ns of ['auth.err.', 'tasks.err.', 'users.err.', 'roles.err.', 'lang.err.', 'review.err.', 'publish.err.', 'common.err.']) {
       if (S.t[ns + e.key]) return t(ns + e.key);
     }
     if (e.key === 'settings_invalid' && e.detail) return String(e.detail);
+    if (e.key === 'assigned_to_other') return t('review.assigned_other', { name: (e.raw && e.raw.name) || '—' });
     if (e.key === 'mail_failed' && e.detail) return String(e.detail);
     return t('common.error') + (e.key && e.key !== 'error' ? ` (${e.key})` : '');
   }
@@ -109,6 +112,8 @@
     arrow: 'M5 12h14M13 6l6 6-6 6',
     eye: 'M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
     flask: 'M9 3h6M10 3v6L4.5 18.5A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 1.7-2.5L14 9V3M7.5 14h9',
+    upload: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',
+    inbox: 'M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z',
   };
   const ico = (name, cls = '') => `<svg class="ic ${cls}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[name] || ''}"/></svg>`;
 
@@ -206,6 +211,7 @@
     { r: 'reports', icon: 'report', k: 'nav.reports', p: 'view_reports' },
     { r: 'calls', icon: 'bolt', k: 'nav.calls', p: 'view_tasks', opt: true },
     { sep: true },
+    { admin: true, r: 'publish', icon: 'upload', k: 'nav.publish', p: 'publish_units' },
     { admin: true, r: 'users', icon: 'users', k: 'nav.users', p: 'manage_users' },
     { admin: true, r: 'roles', icon: 'shield', k: 'nav.roles', p: 'manage_roles' },
     { admin: true, r: 'audit', icon: 'log', k: 'nav.audit', p: 'view_audit', opt: true },
@@ -221,8 +227,8 @@
   function shell(inner) {
     const [r] = parts();
     const items = NAV.filter((n) => n.sep || has(n.p));
-    const nav = items.map((n) => n.sep ? (items.some((x) => !x.sep && ['users', 'roles', 'audit', 'settings'].includes(x.r)) ? '<span class="sep"></span>' : '')
-      : `<a href="#/${n.r}" class="${r === n.r ? 'on' : ''} ${n.admin ? 'adm' : ''}" title="${T(n.k)}">${ico(n.icon)}<span class="${n.opt ? 'lbl-opt' : ''}">${T(n.k)}</span></a>`).join('');
+    const nav = items.map((n) => n.sep ? (items.some((x) => !x.sep && ['publish', 'users', 'roles', 'audit', 'settings'].includes(x.r)) ? '<span class="sep"></span>' : '')
+      : `<a href="#/${n.r}" class="${r === n.r ? 'on' : ''} ${n.admin ? 'adm' : ''}" title="${T(n.k)}">${ico(n.icon)}<span class="${n.opt ? 'lbl-opt' : ''}">${T(n.k)}</span>${n.r === 'review' ? '<b class="nav-badge" id="nb-review" hidden></b>' : ''}</a>`).join('');
     const theme = store.get('mq-theme', 'auto');
     const langs = (S.pub.languages || []).map((l) => `<button class="mi ${l.code === S.lang ? 'on' : ''}" data-act="lang" data-code="${esc(l.code)}">${esc(l.name_native)}</button>`).join('');
     return `<header class="topbar"><div class="topbar-in">
@@ -274,7 +280,7 @@
       progress: [viewProgress, 'view_dashboard'], reports: [a ? viewReport : viewReports, 'view_reports'],
       review: [a === 'learning' ? viewLearning : a ? viewReviewWindow : viewReview, 'view_tasks'], calls: [viewCalls, 'view_tasks'],
       audit: [viewAudit, 'view_audit'], users: [viewUsers, 'manage_users'], roles: [viewRoles, 'manage_roles'],
-      settings: [viewSettings, 'manage_settings'], profile: [viewProfile, null],
+      settings: [viewSettings, 'manage_settings'], profile: [viewProfile, null], publish: [viewPublish, 'publish_units'],
     };
     let entry = routes[r];
     if (!entry || (entry[1] && !has(entry[1]))) {
@@ -283,12 +289,37 @@
       entry = [viewProfile, null];
     }
     app.innerHTML = shell(loading());
+    fitTopbar();
+    refreshBadges();
     try { await entry[0](a, b, c); } catch (e) {
       if (e instanceof ApiError && e.status === 401) return;
       $('#page').innerHTML = `<div class="notice bad">${ico('warn')}<span>${esc(errText(e))}</span></div>`;
     }
   }
   const setPage = (html) => { const p = $('#page'); if (p) p.innerHTML = html; };
+  // keep the top bar on one row: drop detail step by step (labels differ in length per language)
+  function fitTopbar() {
+    const bar = $('.topbar-in');
+    if (!bar) return;
+    const b = document.body;
+    for (let i = 1; i <= 4; i++) b.classList.remove('tb-' + i);
+    if (window.innerWidth <= 1200) return;  // the drawer takes over
+    const tooTall = () => bar.getBoundingClientRect().height > 72 || bar.scrollWidth > bar.clientWidth + 1;
+    for (let i = 1; i <= 4 && tooTall(); i++) b.classList.add('tb-' + i);
+  }
+  let fitT;
+  window.addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(fitTopbar, 80); });
+  // windows the chair gave me that still wait for my decision (nav badge)
+  async function refreshBadges() {
+    const el = $('#nb-review');
+    if (!el || !S.me || !S.me.can_decide || inDemo()) return;
+    try {
+      const d = await api('/review/assignments?mine=true');
+      const n = d.assignments.filter((a) => a.status === 'open' && a.open > 0).length;
+      el.textContent = n; el.hidden = !n; el.title = t('review.mine_open', { n });
+      if (n) fitTopbar();
+    } catch { /* badge is optional */ }
+  }
 
   // ------------------------------------------------------------ login
   function loginView() {
@@ -702,6 +733,7 @@
         <div class="hc-sec"><div class="hc-k">${T('hc.review_waiting')}<b>${fNum(rv.waiting)}</b></div>
           <div class="bar"><i style="width:${pct(rv.decided, rv.moves)}%"></i></div>
           <div class="faint">${T('hc.review_of', { d: fNum(rv.decided), n: fNum(rv.moves), u: fNum(rv.units) })}</div></div>
+        ${(d.people || []).length ? `<div class="hc-sec"><div class="hc-k">${T('hc.team')}</div><table class="hc-tab"><thead><tr><th>${T('users.name')}</th><th>${T('hc.open')}</th><th>${T('hc.oldest')}</th><th>${T('dash.today')}</th></tr></thead><tbody>${d.people.map((p) => `<tr><td>${esc(p.name)}</td><td class="num">${fNum(p.open_moves)}</td><td class="num">${p.open_windows ? esc(fAgo(p.oldest_days * 86400)) : '—'}</td><td class="num">${fNum(p.decided_today)}</td></tr>`).join('')}</tbody></table></div>` : ''}
         <div class="hc-kv"><div><span>${T('hc.last_decision')}</span><b>${d.last_decision_at ? esc(fAgo(d.server_time - d.last_decision_at)) : '—'}</b></div></div>
         <a class="btn sm outline-accent" href="#/review">${ico('review')} ${T('nav.review')}</a></div>${foot}`;
     }
@@ -757,6 +789,67 @@
         <div class="hc-kv"><div><span>${T('hc.host')}</span><b class="mono">${llm.simulated ? T('mode.demo_engine') : esc(llm.base_url || '—')}</b></div></div>
         ${per ? `<div class="hc-sec"><div class="hc-k">${T('hc.per_model')}</div><table class="hc-tab"><thead><tr><th>${T('tasks.model')}</th><th>${T('hc.steps')}</th><th>${T('hc.t_in')}</th><th>${T('hc.t_out')}</th><th>${T('hc.max_prompt')}</th></tr></thead><tbody>${per}</tbody></table></div>` : ''}
       </div>`;
+  }
+
+  // ------------------------------------------------------------ publish (super admins → mirqah.app)
+  async function viewPublish() {
+    const d = await api('/publish');
+    if (d.simulated) {
+      setPage(`${head('publish.title', 'publish.subtitle')}<div class="notice">${ico('flask')}<span>${T('publish.demo')}</span></div>`);
+      return;
+    }
+    S.publishCtx = d;
+    const live = d.live;
+    const c = d.counts || { units: 0, windows: 0, by_tafsir: {}, by_method: {} };
+    const excerpt = (u) => esc((u.text || '').length > 150 ? u.text.slice(0, 150) + '…' : (u.text || ''));
+    const unitRow = (u, kind) => `<tr><td><span class="chip ${kind === 'added' ? 'ok' : kind === 'removed' ? 'bad' : 'warn'}">${T('publish.kind.' + kind)}</span></td>
+      <td>${esc(tafsirName(u.tafsir))}</td><td class="mono">${esc(u.window)}</td><td class="mono">${esc(u.primary || '—')}</td><td class="hide-sm">${esc(u.certainty || '—')}</td>
+      <td class="pub-text" dir="rtl">${excerpt(u)}</td></tr>`;
+    const diffRows = [...d.added.map((u) => unitRow(u, 'added')), ...d.changed.map((u) => unitRow(u, 'changed')), ...d.removed.map((u) => unitRow(u, 'removed'))];
+    const checks = [];
+    if (d.failed.length) checks.push(`<div class="notice bad">${ico('warn')}<span>${T('publish.failed', { n: d.failed.length })} ${[...new Set(d.failed.map((f) => f.reason))].map((r) => `<span class="chip bad">${T('publish.reason.' + r)}</span>`).join(' ')}</span></div>`);
+    if (d.overlaps.length) checks.push(`<div class="notice warn">${ico('info')}<span>${T('publish.overlaps', { n: d.overlaps.length })} ${d.overlaps.slice(0, 4).map((o) => `<span class="chip mono">${esc(tafsirName(o.tafsir))} ${esc(o.window)}: ${esc(o.a_primary)} / ${esc(o.b_primary)}</span>`).join(' ')}</span></div>`);
+    if (d.duplicates) checks.push(`<div class="notice">${ico('info')}<span>${T('publish.duplicates', { n: d.duplicates })}</span></div>`);
+    if (d.windows_waiting) checks.push(`<div class="notice">${ico('inbox')}<span>${T('publish.waiting', { n: d.windows_waiting })}</span></div>`);
+    const hist = d.history.length ? d.history.map((h) => `<tr><td class="mono"><b>v${h.version}</b> ${h.live ? `<span class="chip ok"><span class="dot live"></span>${T('publish.is_live')}</span>` : ''}</td>
+      <td class="num">${fNum(h.units)}</td><td class="hide-sm"><span class="c-green">+${fNum((h.summary || {}).added || 0)}</span> <span class="c-red">−${fNum((h.summary || {}).removed || 0)}</span> <span class="c-amber">~${fNum((h.summary || {}).changed || 0)}</span></td>
+      <td>${esc(h.created_by_name || '—')}</td><td class="num hide-sm">${esc(fDT(h.created_at))}</td><td class="hide-sm">${esc(h.note || '')}</td>
+      <td class="num"><div class="row tight end">${!h.live && canDo('publish_units') ? `<button class="btn sm" data-act="make-live" data-v="${h.version}">${ico('refresh')} ${T('publish.make_live')}</button>` : ''}<a class="btn sm" href="/api/publish/${h.version}/download">${ico('download')}</a></div></td></tr>`).join('')
+      : `<tr><td colspan="7" class="empty">${T('publish.no_history')}</td></tr>`;
+    const canPublish = canDo('publish_units') && (d.changes > 0 || (!live && c.units > 0));
+    setPage(`${head('publish.title', 'publish.subtitle', canDo('publish_units') ? `<button class="btn primary" data-act="publish" ${canPublish ? '' : `disabled title="${T('publish.nothing')}"`}>${ico('upload')} ${T('publish.publish_v', { v: (d.history[0] ? d.history[0].version : 0) + 1 })}</button>` : '')}
+      <div class="grid g3 mb">
+        <section class="card"><div class="kicker">${T('publish.live')}</div>${live ? `<div class="stat">v${live.version}<small> · ${fNum(live.units)} ${T('publish.units')}</small></div>
+          <div class="faint">${esc(fDT(live.made_live_at))} · ${esc(live.created_by_name || '')}</div>${live.note ? `<p class="mt-s">${esc(live.note)}</p>` : ''}` : `<p class="muted">${T('publish.none_live')}</p>`}
+          <div class="faint mt-s">${T('publish.public_url')}<br><a class="mono pub-url" href="${esc(d.public_url)}" target="_blank" rel="noopener">${esc(d.public_url)}</a></div></section>
+        <section class="card"><div class="kicker">${T('publish.ready')}</div><div class="stat">${fNum(c.units)}<small> · ${fNum(c.windows)} ${T('publish.windows')}</small></div>
+          <div class="row tight mt-s">${Object.entries(c.by_tafsir || {}).map(([k, v]) => `<span class="chip">${esc(tafsirName(k))} ${fNum(v)}</span>`).join('') || '<span class="faint">—</span>'}</div>
+          <div class="row tight mt-s">${Object.entries(c.by_method || {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<span class="chip mono">${esc(k)} ${fNum(v)}</span>`).join('')}</div></section>
+        <section class="card"><div class="kicker">${T('publish.changes')}</div><div class="stat">${fNum(d.changes)}</div>
+          <div class="row tight mt-s"><span class="chip ok">+${fNum(d.added.length)} ${T('publish.kind.added')}</span><span class="chip warn">~${fNum(d.changed.length)} ${T('publish.kind.changed')}</span><span class="chip bad">−${fNum(d.removed.length)} ${T('publish.kind.removed')}</span></div>
+          <p class="faint mt-s">${T('publish.rule')}</p></section>
+      </div>
+      ${checks.join('')}
+      <section class="mt"><div class="card-h"><h2>${T('publish.diff')}</h2></div>
+        <div class="table-wrap"><table class="t"><thead><tr><th></th><th>${T('tasks.tafsir')}</th><th>${T('tasks.window')}</th><th>${T('review.primary')}</th><th class="hide-sm">${T('review.certainty')}</th><th>${T('review.text')}</th></tr></thead>
+        <tbody>${diffRows.slice(0, 300).join('') || `<tr><td colspan="6" class="empty">${T('publish.no_changes')}</td></tr>`}</tbody></table></div>
+        ${diffRows.length > 300 ? `<p class="faint mt-s">${T('publish.more', { n: diffRows.length - 300 })}</p>` : ''}</section>
+      <section class="mt"><div class="card-h"><h2>${T('publish.history')}</h2></div>
+        <div class="table-wrap"><table class="t"><thead><tr><th>${T('publish.version')}</th><th>${T('publish.units')}</th><th class="hide-sm">${T('publish.changes')}</th><th>${T('publish.by')}</th><th class="hide-sm">${T('audit.when')}</th><th class="hide-sm">${T('publish.note')}</th><th></th></tr></thead><tbody>${hist}</tbody></table></div></section>`);
+  }
+  function publishModal() {
+    const d = S.publishCtx || {};
+    const v = (d.history && d.history[0] ? d.history[0].version : 0) + 1;
+    const m = modal(`${modalHead(t('publish.publish_v', { v }))}
+      <p>${T('publish.confirm', { n: (d.counts || {}).units || 0, a: (d.added || []).length, r: (d.removed || []).length, c: (d.changed || []).length })}</p>
+      <div class="field"><label for="pub-note">${T('publish.note')}</label><textarea class="input" id="pub-note" rows="3" maxlength="500" placeholder="${T('publish.note_ph')}"></textarea></div>
+      <div class="notice mt">${ico('shield')}<span>${T('publish.privacy')}</span></div>
+      <div class="form-actions"><button class="btn" data-act="close-modal">${T('common.cancel')}</button><button class="btn primary" id="pub-go">${ico('upload')} ${T('publish.go')}</button></div>`);
+    $('#pub-go', m).addEventListener('click', async () => {
+      const b = $('#pub-go', m); b.disabled = true;
+      try { const r = await api('/publish', { method: 'POST', body: { note: $('#pub-note', m).value } }); closeModal(); toast(t('publish.done', { v: r.live.version }), 'ok'); render(); }
+      catch (err) { b.disabled = false; toast(errText(err), 'bad'); }
+    });
   }
 
   // ------------------------------------------------------------ tasks
@@ -836,6 +929,13 @@
     preview();
   }
 
+  // automatic retries: which attempt, when it runs again, or that it waits for the engine
+  const retryChip = (s) => {
+    if (s.status !== 'queued' || !(s.attempt > 1 || s.not_before || s.interruptions)) return '';
+    const engine = (s.last_error || '').includes('engine offline');
+    const label = engine ? t('tasks.retry.engine') : s.attempt > 1 ? t('tasks.retry.at', { n: s.attempt, t: fTime(s.not_before) }) : t('tasks.retry.restart');
+    return ` <span class="chip ${engine ? 'bad' : 'warn'}" title="${esc(s.last_error || '')}">${ico('refresh')} ${esc(label)}</span>`;
+  };
   async function viewTask(id) {
     const load = async () => {
       const d = await api('/tasks/' + id);
@@ -856,7 +956,7 @@
         return '';
       };
       const rows = d.steps.map((s) => `<tr class="click" data-act="step" data-id="${s.id}"><td class="num">${s.seq + 1}</td><td>${agentName(s.agent)}${s.variant ? ` <span class="chip violet" title="${T('variant.profile')}">${T('variant.short.' + s.variant)}</span>` : ''}</td><td>${esc(tafsirName(s.tafsir))}</td>
-        <td class="mono">${esc(s.window)}</td><td class="mono hide-sm">${esc(s.model || '—')}</td><td>${statusChip(s.status)}</td><td class="num">${fDur(s.duration_ms)}</td>
+        <td class="mono">${esc(s.window)}</td><td class="mono hide-sm">${esc(s.model || '—')}</td><td>${statusChip(s.status)}${retryChip(s)}</td><td class="num">${fDur(s.duration_ms)}</td>
         <td class="hide-sm">${stepNote(s.result)}</td></tr>`).join('');
       const actions = [
         canDo('manage_tasks') && ['queued', 'running'].includes(x.status) ? `<button class="btn danger" data-act="cancel-task" data-id="${x.id}">${ico('stop')} ${T('tasks.cancel')}</button>` : '',
@@ -950,14 +1050,33 @@
   // ------------------------------------------------------------ review
   async function viewReview() {
     const d = await api('/review/units');
+    const meId = S.me.id;
+    if (!S.reviewFilter) S.reviewFilter = d.can_decide && d.my_open_windows ? 'mine' : 'all';
+    const filters = [['all', 'review.filter.all']];
+    if (d.can_decide) filters.unshift(['mine', 'review.filter.mine']);
+    if (d.can_assign) filters.push(['unassigned', 'review.filter.unassigned']);
+    if (!filters.some(([k]) => k === S.reviewFilter)) S.reviewFilter = filters[0][0];
+    const units = d.units.filter((u) => S.reviewFilter === 'mine' ? u.assigned && u.assigned.user_id === meId && u.assigned.status === 'open'
+      : S.reviewFilter === 'unassigned' ? !u.assigned || u.assigned.status !== 'open' : true);
+    const counts = { mine: d.units.filter((u) => u.assigned && u.assigned.user_id === meId && u.assigned.status === 'open').length,
+      unassigned: d.units.filter((u) => u.committee && (!u.assigned || u.assigned.status !== 'open') && u.decided < u.moves).length, all: d.units.length };
     const armChip = (u) => u.arm ? `<span class="chip info" title="${T('review.arm_note')}">${T('review.arm', { a: u.arm })}${d.reveals_arms && u.variant ? ` · ${T('variant.short.' + u.variant)}` : ''}</span>` : '';
-    const rows = d.units.length ? d.units.map((u) => `<tr class="click" data-href="#/review/${u.tafsir}/${u.window}${u.arm ? '/' + u.arm : ''}"><td class="mono">${esc(u.ayah)}</td><td>${esc(u.name_ar)}</td>
-      <td class="mono">${esc(u.window)} ${u.committee ? `<span class="chip violet">${T('dash.committee')}</span>` : ''} ${armChip(u)}</td><td class="num">${fNum(u.moves)}</td><td class="num">${fNum(u.auto_candidate)}</td><td class="num">${fNum(u.specialist)}</td>
-      <td class="num hide-sm">${u.flags == null ? '—' : fNum(u.flags)}</td><td class="num">${u.decided ? `<span class="chip ok">${fNum(u.decided)}/${fNum(u.moves)}</span>` : `<span class="chip">0/${fNum(u.moves)}</span>`}</td></tr>`).join('')
-      : `<tr><td colspan="8" class="empty">${T('review.empty')}</td></tr>`;
+    const who = (u) => {
+      const a = u.assigned;
+      if (!a) return u.committee ? `<span class="faint">${T('review.unassigned')}</span>` : '<span class="faint">—</span>';
+      const me = a.user_id === meId;
+      return `<span class="chip ${a.status === 'done' ? 'ok' : me ? 'info' : ''}">${a.status === 'done' ? ico('check') + ' ' : ''}${esc(me ? t('review.you') : a.name || '—')}</span>`;
+    };
+    const rows = units.length ? units.map((u) => `<tr class="click" data-href="#/review/${u.tafsir}/${u.window}${u.arm ? '/' + u.arm : ''}"><td class="mono">${esc(u.ayah)}</td><td>${esc(u.name_ar)}</td>
+      <td class="mono">${esc(u.window)} ${u.committee ? `<span class="chip violet">${T('dash.committee')}</span>` : ''} ${armChip(u)}</td><td class="num">${fNum(u.moves)}</td><td class="num hide-sm">${fNum(u.auto_candidate)}</td><td class="num hide-sm">${fNum(u.specialist)}</td>
+      <td class="num hide-sm">${u.flags == null ? '—' : fNum(u.flags)}</td><td>${who(u)}</td><td class="num">${u.decided ? `<span class="chip ok">${fNum(u.decided)}/${fNum(u.moves)}</span>` : `<span class="chip">0/${fNum(u.moves)}</span>`}</td></tr>`).join('')
+      : `<tr><td colspan="9" class="empty">${T(S.reviewFilter === 'mine' ? 'review.mine_empty' : 'review.empty')}</td></tr>`;
+    const tabs = `<div class="seg mb" role="tablist">${filters.map(([k, key]) => `<button type="button" role="tab" class="${S.reviewFilter === k ? 'on' : ''}" data-act="review-filter" data-f="${k}">${T(key)} <span class="chip">${fNum(counts[k])}</span></button>`).join('')}</div>`;
+    const decideNote = !d.can_decide && has('review_units') ? `<div class="notice mb">${ico('shield')}<span>${T('review.specialists_only')}</span></div>` : '';
     setPage(`${head('review.title', 'review.subtitle', `<a class="btn outline-accent" href="#/review/learning">${ico('chart')} ${T('learn.title')}</a>${has('review_units') ? `<a class="btn" href="/api/review/export">${ico('download')} ${T('review.export')}</a>` : ''}`)}
-      <p class="faint mb">${T('agent.classifier')}: <span class="mono">${esc(d.models.classifier)}</span> · ${T('dash.caption_counts')}</p>
-      <div class="table-wrap"><table class="t"><thead><tr><th>${T('progress.ayah')}</th><th>${T('tasks.tafsir')}</th><th>${T('tasks.window')}</th><th>${T('dash.moves')}</th><th>${T('dash.candidates')}</th><th>${T('dash.specialist')}</th><th class="hide-sm">${T('dash.flags')}</th><th>${T('review.decided')}</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+      ${decideNote}${tabs}
+      <p class="faint mb">${T('agent.classifier')}: <span class="mono">${esc(d.models.classifier)}</span> · ${T('dash.caption_counts')} · ${T('review.assign_note')}</p>
+      <div class="table-wrap"><table class="t"><thead><tr><th>${T('progress.ayah')}</th><th>${T('tasks.tafsir')}</th><th>${T('tasks.window')}</th><th>${T('dash.moves')}</th><th class="hide-sm">${T('dash.candidates')}</th><th class="hide-sm">${T('dash.specialist')}</th><th class="hide-sm">${T('dash.flags')}</th><th>${T('review.assigned_to')}</th><th>${T('review.decided')}</th></tr></thead><tbody>${rows}</tbody></table></div>`);
   }
   async function viewReviewWindow(tafsir, win, arm) {
     const d = await api(`/review/${encodeURIComponent(tafsir)}/${encodeURIComponent(win)}${arm ? '?arm=' + encodeURIComponent(arm) : ''}`);
@@ -977,7 +1096,8 @@
     };
     const preview = {};
     (d.chair ? d.chair.moves : []).forEach((c) => { preview[c.move_id] = c; });
-    const canDecide = canDo('review_units');
+    const canDecide = canDo('review_units') && !!d.can_decide;
+    const asg = d.assignment;
     const reasonChip = (code) => code ? `<span class="chip warn mono" title="${T('review.verifier_reason')}">${esc(code)}</span>` : '';
     const moves = d.moves.map((m) => {
       const c = m.committee;
@@ -1019,7 +1139,12 @@
     setPage(`<div class="page-head"><div><div class="kicker">${T('review.title')}</div><h1>${esc(d.name_ar)} · <span class="mono">${esc(d.window)}</span>${d.arm ? ` <span class="chip info">${T('review.arm', { a: d.arm })}${d.variant ? ' · ' + T('variant.short.' + d.variant) : ''}</span>` : ''}</h1>
         <p class="muted">${T('progress.ayah')} <span class="mono">${esc(d.ayah)}</span> · ${d.simulated ? T('demo.source_none') : `${T('review.source')}: <span class="mono">${esc(d.source_file)}</span> · sha256 <span class="mono">${esc((d.source_sha256 || '').slice(0, 12))}…</span>`}</p></div>
         <div class="head-actions"><a class="btn" href="#/review">${T('common.back')}</a></div></div>
-      ${canDecide ? '' : `<div class="notice mb">${ico('info')}<span>${T(inDemo() ? 'demo.read_only' : viewingAs() ? 'viewas.note' : 'review.read_only')}</span></div>`}
+      ${asg || (d.specialists || []).length ? `<section class="card mb assign-bar"><div class="row between"><div class="row">${ico('inbox')}<b>${T('review.assigned_to')}</b>
+          ${asg ? `<span class="chip ${asg.status === 'done' ? 'ok' : asg.user_id === S.me.id ? 'info' : ''}">${esc(asg.user_id === S.me.id ? t('review.you') : asg.name || '—')}</span><span class="faint">${T(asg.assigned_by ? 'review.assigned_manual' : 'review.assigned_chair')} · ${esc(fDT(asg.assigned_at))}</span>` : `<span class="faint">${T('review.unassigned')}</span>`}</div>
+          ${(d.specialists || []).length && canDo('manage_tasks') ? `<div class="row"><select class="input sm" id="reassign-to" aria-label="${T('review.reassign')}">${d.specialists.map((p) => `<option value="${p.id}" ${asg && asg.user_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+            <button class="btn sm" data-act="reassign" data-t="${esc(tafsir)}" data-w="${esc(win)}">${T('review.reassign')}</button></div>` : ''}</div></section>` : ''}
+      ${canDecide ? '' : `<div class="notice mb">${ico('info')}<span>${inDemo() ? T('demo.read_only') : viewingAs() ? T('viewas.note')
+        : !S.me.can_decide ? T('review.specialists_only') : asg && asg.status === 'open' && asg.user_id !== S.me.id ? T('review.assigned_other', { name: asg.name || '—' }) : T('review.read_only')}</span></div>`}
       ${d.arm ? `<div class="notice mb">${ico('info')}<span>${T('review.arm_note')}</span></div>` : ''}
       <div class="notice mb">${ico('shield')}<span>${T('review.subtitle')} ${d.is_committee ? T('review.committee_note') : T('review.chair_note')}</span></div>
       ${d.is_committee ? `<section class="card mb"><div class="row between"><div class="row"><b>${T('review.committee')}</b> ${mdl}</div>
@@ -1096,21 +1221,22 @@
     rolesCache = r.roles;
     S.usersCache = u.users;
     const rows = u.users.map((x) => `<tr><td><div class="row"><span class="avatar">${esc(initials(x.name))}</span><div><b>${esc(x.name)}</b><div class="faint ltr" style="text-align:start">${esc(x.email)}</div></div></div></td>
-      <td>${esc(S.lang === 'ar' || S.lang === 'ur' ? x.role_name_ar : x.role_name_en)}</td><td class="hide-sm">${esc(((S.pub.languages || []).find((l) => l.code === x.lang) || {}).name_native || t('users.lang_default'))}</td>
+      <td><div class="row tight">${(x.roles && x.roles.length ? x.roles : [{ key: x.role_key, name_ar: x.role_name_ar, name_en: x.role_name_en }]).map((r) => `<span class="chip ${r.key === 'specialist' ? 'info' : r.key === 'super_admin' ? 'warn' : ''}">${esc(roleName(r))}</span>`).join('')}</div></td><td class="hide-sm">${esc(((S.pub.languages || []).find((l) => l.code === x.lang) || {}).name_native || t('users.lang_default'))}</td>
       <td>${x.active ? `<span class="chip ok">${T('common.active')}</span>` : `<span class="chip bad">${T('common.inactive')}</span>`}</td>
       <td class="num hide-sm">${x.last_login_at ? esc(fDT(x.last_login_at)) : T('common.never')}</td>
       <td class="num">${canAdmin('manage_users') ? `<button class="btn sm" data-act="edit-user" data-id="${x.id}">${T('common.edit')}</button>` : ''}</td></tr>`).join('');
     setPage(`${head('users.title', 'users.subtitle', canAdmin('manage_users') ? `<button class="btn primary" data-act="add-user">${ico('plus')} ${T('users.add')}</button>` : '')}
-      <div class="table-wrap"><table class="t"><thead><tr><th>${T('users.name')}</th><th>${T('users.role')}</th><th class="hide-sm">${T('users.lang')}</th><th>${T('common.status')}</th><th class="hide-sm">${T('users.last_login')}</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`);
+      <div class="table-wrap"><table class="t"><thead><tr><th>${T('users.name')}</th><th>${T('users.roles')}</th><th class="hide-sm">${T('users.lang')}</th><th>${T('common.status')}</th><th class="hide-sm">${T('users.last_login')}</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`);
   }
   function userModal(user) {
     const langs = (S.pub.languages || []).map((l) => `<option value="${esc(l.code)}" ${user && user.lang === l.code ? 'selected' : ''}>${esc(l.name_native)}</option>`).join('');
-    const roles = rolesCache.map((r) => `<option value="${r.id}" ${user && user.role_id === r.id ? 'selected' : ''}>${esc(roleName(r))}</option>`).join('');
+    const held = new Set(user ? (user.role_ids || [user.role_id]) : []);
+    const roles = rolesCache.map((r) => `<label class="check role-pick"><input type="checkbox" name="u-roles" value="${r.id}" ${held.has(r.id) ? 'checked' : ''}><span><b>${esc(roleName(r))}</b><span class="faint" dir="rtl">${esc(r.description_ar || '')}</span></span></label>`).join('');
     const m = modal(`${modalHead(user ? t('common.edit') + ' · ' + user.name : t('users.add'))}
       <form id="f-user" class="form-grid">
         <div class="field full"><label for="u-email">${T('users.email')}</label><input class="input ltr" id="u-email" type="email" required value="${esc(user ? user.email : '')}" ${user ? 'disabled' : ''}></div>
         <div class="field"><label for="u-name">${T('users.name')}</label><input class="input" id="u-name" required maxlength="80" value="${esc(user ? user.name : '')}"></div>
-        <div class="field"><label for="u-role">${T('users.role')}</label><select class="input" id="u-role">${roles}</select></div>
+        <div class="field full"><span class="label">${T('users.roles')}</span><div class="role-grid">${roles}</div><span class="hint">${T('users.roles_hint')}</span></div>
         <div class="field"><label for="u-lang">${T('users.lang')}</label><select class="input" id="u-lang"><option value="">${T('users.lang_default')}</option>${langs}</select></div>
         <div class="field"><span class="label">${T('common.status')}</span><label class="switch"><input type="checkbox" id="u-active" ${!user || user.active ? 'checked' : ''}><span>${T('common.active')}</span></label></div>
         ${user ? '' : `<div class="field full"><label class="switch"><input type="checkbox" id="u-notify" checked><span>${T('users.notify')}</span></label><span class="hint">${T('users.notify_hint')}</span></div>`}
@@ -1118,7 +1244,9 @@
           <button type="button" class="btn" data-act="close-modal">${T('common.cancel')}</button><button type="submit" class="btn primary">${T('common.save')}</button></div></form>`);
     $('#f-user', m).addEventListener('submit', async (e) => {
       e.preventDefault();
-      const body = { name: $('#u-name', m).value.trim(), role_id: Number($('#u-role', m).value), lang: $('#u-lang', m).value, active: $('#u-active', m).checked };
+      const roleIds = $$('input[name=u-roles]:checked', m).map((x) => Number(x.value));
+      if (!roleIds.length) { toast(t('users.err.no_role'), 'bad'); return; }
+      const body = { name: $('#u-name', m).value.trim(), role_ids: roleIds, lang: $('#u-lang', m).value, active: $('#u-active', m).checked };
       try {
         if (user) await api('/users/' + user.id, { method: 'PATCH', body });
         else {
@@ -1166,7 +1294,7 @@
   }
 
   // ------------------------------------------------------------ settings
-  const TABS = ['general', 'llm', 'smtp', 'security', 'gates', 'reports', 'demo', 'languages', 'outbox'];
+  const TABS = ['general', 'llm', 'smtp', 'security', 'gates', 'reports', 'workflow', 'demo', 'languages', 'outbox'];
   async function viewSettings(tab) {
     if (tab && TABS.includes(tab)) S.settingsTab = tab;
     const tabNav = `<div class="tabs" role="tablist">${TABS.filter((x) => x !== 'languages' || has('manage_languages')).map((x) => `<button role="tab" class="${x === S.settingsTab ? 'on' : ''}" data-act="tab" data-tab="${x}">${T('settings.tab.' + x)}</button>`).join('')}</div>`;
@@ -1221,6 +1349,23 @@
       fields = `<div class="notice full">${ico('shield')}<span>${T('set.gates.note')}</span></div>` + fieldFor(sec, 'phase0_merged', v.phase0_merged, { full: true })
         + fieldFor(sec, 'phase0_note', v.phase0_note, { full: true, ltr: true, ph: 'https://github.com/…/pull/…' }) + fieldFor(sec, 'sample_reviewed', v.sample_reviewed, { full: true })
         + fieldFor(sec, 'sample_max_windows', v.sample_max_windows);
+    } else if (sec === 'workflow') {
+      const [r, w] = await Promise.all([api('/roles'), api('/workflow')]);
+      fields = `<div class="notice full">${ico('inbox')}<span>${T('set.workflow.note')}</span></div>`
+        + fieldFor(sec, 'auto_assign', v.auto_assign, { full: true, hint: T('set.workflow.auto_assign_hint') })
+        + fieldFor(sec, 'reminders', v.reminders, { full: true })
+        + fieldFor(sec, 'min_specialists', v.min_specialists)
+        + fieldFor(sec, 'reminder_time', v.reminder_time, { type: 'time', ltr: true })
+        + fieldFor(sec, 'auto_retry', v.auto_retry, { full: true, hint: T('set.workflow.auto_retry_hint') })
+        + fieldFor(sec, 'retry_first_min', v.retry_first_min) + fieldFor(sec, 'retry_second_min', v.retry_second_min)
+        + fieldFor(sec, 'retry_max', v.retry_max)
+        + fieldFor(sec, 'failure_alerts', v.failure_alerts, { full: true, hint: T('set.workflow.failure_alerts_hint') })
+        + `<div class="field full"><span class="label">${T('set.workflow.alert_roles')}</span><div class="perm-grid">${r.roles.map((x) => `<label class="check"><input type="checkbox" name="alert_roles" value="${esc(x.key)}" ${v.alert_roles.includes(x.key) ? 'checked' : ''}><span>${esc(roleName(x))}</span></label>`).join('')}</div></div>`;
+      const team = (w.specialists || []).map((p) => `<tr><td>${esc(p.name)}</td><td class="num">${fNum(p.open_windows)}</td><td class="num">${fNum(p.open_moves)}</td><td class="num">${p.oldest_days ? fNum(Math.round(p.oldest_days)) : '—'}</td><td class="num">${fNum(p.decided_today)}</td></tr>`).join('')
+        || `<tr><td colspan="5" class="empty">${T('set.workflow.no_specialists')}</td></tr>`;
+      extra = `<section class="card mt"><div class="card-h"><h3>${T('set.workflow.team')}</h3><span class="chip ${w.enough_specialists ? 'ok' : 'warn'}">${fNum((w.specialists || []).length)} / ${fNum(w.min_specialists)}</span></div>
+        <div class="table-wrap"><table class="t"><thead><tr><th>${T('users.name')}</th><th>${T('set.workflow.open_windows')}</th><th>${T('set.workflow.open_moves')}</th><th>${T('set.workflow.oldest')}</th><th>${T('set.workflow.today')}</th></tr></thead><tbody>${team}</tbody></table></div>
+        ${canDo('manage_tasks') ? `<div class="row mt"><button class="btn" type="button" data-act="wf-sweep">${ico('inbox')} ${T('set.workflow.sweep')}</button><button class="btn" type="button" data-act="wf-remind">${ico('mail')} ${T('set.workflow.remind')}</button></div>` : ''}</section>`;
     } else if (sec === 'reports') {
       const r = await api('/roles');
       fields = fieldFor(sec, 'auto_daily', v.auto_daily, { full: true }) + fieldFor(sec, 'daily_time', v.daily_time, { type: 'time', ltr: true })
@@ -1287,6 +1432,7 @@
         else body[k] = el.value;
       });
       if (sec === 'reports') body.mail_roles = $$('input[name=mail_roles]:checked', f).map((x) => x.value);
+      if (sec === 'workflow') body.alert_roles = $$('input[name=alert_roles]:checked', f).map((x) => x.value);
       try {
         await api('/settings/' + sec, { method: 'PATCH', body });
         toast(t('common.saved'), 'ok');
@@ -1438,6 +1584,15 @@
         case 'run-sample': newTaskModal({ kind: 'committee', scope: 'sample' }); break;
         case 'new-task': newTaskModal(); break;
         case 'step': stepModal(id); break;
+        case 'review-filter': S.reviewFilter = el.dataset.f; viewReview(); break;
+        case 'reassign': {
+          await api('/review/assign', { method: 'POST', body: { tafsir: el.dataset.t, window: el.dataset.w, user_id: Number($('#reassign-to').value) } });
+          toast(t('common.saved'), 'ok'); render(); break;
+        }
+        case 'publish': publishModal(); break;
+        case 'make-live': if (await confirmBox(t('publish.confirm_live', { v: el.dataset.v }))) { await api(`/publish/${el.dataset.v}/live`, { method: 'POST' }); toast(t('common.saved'), 'ok'); render(); } break;
+        case 'wf-sweep': { const r = await api('/workflow/sweep', { method: 'POST' }); toast(t('set.workflow.swept', r), 'ok'); break; }
+        case 'wf-remind': { const r = await api('/workflow/remind', { method: 'POST' }); toast(t('set.workflow.reminded', r), r.failed ? 'bad' : 'ok'); break; }
         case 'cancel-task': if (await confirmBox(t('tasks.confirm_cancel'))) { await api(`/tasks/${id}/cancel`, { method: 'POST' }); render(); } break;
         case 'retry-task': { const r = await api(`/tasks/${id}/retry`, { method: 'POST' }); location.hash = '#/tasks/' + r.id; break; }
         case 'gen-report': await api(`/reports/${el.dataset.day}/generate`, { method: 'POST' }); location.hash = '#/reports/' + el.dataset.day; render(); break;

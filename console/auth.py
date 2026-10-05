@@ -169,13 +169,45 @@ def verify_otp(email: str, code: str, ip: str | None, user_agent: str | None) ->
     return token, user
 
 
+def user_roles(user_id: int) -> list[dict]:
+    """Every role a user holds (primary first), with its permissions."""
+    rows = db.rows("SELECT r.id, r.key, r.name_ar, r.name_en, r.permissions,"
+                   f" (r.id = u.role_id) AS is_primary FROM {db.USER_ROLES} ur"
+                   " JOIN roles r ON r.id = ur.role_id JOIN users u ON u.id = ur.user_id"
+                   " WHERE ur.user_id=?", (user_id,))
+    order = {k: i for i, k in enumerate(config.ROLE_ORDER)}
+    rows.sort(key=lambda r: (not r["is_primary"], order.get(r["key"], 99), r["id"]))
+    for r in rows:
+        r["permissions"] = db.loads(r["permissions"], [])
+        r["is_primary"] = bool(r["is_primary"])
+    return rows
+
+
 def _with_permissions(s: dict) -> dict:
     perms = set(db.loads(s.pop("role_permissions"), []))
+    with db.use("live"):
+        roles = user_roles(s["id"])
+    for r in roles:
+        perms |= set(r["permissions"])  # several roles: the union of their permissions
+    keys = [r["key"] for r in roles] or [s.get("role_key")]
     if s["email"] == config.GUEST_EMAIL:
         perms &= set(config.GUEST_PERMISSIONS)  # guests stay read-only whatever the role says
+        keys = [s.get("role_key")]
     s["permissions"] = sorted(perms)
+    s["role_keys"] = keys
+    s["roles"] = [{"key": r["key"], "name_ar": r["name_ar"], "name_en": r["name_en"]}
+                  for r in roles]
     s["is_guest"] = s["email"] == config.GUEST_EMAIL
     return s
+
+
+def has_role(user: dict, key: str) -> bool:
+    return key in (user.get("role_keys") or [user.get("role_key")])
+
+
+def can_decide(user: dict) -> bool:
+    """Only the specialist role decides (approve / needs edit / reject)."""
+    return has_role(user, config.DECIDER_ROLE) and "review_units" in user.get("permissions", [])
 
 
 def session_user(token: str | None) -> dict | None:
@@ -219,11 +251,16 @@ def public_user(u: dict) -> dict:
         "id": u["id"], "email": u["email"], "name": u["name"], "lang": u.get("lang") or "",
         "role": {"key": u.get("role_key"), "name_ar": u.get("role_name_ar"),
                  "name_en": u.get("role_name_en")},
+        "roles": u.get("roles") or [{"key": u.get("role_key"), "name_ar": u.get("role_name_ar"),
+                                     "name_en": u.get("role_name_en")}],
+        "role_keys": u.get("role_keys") or [u.get("role_key")],
+        "can_decide": can_decide(u),
         "permissions": u.get("permissions", []),
         "is_guest": u.get("email") == config.GUEST_EMAIL,
         # view-as: who is really signed in (None when it is their own account)
         "view_as": bool(real),
         "real_user": real,
-        "can_view_as": (real or {}).get("role_key", u.get("role_key")) == "super_admin",
+        "can_view_as": "super_admin" in ((real or {}).get("role_keys")
+                                          or u.get("role_keys") or [u.get("role_key")]),
         "mode": u.get("mode", "live"),
     }

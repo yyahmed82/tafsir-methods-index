@@ -580,8 +580,22 @@ def test_committee_runs_pipeline_end_to_end(env, tmp_path, monkeypatch):
         units = env.get("/api/review/units").json()["units"]
         assert units and units[0]["committee"] is True
 
-        # specialist decision rules (keyed by committee row, not bare move_id)
+        # only the specialist role decides — a super admin adds it as a second role
         body = {"tafsir": "al_saadi", "window": "24_35", "move_id": "P-m01", "decision": "approve"}
+        assert env.post("/api/review/decision", json=body, headers=H).json()["detail"][
+            "error"] == "specialists_only"
+        assert rv["can_decide"] is False and rv["assignment"] is None
+        uid = db.scalar("SELECT id FROM users WHERE email='sa@example.com'")
+        role = {k: db.scalar("SELECT id FROM roles WHERE key=?", (k,))
+                for k in ("super_admin", "specialist")}
+        assert env.patch(f"/api/users/{uid}", json={"role_ids": [role["specialist"]]},
+                         headers=H).json()["detail"]["error"] == "own_role"
+        assert env.patch(f"/api/users/{uid}", json={"role_ids": list(role.values())},
+                         headers=H).status_code == 200
+        me = env.get("/api/me").json()["user"]  # still signed in: only a role was added
+        assert me["can_decide"] and set(me["role_keys"]) == {"super_admin", "specialist"}
+        assert env.get("/api/review/al_saadi/24_35").json()["can_decide"] is True
+        # specialist decision rules (keyed by committee row, not bare move_id)
         assert env.post("/api/review/decision", json=body, headers=H).json()["detail"][
             "error"] == "compare_first"
         body["compared_with_source"] = True
