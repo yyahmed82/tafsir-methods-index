@@ -5,8 +5,8 @@
 ## ١. مهارات المشروع المضمّنة (Project Skills)
 
 - **فهرسة مناهج التفسير (`fahras-tafsir-indexing`)**: `docs/team/skills/fahras-tafsir-indexing/SKILL.md` — تشغيل سلسلة الفهرسة بوكيلين من عائلتين وفاحص حتمي (٧٥) ورئيس لجنة (٨٥) على نص التفسير المثبّت، والاعتماد للمتخصص البشري.
-- **بناء العرض التقديمي النهائي (`mirqah-deck-build`)**: `docs/team/skills/mirqah-deck-build/SKILL.md` — بناء وتحديث العرض التقديمي الرسمي (`fahras_final_v7.pptx`) عبر `build_final.py` ومعالجة النصوص إجبارياً بـ `fix_bidi.py`، وملء علامات التحديث بالأرقام الحقيقية.
-- **تسجيل العرض المرئي للمنتج (`mirqah-demo-recording`)**: `docs/team/skills/mirqah-demo-recording/SKILL.md` — تسجيل الفيديو التعريفي للمنتج (≤ دقيقتين) بمنتج حقيقي وبث حي للطرفية وفق جدول التعليق الصوتي VO v3 وقائمة لقطات Playwright.
+- **بناء العرض التقديمي النهائي (`mirqah-deck-build`)**: `docs/team/skills/mirqah-deck-build/SKILL.md` — عشر شرائح في `fahras_final_v8.pptx` من مدخلات Team Folder؛ تشغيل `fix_bidi.py` بعد كل بناء وفحص عشر صور PNG، مع نتائج المهمة ٥ بصيغة «N من M».
+- **تسجيل العرض المرئي للمنتج (`mirqah-demo-recording`)**: `docs/team/skills/mirqah-demo-recording/SKILL.md` — VO v4 (١:٥٤، ١٧١ كلمة) وست لقطات حقيقية من قارئ النور ٢٤:١١ ولوحة المهمة ٥ ومراجعة X/Y وتعلّم الوكلاء؛ الموعد الثلاثاء ٦ أكتوبر ١٨:٠٠.
 - **مراجعة طلبات السحب (`mirqah-pr-review`)**: `docs/team/skills/mirqah-pr-review/SKILL.md` — المراجعة المستقلة العدائية لطلبات السحب والتحقق من الاختبار السلبي وثبات مسارات `data/**` واستيفاء حزمة الفرع وحكم PASS/BLOCK.
 - **تدقيق جاهزية الإنتاج (`vibe-coding-project-auditor`)**: `docs/team/skills/vibe-coding-project-auditor/SKILL.md` — تدقيق هندسي لجاهزية المشروع عبر ٧ محاور وخطة إصلاح P0/P1/P2.
 
