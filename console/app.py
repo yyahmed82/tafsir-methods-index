@@ -555,7 +555,9 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     @operational()
     def dashboard(user: dict = Depends(need("view_dashboard"))) -> dict:
         tasks = runner.task_groups(6)  # originals with their retries folded in
-        return {"llm": _llm_for(user, _probe()), "agents": runner.agents_state(), "progress": pipeline.progress(),
+        return {"llm": _llm_for(user, _probe()),
+                "agents": runner.redact_engine(runner.agents_state(), user),
+                "progress": pipeline.progress(),
                 "gates": pipeline.gates(), "tasks": tasks, "simulated": db.mode() == "demo",
                 "sample_ayah": settings.get("general")["sample_ayah"],
                 "server_time": time.time()}
@@ -732,7 +734,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     @app.post("/api/reports/{day}/generate")
     @operational(write=True)
     def report_generate(day: str, user: dict = Depends(need("generate_reports"))) -> dict:
-        return {"content": runner.save_report(_day(day), user["id"])}
+        return {"content": runner.redact_engine(runner.save_report(_day(day), user["id"]), user)}
 
     @app.post("/api/reports/{day}/mail")
     @operational(write=True)

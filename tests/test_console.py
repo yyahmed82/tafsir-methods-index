@@ -413,11 +413,22 @@ def test_model_address_only_for_operators(env):
 
 def test_guest_step_output_hides_engine_address(env, monkeypatch):
     """A guest sees step text, never the model engine's host or port. An operator does."""
+    from console import app as appmod
     from console import pipeline
     monkeypatch.setattr(pipeline, "ollama_ps", lambda *a, **k: {"available": False, "models": []})
+    monkeypatch.setattr(pipeline, "probe_llm", lambda: {
+        "base_url": "http://100.64.1.2:11434", "runtime": "ollama-local", "reachable": False,
+        "models": [], "version": None, "error": None,
+        "classifier_model": "qwen2.5:14b", "verifier_model": "gemma3:12b"})
+    appmod._PROBE_CACHE.update(at=0.0, value=None)
     settings.update("llm", {"base_url": "http://100.64.1.2:11434"}, None)
     settings.update("security", {"guest_access": True}, None)
     add_user("op@x.org", "committee_operator")
+    db.execute("INSERT INTO roles(key,name_ar,name_en,description_ar,system,permissions)"
+               " VALUES (?,?,?,?,0,?)",
+               ("reporter", "م", "Reporter", "",
+                db.dumps(["view_reports", "generate_reports"])))
+    add_user("rep@x.org", "reporter")
     stamp = int(db.now())
     while "11434" in str(stamp):
         stamp -= 1
@@ -441,11 +452,56 @@ def test_guest_step_output_hides_engine_address(env, monkeypatch):
     assert "100.64.1.2" not in calls and "11434" not in calls
     line = env.get("/api/agents/classifier").json()["last_failure"]["line"]
     assert line == "Connection refused [مخفي]"
+    agents = json.dumps(env.get("/api/dashboard").json()["agents"])
+    assert "100.64.1.2" not in agents and "11434" not in agents
+    cls = next(a for a in env.get("/api/dashboard").json()["agents"]["agents"]
+               if a["key"] == "classifier")
+    assert cls["recent"][0]["result"]["error"] == "Connection refused [مخفي]"
+    env.post("/api/auth/logout", headers=H)
+    login(env, "rep@x.org")
+    day = runner.local_now().date().isoformat()
+    report = env.post(f"/api/reports/{day}/generate", headers=H)
+    assert report.status_code == 200, report.text
+    assert "100.64.1.2" not in report.text and "11434" not in report.text
+    assert "[مخفي]" in report.text
     env.post("/api/auth/logout", headers=H)
     login(env, "op@x.org")
     seen = env.get(f"/api/tasks/{tid}").text
     assert "base_url: http://100.64.1.2:11434" in seen
     assert "100.64.1.2" in seen and "11434" in seen
+    op_agents = json.dumps(env.get("/api/dashboard").json()["agents"])
+    assert "100.64.1.2" in op_agents and "11434" in op_agents
+    again = env.post(f"/api/reports/{day}/generate", headers=H).text
+    assert "100.64.1.2" in again and "11434" in again
+
+
+def test_redactor_hides_engine_address_forms(env):
+    """Every spelling of the engine address is hidden; counts and model tags are not."""
+    settings.update("llm", {"base_url": "http://100.64.1.2:11434"}, None)
+    guest = {"permissions": ["view_tasks"]}
+    operator = {"permissions": ["run_tasks"]}
+    samples = [
+        "BASE_URL: http://100.64.1.2:11434",
+        "Base_Url=http://100.64.1.2:11434",
+        '{"base_url": "https://100.64.1.2:11434/api/chat"}',
+        "Connection refused 100.64.1.2:11434",
+        "dial [::1]:11434",
+        "dial [fe80::1]:11434/api/chat",
+        "mac.tailnet.ts.net:11434",
+        "https://mac.tailnet.ts.net:11434/v1/chat/completions",
+    ]
+    for text in samples:
+        out = runner.redact_engine(text, guest)
+        assert "100.64.1.2" not in out and "11434" not in out, text
+        assert "::1" not in out and "fe80" not in out and "tailnet" not in out, text
+        assert "[مخفي]" in out, text
+        assert "/api/chat" not in out and "/v1/chat" not in out, text
+        assert runner.redact_engine(text, operator) == text
+    mixed = "qwen2.5:14b took 11434 ms at 100.64.1.2:11434/api/chat"
+    assert runner.redact_engine(mixed, guest) == "qwen2.5:14b took 11434 ms at [مخفي]"
+    assert runner.redact_engine(mixed, operator) == mixed
+    kept = "model qwen2.5:14b took 11434 ms on window 24:35"
+    assert runner.redact_engine(kept, guest) == kept
 
 
 def test_publish_candidate_requires_source_comparison(env, tmp_path, monkeypatch):

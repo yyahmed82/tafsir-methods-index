@@ -227,19 +227,31 @@ def failure_cause(s: dict) -> str | None:
 
 
 _HIDDEN = "[مخفي]"
-# A full URL: host (or [IPv6]), optional :port, optional path. Used only to hide the engine.
+# A line that is only an engine setting: base_url / BASE_URL, colon or equals.
+_BASE_LINE_RE = re.compile(r"(?i)^[\"']?base_url[\"']?\s*[:=]")
+# "base_url": "…" inside JSON or log text, any capitalization.
+_BASE_ASSIGN_RE = re.compile(
+    r"""(?ix)(?<![A-Za-z0-9_])["']?base_url["']?\s*[:=]\s*
+        (?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,}\]]+)""")
+# http(s) URL: host or [IPv6], optional :port, optional path.
 _ENGINE_URL_RE = re.compile(
-    r"https?://(?:\[[0-9A-Fa-f:]+\]|[^/\s?#:]+)(?::\d+)?(?:/[^\s\"'<>]*)?",
+    r"https?://(?:\[[0-9A-Fa-f:.]+\]|[^/\s?#:]+)(?::\d+)?(?:/[^\s\"'<>]*)?",
     re.IGNORECASE)
+# Bare host:port (no scheme). The host is an address, not an arbitrary word,
+# so a count like "11434" or a tag like "qwen2.5:14b" is left alone.
+_BARE_HOST = (
+    r"(?:\[[0-9A-Fa-f:.]+\]|(?:\d{1,3}\.){3}\d{1,3}"
+    r"|(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?\.)+[A-Za-z]{2,})")
 
 
 def redact_engine(value: Any, user: dict | None) -> Any:
     """Hide the model engine's address from anyone who cannot run tasks.
 
-    Judges, guests, viewers and specialists keep the step text, with three
-    substitutions: a line that starts with ``base_url:``, the configured engine
-    URL itself, and any http(s) URL on that host or that port. Each becomes
-    ``[مخفي]``. Operators (``run_tasks``) see the original.
+    Judges, guests, viewers and specialists keep the step text. Hidden: a
+    ``base_url`` line or JSON field (any case, ``:`` or ``=``), the configured
+    engine URL, an http(s) URL on that host or port (path included), and a bare
+    ``host:port`` of the same kind — IPv4, ``[IPv6]``, or a hostname. Each
+    becomes ``[مخفي]``. Operators (``run_tasks``) see the original.
     """
     if "run_tasks" in (user or {}).get("permissions", ()):
         return value
@@ -258,7 +270,31 @@ def _engine_endpoint(url: str) -> tuple[str, str]:
     return m.group(1).strip("[]"), (pm.group(1) if pm else "")
 
 
+def _address_hit(uhost: str, uport: str, host: str, port: str) -> bool:
+    if port and uport == port:
+        return True
+    return bool(host and uhost and uhost.lower() == host.lower())
+
+
 def _redact_text(text: str, base: str, host: str, port: str) -> str:
+    host_alt = f"|{re.escape(host)}" if host else ""
+    bare_re = re.compile(
+        rf"(?<![\w./])(?:{_BARE_HOST}{host_alt}):(\d{{1,5}})(?![\w])(?:/[^\s\"'<>]*)?",
+        re.IGNORECASE)
+
+    def url_repl(m: re.Match[str]) -> str:
+        uhost, uport = _engine_endpoint(m.group(0))
+        return _HIDDEN if _address_hit(uhost, uport, host, port) else m.group(0)
+
+    def bare_repl(m: re.Match[str]) -> str:
+        token = m.group(0).split("/", 1)[0]
+        bracket = re.match(r"\[([^\]]+)\]:(\d+)$", token)
+        if bracket:
+            uhost, uport = bracket.group(1), bracket.group(2)
+        else:
+            uhost, _, uport = token.rpartition(":")
+        return _HIDDEN if _address_hit(uhost, uport, host, port) else m.group(0)
+
     pieces: list[str] = []
     for line in text.splitlines(keepends=True):
         nl = ""
@@ -267,17 +303,12 @@ def _redact_text(text: str, base: str, host: str, port: str) -> str:
             body, nl = body[:-2], "\r\n"
         elif body.endswith("\n"):
             body, nl = body[:-1], "\n"
-        if body.lstrip().startswith("base_url:"):
+        if _BASE_LINE_RE.match(body.lstrip()):
             pieces.append(_HIDDEN + nl)
             continue
-
-        def repl(m: re.Match[str], _host: str = host, _port: str = port) -> str:
-            uhost, uport = _engine_endpoint(m.group(0))
-            if (_port and uport == _port) or (_host and uhost.lower() == _host.lower()):
-                return _HIDDEN
-            return m.group(0)
-
-        body = _ENGINE_URL_RE.sub(repl, body)
+        body = _BASE_ASSIGN_RE.sub(_HIDDEN, body)
+        body = _ENGINE_URL_RE.sub(url_repl, body)
+        body = bare_re.sub(bare_repl, body)
         if base:
             body = body.replace(base, _HIDDEN)
             bare = base.rstrip("/")
