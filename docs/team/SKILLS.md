@@ -1,38 +1,25 @@
-# مهارات (Skills) مفيدة للمشروع
+# مهارات الفريق (Team Skills)
 
-## ١. مهارات مضمّنة في المستودع
+الأصل المعتمد: `docs/team/skills/<name>/` — ومراياه في `.claude/skills/<name>/` للتحميل التلقائي في Claude Code (نسخ مطابقة، يفحصها `tools/check_skills_sync.py`).
 
-### vibe-coding-project-auditor
+| المهارة | متى تُستخدم | مالكها في الفريق | المسار |
+|---|---|---|---|
+| `fahras-tafsir-indexing` | تشغيل سلسلة الفهرسة (وكيلان + فاحص ٧٥ + رئيس لجنة ٨٥) | خالد (القائد التقني) | `docs/team/skills/fahras-tafsir-indexing/` |
+| `vibe-coding-project-auditor` | تدقيق جاهزية الإنتاج على ٧ محاور وخطة P0/P1/P2 | خالد (القائد التقني) | `docs/team/skills/vibe-coding-project-auditor/` |
+| `web-design-guidelines` | مراجعة الواجهة ضد إرشادات الويب وإمكانية الوصول | شريف (الواجهة) | `docs/team/skills/web-design-guidelines/` |
+| `impeccable` | تصميم/تدقيق/تلميع الواجهات وتسجيل العرض المرئي (sans scripts/) | شريف (الواجهة) | `docs/team/skills/impeccable/` |
+| `mirqah-deck-build` «في PR #8» | بناء العرض النهائي عبر `build_final.py` مع `fix_bidi.py` | M Rezk (العرض والفيديو) | `docs/team/skills/mirqah-deck-build/` |
+| `mirqah-demo-recording` «في PR #8» | تسجيل الفيديو التعريفي (≤ دقيقتين) مع VO v3 ولقطات Playwright | M Rezk (العرض والفيديو) | `docs/team/skills/mirqah-demo-recording/` |
+| `mirqah-pr-review` «في PR #8» | المراجعة العدائية لطلبات السحب وحكم PASS/BLOCK | أبو أنس (مراجعة المتخصص) | `docs/team/skills/mirqah-pr-review/` |
 
-- المسار: `skills/vibe-coding-project-auditor/`.
-- تدقيق جاهزية للإنتاج على ٧ محاور:
-  ١. البنية والحماية.
-  ٢. تصميم الواجهات البرمجية.
-  ٣. التخزين المؤقت.
-  ٤. البيانات والتزامن.
-  ٥. المصادقة.
-  ٦. قابلية الصيانة.
-  ٧. ملاءمة التقنيات.
-- يعطي درجة وخطة إصلاح مرتّبة P0/P1/P2.
-- **الاستخدام**: افتح Claude Code في جذر المستودع. اكتب: `/vibe-coding-project-auditor`.
+## المصادر والتراخيص (للاستخدام الداخلي للفريق)
 
-## ٢. مهارات خارجية (غير مضمّنة)
+- `web-design-guidelines`: المصدر: vercel (من `SKILL.md` frontmatter)، منسوخ للاستخدام الداخلي للفريق.
+- `impeccable`: الترخيص: Apache 2.0 (من `SKILL.md` frontmatter) — نُسخ `SKILL.md` + `reference/` فقط دون `scripts/`.
 
-تُثبَّت من مصادرها الرسمية.
 
-- **clean-code-guard**: مراجعة الكود بعد الكتابة. يطبّق SOLID وDRY وKISS. يكشف أخطاء النماذج الشائعة.
-- **test-guard**: مراجعة الاختبارات. يمنع التضخم.
-- **docs-guard**: مراجعة الوثائق.
-- **/code-review و/security-review**: مدمجتان في Claude Code.
 
-## ٣. متى نستخدم ماذا
-
-| المرحلة                | المهارة                              |
-| ---------------------- | ------------------------------------ |
-| قبل الدمج              | `/code-review` + `clean-code-guard`   |
-| بعد كتابة اختبارات     | `test-guard`                         |
-| قبل النشر العام        | `/security-review` + `vibe-coding-project-auditor` |
-
-قاعدة: مراجعة مستقلة بعد كل مهمة. لا تنشر بلا ختم.
-- **فهرسة مناهج التفسير** (`fahras-tafsir-indexing`): `docs/team/skills/fahras-tafsir-indexing/SKILL.md` — مهارة المشروع لتشغيل الوكيلين (Ollama) والفاحص (٧٥) ورئيس اللجنة (٨٥) على نص مثبّت، من عيّنة ٢٤:٣٥ إلى الوسم الجماعي لسورة النور، وتجهيز النتائج للمتخصص. تُحمَّل في Claude Code أو Codex بنسخ المجلد إلى مجلد مهارات الوكيل.
-
+## المصادر والتراخيص
+- `impeccable` v4.0.2 — Apache 2.0 (الترخيص في ترويسة SKILL.md).
+- `web-design-guidelines` — من Vercel (`vercel-labs/agent-skills`)، بالترخيص المعلن في مستودعها.
+- `clean-code-guard` و`test-guard` لم تُرفعا لعدم وجود ترخيص معلن؛ متاحتان محلياً لدى قائد التقنية.
