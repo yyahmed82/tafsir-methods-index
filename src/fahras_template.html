@@ -1209,6 +1209,81 @@ html { overflow-x: clip; }
   0%, 100% { filter: brightness(1); }
   40% { filter: brightness(1.35); }
 }
+
+/* Grounding status · citation · unverified notes (G-UI-1..4) */
+.g-route-host { margin: 0 0 12px; }
+.g-route {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--glass-line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: .9rem;
+  line-height: 1.45;
+}
+.g-route-icon {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  color: var(--ink);
+}
+.g-reason, .g-committee {
+  margin: 6px 0 0;
+  font-size: .82rem;
+  font-weight: 500;
+  color: var(--sub);
+  line-height: 1.55;
+}
+.g-reason.is-legacy, .g-reason.is-unknown { font-weight: 400; }
+.g-committee { color: var(--ink); }
+.g-notes {
+  margin: 14px 0 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--muted) 8%, var(--surface));
+  border: 1px dashed var(--glass-line);
+  border-radius: var(--radius);
+}
+.g-notes-label {
+  margin: 0 0 6px;
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--sub);
+  letter-spacing: 0;
+}
+.g-notes-body { margin: 0; font-size: .86rem; color: var(--sub); }
+.g-disclaimer {
+  margin: 12px 0 0;
+  font-size: .75rem;
+  color: var(--sub);
+  line-height: 1.5;
+}
+.src-run.cite-evidence, .cite-evidence {
+  background: color-mix(in srgb, var(--teal) 18%, transparent);
+  box-shadow: inset 0 -2px 0 var(--teal);
+  border-radius: 2px;
+}
+.src-run.cite-verdict, .cite-verdict {
+  background: color-mix(in srgb, var(--amber) 18%, transparent);
+  box-shadow: inset 0 -2px 0 var(--amber);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    color-mix(in srgb, var(--ink) 8%, transparent) 3px,
+    color-mix(in srgb, var(--ink) 8%, transparent) 5px
+  );
+  border-radius: 2px;
+}
+.g-cite-legend {
+  margin: 8px 0 0;
+  font-size: .75rem;
+  color: var(--sub);
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .01ms !important;
@@ -2190,12 +2265,18 @@ select optgroup {
 <aside class="drawer" id="drawer" hidden aria-label="تفاصيل التمييز">
   <section class="drawer-section" aria-labelledby="why-title">
     <h3 id="why-title">لماذا هذا التمييز؟</h3>
+    <div id="g-route-host" class="g-route-host"></div>
     <dl class="kv" id="drawer-kv"></dl>
     <div class="score-bar" id="score-bar"></div>
     <div id="drawer-body"></div>
     <div class="drawer-actions">
-      <button type="button" class="btn" id="flash-evidence" title="يضيء الكلمات التي استند إليها الاقتراح">وميض الدليل</button>
+      <button type="button" class="btn" id="flash-evidence" title="يضيء الكلمات التي استند إليها الاقتراح">أظهر الشاهد</button>
     </div>
+    <div class="g-notes" id="g-notes">
+      <p class="g-notes-label">ملاحظة النموذج — غير مُسنَدة، ليست دليلاً</p>
+      <div class="g-notes-body" id="g-notes-body"></div>
+    </div>
+    <p class="g-disclaimer">وجود الشاهد لا يثبت صحة الاستنتاج؛ الاعتماد للمتخصص بعد فحص الدلالة</p>
   </section>
 
   <section class="drawer-section" aria-labelledby="tags-title">
@@ -2472,6 +2553,186 @@ select optgroup {
     auto_candidate: "مرشح للقبول",
     specialist: "بانتظار المتخصص"
   };
+  var LABEL_WAIT = "بانتظار المتخصص";
+  var LABEL_CANDIDATE = "مرشّح للمراجعة — ليس اعتماداً";
+  var LABEL_LEGACY_REASON = "لا رمز سبب: تشغيل سابق لعقد الإسناد";
+  var LABEL_UNKNOWN_REASON = "رمز سبب غير معروف: ";
+  var REASON_CODES = DATA.reason_codes || {};
+  var COMMITTEE_REASON_CODES = DATA.committee_reason_codes || {};
+
+  function groundingIcon(kind) {
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 20 20");
+    svg.setAttribute("width", "18");
+    svg.setAttribute("height", "18");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.classList.add("g-route-icon");
+    var p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("fill", "currentColor");
+    if (kind === "specialist") {
+      p.setAttribute("d", "M5 3h10v2.2L11.2 10 15 14.8V17H5v-2.2L8.8 10 5 5.2V3zm2.4 2.4 2.6 3.2-2.6 3.2h5.2L11 8.6l2.6-3.2H7.4z");
+    } else {
+      p.setAttribute("d", "M10 2.2 17.8 10 10 17.8 2.2 10 10 2.2zm0 2.9L5.1 10 10 14.9 14.9 10 10 5.1z");
+    }
+    svg.appendChild(p);
+    return svg;
+  }
+
+  function windowSpanIndex() {
+    var w = currentWindow();
+    var by = {};
+    ((w && w.spans) || []).forEach(function (s) { by[s.id] = s; });
+    return by;
+  }
+
+  function rangesForSpanIds(ids) {
+    var by = windowSpanIndex();
+    var ranges = [];
+    (ids || []).forEach(function (sid) {
+      var sp = by[sid];
+      if (!sp) return;
+      ranges.push({ start: sp.start, end: sp.end, id: sid });
+    });
+    return ranges;
+  }
+
+  function clearCitationHighlights(container) {
+    if (!container) return;
+    Array.prototype.forEach.call(container.querySelectorAll(".cite-evidence, .cite-verdict"), function (n) {
+      n.classList.remove("cite-evidence", "cite-verdict", "is-flash");
+    });
+  }
+
+  function wrapAbsRange(container, absStart, absEnd, className) {
+    if (!container || absStart == null || absEnd == null || absStart >= absEnd) return;
+    var runs = Array.prototype.slice.call(container.querySelectorAll(".src-run"));
+    runs.forEach(function (run) {
+      var a = parseInt(run.getAttribute("data-abs-start"), 10);
+      if (isNaN(a)) return;
+      var text = run.textContent || "";
+      var b = a + text.length;
+      var from = Math.max(absStart, a);
+      var to = Math.min(absEnd, b);
+      if (from >= to) return;
+      if (from === a && to === b) {
+        run.classList.add(className);
+        return;
+      }
+      var localFrom = from - a;
+      var localTo = to - a;
+      var before = text.slice(0, localFrom);
+      var mid = text.slice(localFrom, localTo);
+      var after = text.slice(localTo);
+      run.textContent = "";
+      if (before) run.appendChild(document.createTextNode(before));
+      var mark = document.createElement("span");
+      mark.className = className;
+      mark.textContent = mid;
+      run.appendChild(mark);
+      if (after) run.appendChild(document.createTextNode(after));
+    });
+  }
+
+  function highlightEvidenceSpans(container, evidenceIds, verdictIds) {
+    clearCitationHighlights(container);
+    if (!container) return;
+    rangesForSpanIds(evidenceIds).forEach(function (r) {
+      wrapAbsRange(container, r.start, r.end, "cite-evidence");
+    });
+    rangesForSpanIds(verdictIds).forEach(function (r) {
+      wrapAbsRange(container, r.start, r.end, "cite-verdict");
+    });
+  }
+
+  function committeeBlock(wid) {
+    var T = activeTafsir();
+    var block = (T && T.committee) || DATA.committee || {};
+    return block[wid || state.windowId] || null;
+  }
+
+  function committeeCodeForMove(move) {
+    if (!move) return "";
+    if (move.committee_reason_code) return String(move.committee_reason_code);
+    var c = committeeBlock();
+    if (!c || !c.moves) return "";
+    var mid = move.move_id || move.id;
+    for (var i = 0; i < c.moves.length; i++) {
+      if ((c.moves[i].move_id || c.moves[i].id) === mid) {
+        return c.moves[i].committee_reason_code ? String(c.moves[i].committee_reason_code) : "";
+      }
+    }
+    return "";
+  }
+
+  function modelNotesOf(h) {
+    var u = h && h.unverified_model_notes;
+    if (u && typeof u === "object") {
+      return {
+        rationale: u.rationale_ar || "",
+        alternatives: u.alternatives || []
+      };
+    }
+    return {
+      rationale: (h && h.rationale_ar) || "",
+      alternatives: (h && h.alternatives) || []
+    };
+  }
+
+  function fillRouteStatus(host, move) {
+    if (!host) return;
+    host.textContent = "";
+    if (!move) return;
+    var isAuto = move.route === "auto_candidate";
+    var row = document.createElement("div");
+    row.className = "g-route" + (isAuto ? " is-auto" : " is-specialist");
+    row.setAttribute("role", "status");
+    row.appendChild(groundingIcon(isAuto ? "auto" : "specialist"));
+    var lab = document.createElement("span");
+    lab.className = "g-route-label";
+    lab.textContent = isAuto ? LABEL_CANDIDATE : LABEL_WAIT;
+    row.appendChild(lab);
+    host.appendChild(row);
+    if (!isAuto) {
+      var code = move.reason_code;
+      var missing = (code == null || code === "");
+      var meaning = (!missing && REASON_CODES[code]) ? REASON_CODES[code] : "";
+      var p = document.createElement("p");
+      if (meaning) {
+        p.className = "g-reason";
+        p.textContent = meaning;
+      } else if (missing) {
+        p.className = "g-reason is-legacy";
+        p.textContent = LABEL_LEGACY_REASON;
+      } else {
+        p.className = "g-reason is-unknown";
+        p.textContent = LABEL_UNKNOWN_REASON + String(code);
+      }
+      host.appendChild(p);
+      var ccode = committeeCodeForMove(move);
+      var cmean = ccode ? (COMMITTEE_REASON_CODES[ccode] || "") : "";
+      if (cmean) {
+        var cp = document.createElement("p");
+        cp.className = "g-committee";
+        cp.textContent = cmean;
+        host.appendChild(cp);
+      }
+    }
+  }
+
+  function fillModelNotes(host, move) {
+    if (!host) return;
+    host.textContent = "";
+    var notes = modelNotesOf(move);
+    var p = document.createElement("p");
+    p.textContent = notes.rationale || "—";
+    host.appendChild(p);
+    if (notes.alternatives && notes.alternatives.length) {
+      var alt = document.createElement("p");
+      alt.textContent = "بدائل: " + notes.alternatives.join("، ");
+      host.appendChild(alt);
+    }
+  }
   var ANN_AR = {
     codex: "النموذج أ — Codex",
     deepseek: "النموذج ب — DeepSeek",
@@ -2566,6 +2827,8 @@ select optgroup {
     drawerKv: document.getElementById("drawer-kv"),
     scoreBar: document.getElementById("score-bar"),
     drawerBody: document.getElementById("drawer-body"),
+    gRouteHost: document.getElementById("g-route-host"),
+    gNotesBody: document.getElementById("g-notes-body"),
     contentChips: document.getElementById("content-chips"),
     contentSearch: document.getElementById("content-search"),
     secondaryChips: document.getElementById("secondary-chips"),
@@ -2721,6 +2984,7 @@ select optgroup {
     DATA.windows = T.windows || {};
     DATA.markers = T.markers || {};
     DATA.verified = T.verified || {};
+    DATA.committee = T.committee || {};
     DATA.layers = T.layers || {};
     DATA.raw = T.raw || {};
     DATA.classifier_ran = !!T.classifier_ran;
@@ -3442,6 +3706,9 @@ select optgroup {
         score: m.score,
         evidence_span_ids: m.evidence_span_ids || [],
         author_verdict_span_ids: m.author_verdict_span_ids || [],
+        reason_code: m.reason_code || null,
+        committee_reason_code: m.committee_reason_code || null,
+        unverified_model_notes: m.unverified_model_notes || null,
         marker_hits: m.marker_hits || [],
         editor_footnote_evidence: m.editor_footnote_evidence || [],
         alternatives: m.alternatives || [],
@@ -4135,7 +4402,6 @@ select optgroup {
     addKv("ثانوي", sec);
     addKv("نوع المحتوى", contentNames);
     addKv("اليقين", CERT_AR[h.certainty] || String(h.certainty || "—"));
-    addKv("المسار", ROUTE_AR[h.route] || String(h.route || "—"));
     addKv("الأصل", h.origin === "specialist" ? "متخصص" : "ذكاء");
     var statusBadge = document.createElement("span");
     statusBadge.className = "status-badge";
@@ -4143,6 +4409,7 @@ select optgroup {
     statusBadge.textContent = STATUS_AR[st] || st;
     addKv("الحالة", statusBadge);
     if (h.delta) addKv("ما تغيّر", String(h.delta));
+    fillRouteStatus(el.gRouteHost, h);
 
     var parts = (h.score && h.score.parts) || {};
     var total = (h.score && h.score.total) != null ? h.score.total : "—";
@@ -4194,13 +4461,10 @@ select optgroup {
       });
       el.drawerBody.appendChild(box);
     }
-    if (h.alternatives && h.alternatives.length) {
-      addNote("بدائل:", h.alternatives.join(", "));
-    }
-    addNote("التعليل:", h.rationale_ar || "—");
     if (h.flags && h.flags.length) {
       addNote("أعلام:", h.flags.join(", "));
     }
+    fillModelNotes(el.gNotesBody, h);
     el.hlNote.value = h.note || "";
     if (el.contentSearch) el.contentSearch.value = state.contentSearch || "";
     renderSecondaryChips(h);
@@ -4234,27 +4498,12 @@ select optgroup {
   function flashEvidence() {
     var h = findHighlight(state.selectedId);
     if (!h) return;
-    var w = currentWindow();
-    var by = {};
-    w.spans.forEach(function (s) { by[s.id] = s; });
-    (h.evidence_span_ids || []).forEach(function (sid) {
-      var sp = by[sid];
-      if (!sp) return;
-      var node = document.createElement("span");
-      // flash by temporarily selecting range via marks already rendered —
-      // find overlapping hl or create flash on text nodes
-    });
-    // Flash the highlight itself and any marks covering evidence offsets
-    var marks = el.tafsir.querySelectorAll(".hl, .mk");
-    marks.forEach(function (node) {
-      node.classList.add("is-flash");
-      setTimeout(function () { node.classList.remove("is-flash"); }, 1100);
-    });
-    // Narrower: flash selected + scroll
-    var sel = el.tafsir.querySelector('[data-hid="' + h.id + '"]');
-    if (sel) {
-      sel.classList.add("is-flash");
-      sel.scrollIntoView({ block: "center", behavior: "smooth" });
+    highlightEvidenceSpans(el.tafsir, h.evidence_span_ids, h.author_verdict_span_ids);
+    var first = el.tafsir.querySelector(".cite-evidence, .cite-verdict");
+    if (first) {
+      first.classList.add("is-flash");
+      first.scrollIntoView({ block: "center", behavior: "smooth" });
+      setTimeout(function () { first.classList.remove("is-flash"); }, 1100);
     }
   }
 
