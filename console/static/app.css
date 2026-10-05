@@ -580,3 +580,44 @@ pre.out { background: var(--surface-2); border: 1px solid var(--border); border-
   .matrix { grid-template-columns: 40px repeat(4, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* task chains: a retry is attempt n of its original task, folded under it */
+.task-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.att-toggle { display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 9px 0 5px; border-radius: 999px;
+  border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text-2); font: inherit; font-size: 12px;
+  font-weight: 600; line-height: 1; cursor: pointer; font-variant-numeric: tabular-nums; transition: border-color .15s, background .15s; }
+.att-toggle:hover { border-color: var(--accent); color: var(--text); }
+.att-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.att-toggle .ic { width: 14px; height: 14px; }
+.att-toggle .chev { transition: transform .15s; }
+[dir="rtl"] .att-toggle .chev { transform: scaleX(-1); }
+.att-toggle.on { background: var(--accent-soft); border-color: transparent; color: var(--accent-text); }
+.att-toggle.on .chev, [dir="rtl"] .att-toggle.on .chev { transform: rotate(90deg); }
+.tasks-t tr.grp.open td { background: var(--surface-2); border-bottom-color: transparent; }
+.tasks-t tr.sub td { background: var(--surface-2); padding-block: 7px; font-size: 13px; border-bottom: 1px dashed var(--border); }
+.tasks-t tr.sub.last td { border-bottom: 1px solid var(--border); }
+.tasks-t tr.sub:hover td { background: var(--surface-3); }
+.tasks-t tr.sub .bar { height: 6px; opacity: .85; }
+.tasks-t tr.sub .tree { display: inline-block; width: 12px; height: 12px; margin-inline: 2px 8px; vertical-align: 1px;
+  border-inline-start: 2px solid var(--border-strong); border-bottom: 2px solid var(--border-strong); border-end-start-radius: 5px; }
+.tasks-t tr.sub .att-name { font-weight: 600; }
+.chip.cause { font-size: 11.5px; padding: 1px 8px; margin-inline-start: 6px; }
+a.chip { text-decoration: none; }
+a.chip:hover { filter: brightness(1.08); }
+.attempts { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 14px; }
+.attempts li { position: relative; flex: 1 1 190px; min-width: 0; }
+.attempts li a { display: flex; flex-direction: column; gap: 6px; height: 100%; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--surface-2); color: inherit; text-decoration: none; transition: border-color .15s; }
+.attempts li a:hover { border-color: var(--accent); }
+.attempts li a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.attempts li.cur a { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.attempts li + li::before { content: ''; position: absolute; inset-inline-start: -14px; top: 50%; width: 14px; border-top: 2px solid var(--border-strong); }
+.attempts .att-mid { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.attempts .att-mid .chip.cause { margin-inline-start: 0; }
+.attempts .att-bot { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .attempts { flex-direction: column; gap: 10px; }
+  .attempts li { flex-basis: auto; }
+  .attempts li + li::before { inset-inline-start: 20px; top: -10px; width: 0; height: 10px; border-top: 0; border-inline-start: 2px solid var(--border-strong); }
+  .tasks-t tr.sub td { padding-block: 6px; }
+}

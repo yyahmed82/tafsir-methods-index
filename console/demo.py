@@ -646,6 +646,7 @@ def seed(months: int = 12, now: float | None = None, rng_seed: int = 2026) -> di
             con.executemany("INSERT INTO tasks(id,kind,title_ar,params,status,created_by,created_at,"
                             "started_at,finished_at,total_steps,done_steps,failed_steps,skipped_steps)"
                             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", sim.tasks)
+            db.backfill_task_chain(con)  # retries grouped under their original task
             con.executemany("INSERT INTO task_steps(id,task_id,seq,agent,tafsir,window,model,status,"
                             "started_at,finished_at,duration_ms,exit_code,result,output_tail)"
                             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", sim.steps)

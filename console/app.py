@@ -531,9 +531,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     @app.get("/api/dashboard")
     @operational()
     def dashboard(user: dict = Depends(need("view_dashboard"))) -> dict:
-        tasks = db.rows("SELECT id,kind,title_ar,status,total_steps,done_steps,failed_steps,"
-                        "skipped_steps,created_at,started_at,finished_at FROM tasks"
-                        " ORDER BY id DESC LIMIT 6")
+        tasks = runner.task_groups(6)  # originals with their retries folded in
         return {"llm": _probe(), "agents": runner.agents_state(), "progress": pipeline.progress(),
                 "gates": pipeline.gates(), "tasks": tasks, "simulated": db.mode() == "demo",
                 "sample_ayah": settings.get("general")["sample_ayah"],
@@ -586,11 +584,8 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     @app.get("/api/tasks")
     @operational()
     def tasks(user: dict = Depends(need("view_tasks")), limit: int = 50) -> dict:
-        rows = db.rows("SELECT t.*, u.name AS created_by_name FROM tasks t LEFT JOIN users u"
-                       " ON u.id=t.created_by ORDER BY t.id DESC LIMIT ?", (min(limit, 200),))
-        for r in rows:
-            r["params"] = db.loads(r["params"], {})
-        return {"tasks": rows}
+        # one row per original task; its retries are attempts inside it (chain.attempts)
+        return {"tasks": runner.task_groups(limit)}
 
     @app.post("/api/tasks/preview")
     @operational(write=True)
@@ -647,8 +642,9 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         t["params"] = db.loads(t["params"], {})
         steps = db.rows("SELECT * FROM task_steps WHERE task_id=? ORDER BY seq", (task_id,))
         for s in steps:
+            s["cause"] = runner.failure_cause(s)
             s["result"] = db.loads(s["result"])
-        return {"task": t, "steps": steps}
+        return {"task": t, "steps": steps, "chain": runner.task_chain(task_id)}
 
     @app.post("/api/tasks/{task_id}/cancel")
     @operational(write=True)

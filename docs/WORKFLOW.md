@@ -62,6 +62,24 @@ How a unit goes from the AI committee to mirqah.app, and who does what. The cons
   specialist, chair of the same window) wait for it.
 - "Retry failed steps" still gives a fresh set of attempts.
 
+### Retries belong to their original task
+
+- A manual **Retry failed steps** is not a new, unrelated task: it is **retry n of the
+  original** (`tasks.origin_id`, `tasks.retry_of`). Pressed on the original or on any of its
+  retries, it runs only the steps whose **last** outcome in the whole chain is still open
+  (failed, interrupted, or skipped because an earlier agent had no result), and it is refused
+  while another attempt of the same chain is queued or running.
+- The task list shows **one row per original** with the combined result (the last outcome of
+  every step) and a ↻ n button that folds the attempts open under it: original run, retry 1,
+  retry 2 … each with its own counts and the cause (timed out, console restart, engine
+  offline, model looped, missing input). A chain that ends clean shows *done · fixed by
+  retry ×n*; the original keeps its own counts as history.
+- The task page has an **Attempts** card (all attempts, the final result) and, on the
+  original, a *fixed in #n* link on every step a later attempt finished.
+- When the classifier of a window fails, its method specialist is **skipped** (no result to
+  review), not counted as a second failure; the retry runs it again after the classifier.
+- Older retries (linked only by `params.retry_of`) are grouped automatically on start.
+
 ## Publishing (no git merge)
 
 - **Publish** page (super admins): what is approved now, what would change on mirqah.app

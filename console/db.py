@@ -298,7 +298,39 @@ _STEP_DECISION_COLUMNS = {
                    "alerted_at": "REAL",
                    "interruptions": "INTEGER NOT NULL DEFAULT 0"},
     "decisions": {"teach": "TEXT NOT NULL DEFAULT ''"},
+    # a retry is part of its original task: retry_of = the attempt it retried,
+    # origin_id = the original task (NULL on the original itself)
+    "tasks": {"retry_of": "INTEGER", "origin_id": "INTEGER"},
 }
+
+
+def backfill_task_chain(con: sqlite3.Connection) -> int:
+    """Link retries written by older releases (``params.retry_of`` only) to their
+    original task. Idempotent; returns how many rows changed."""
+    parent: dict[int, int | None] = {}
+    current: dict[int, tuple] = {}
+    for r in con.execute("SELECT id, params, retry_of, origin_id FROM tasks").fetchall():
+        rid = r[2]
+        if rid is None:
+            p = loads(r[1], {}) or {}
+            rid = p.get("retry_of") if isinstance(p, dict) else None
+        try:
+            parent[int(r[0])] = int(rid) if rid else None
+        except (TypeError, ValueError):
+            parent[int(r[0])] = None
+        current[int(r[0])] = (r[2], r[3])
+    changed = 0
+    for tid, p in parent.items():
+        if p is None:
+            continue
+        root, seen = p, {tid}
+        while parent.get(root) and root not in seen:
+            seen.add(root)
+            root = parent[root]
+        if current[tid] != (p, root):
+            con.execute("UPDATE tasks SET retry_of=?, origin_id=? WHERE id=?", (p, root, tid))
+            changed += 1
+    return changed
 
 
 def _migrate(con: sqlite3.Connection) -> None:
@@ -306,6 +338,8 @@ def _migrate(con: sqlite3.Connection) -> None:
     _add_columns(con, "outbox", {"html": "TEXT"})
     for table, columns in _STEP_DECISION_COLUMNS.items():
         _add_columns(con, table, columns)
+    con.execute("CREATE INDEX IF NOT EXISTS tasks_origin ON tasks(origin_id)")
+    backfill_task_chain(con)
     # every user's primary role is also one of their roles
     con.execute("INSERT OR IGNORE INTO user_roles(user_id, role_id) SELECT id, role_id FROM users")
 
@@ -338,6 +372,8 @@ def init_demo() -> Path:
         con.executescript(DEMO_SCHEMA)
         for table, columns in _STEP_DECISION_COLUMNS.items():
             _add_columns(con, table, columns)
+        con.execute("CREATE INDEX IF NOT EXISTS tasks_origin ON tasks(origin_id)")
+        backfill_task_chain(con)
         con.commit()
     finally:
         con.close()

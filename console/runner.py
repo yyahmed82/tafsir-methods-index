@@ -184,26 +184,194 @@ def cancel_task(task_id: int, user: dict) -> None:
     db.audit("task.cancel", user_id=user["id"], target=str(task_id))
 
 
+# ------------------------------------------------------------------ retries as one chain
+# «Retry failed steps» never starts an unrelated task: every retry is attempt n of the
+# original task (origin_id), runs only what is still open in the whole chain, and the
+# original shows the combined result (the last outcome of every step).
+
+_ACTIVE = ("queued", "running")
+
+
+def _step_key(s: dict) -> tuple:
+    return (s["agent"], s["tafsir"], s["window"], s.get("variant") or "")
+
+
+def _is_open(s: dict) -> bool:
+    """A step outcome that still needs a run: failed, interrupted, or skipped because
+    an earlier agent of the same window had no result."""
+    if s["status"] in ("failed", "interrupted"):
+        return True
+    if s["status"] == "skipped":
+        r = s.get("result")
+        r = db.loads(r, {}) if isinstance(r, str) else (r or {})
+        return (r or {}).get("reason") == "agent_missing"
+    return False
+
+
+def failure_cause(s: dict) -> str | None:
+    """Why a step failed, in one word the UI translates (no model output is shown)."""
+    if s["status"] not in ("failed", "interrupted"):
+        return None
+    text = f"{s.get('output_tail') or ''} {s.get('last_error') or ''}"
+    if s["status"] == "interrupted" or s.get("exit_code") in (-15, -9, -2):
+        return "restart"
+    if "repeating itself" in text or "repeated itself" in text:
+        return "loop"
+    if "timed out" in text:
+        return "timeout"
+    if workflow.ENGINE_DOWN_RE.search(text):
+        return "engine"
+    if "No such file" in text or "no verified result" in text:
+        return "missing_input"
+    return "error"
+
+
+def _chain_rows(origin: int) -> list[dict]:
+    return db.rows("SELECT t.*, u.name AS created_by_name FROM tasks t LEFT JOIN users u"
+                   " ON u.id=t.created_by WHERE t.id=? OR t.origin_id=? ORDER BY t.id",
+                   (origin, origin))
+
+
+def _final_steps(task_ids: list[int], steps: list[dict] | None = None) -> dict[tuple, dict]:
+    """The last outcome of every step across the attempts (later attempts win)."""
+    if steps is None:
+        if not task_ids:
+            return {}
+        q = ",".join("?" * len(task_ids))
+        steps = db.rows(f"SELECT * FROM task_steps WHERE task_id IN ({q}) ORDER BY task_id, seq",
+                        task_ids)
+    final: dict[tuple, dict] = {}
+    for st in sorted(steps, key=lambda x: (x["task_id"], x["seq"])):
+        final[_step_key(st)] = st
+    return final
+
+
+def _attempt(t: dict, n: int, steps: list[dict]) -> dict:
+    causes = [c for c in (failure_cause(st) for st in steps if st["task_id"] == t["id"]) if c]
+    return {"id": t["id"], "n": n, "status": t["status"], "total_steps": t["total_steps"],
+            "done_steps": t["done_steps"], "failed_steps": t["failed_steps"],
+            "skipped_steps": t["skipped_steps"], "created_at": t["created_at"],
+            "started_at": t.get("started_at"), "finished_at": t.get("finished_at"),
+            "created_by_name": t.get("created_by_name"),
+            "cause": max(set(causes), key=causes.count) if causes else None}
+
+
+def chain_summary(chain: list[dict], steps: list[dict] | None = None) -> dict:
+    """attempts (original = n 0) and the combined result of the whole chain."""
+    ids = [t["id"] for t in chain]
+    if steps is None:
+        q = ",".join("?" * len(ids))
+        steps = db.rows(f"SELECT * FROM task_steps WHERE task_id IN ({q}) ORDER BY task_id, seq",
+                        ids)
+    origin = chain[0]
+    attempts = [_attempt(t, i, steps) for i, t in enumerate(chain)]
+    if len(chain) == 1:
+        eff = {"status": origin["status"], "done": origin["done_steps"],
+               "failed": origin["failed_steps"], "skipped": origin["skipped_steps"],
+               "total": origin["total_steps"], "recovered": False, "retries": 0}
+        return {"origin_id": origin["id"], "attempts": attempts, "effective": eff}
+    final = _final_steps(ids, steps)
+    done = sum(1 for st in final.values() if st["status"] == "done")
+    failed = sum(1 for st in final.values() if _is_open(st))
+    skipped = sum(1 for st in final.values() if st["status"] == "skipped" and not _is_open(st))
+    pending = sum(1 for st in final.values() if st["status"] in ("queued", "running", "cancelled"))
+    active = [t for t in chain if t["status"] in _ACTIVE]
+    if active:
+        status = "running" if any(t["status"] == "running" for t in active) else "queued"
+    elif failed:
+        status = "failed"
+    elif pending:
+        status = "cancelled"
+    else:
+        status = "done"
+    eff = {"status": status, "done": done, "failed": failed, "skipped": skipped,
+           "total": max(origin["total_steps"], len(final)),
+           "recovered": status == "done" and any(t["failed_steps"] for t in chain),
+           "retries": len(chain) - 1}
+    return {"origin_id": origin["id"], "attempts": attempts, "effective": eff}
+
+
+def task_groups(limit: int = 50) -> list[dict]:
+    """Original tasks, newest activity first, each with its retries and combined result."""
+    heads = db.rows("SELECT COALESCE(origin_id, id) AS root, MAX(id) AS last FROM tasks"
+                    " GROUP BY root ORDER BY last DESC LIMIT ?", (max(1, min(limit, 200)),))
+    if not heads:
+        return []
+    roots = [h["root"] for h in heads]
+    q = ",".join("?" * len(roots))
+    rows = db.rows(f"SELECT t.*, u.name AS created_by_name FROM tasks t LEFT JOIN users u"
+                   f" ON u.id=t.created_by WHERE t.id IN ({q}) OR t.origin_id IN ({q})"
+                   f" ORDER BY t.id", roots + roots)
+    chains: dict[int, list[dict]] = {r: [] for r in roots}
+    for t in rows:
+        chains.setdefault(t["origin_id"] or t["id"], []).append(t)
+    multi = [t["id"] for r in roots for t in chains.get(r, []) if len(chains.get(r, [])) > 1]
+    steps: list[dict] = []
+    if multi:
+        qm = ",".join("?" * len(multi))
+        steps = db.rows(f"SELECT id, task_id, seq, agent, tafsir, window, variant, status, result,"
+                        f" exit_code, output_tail, last_error FROM task_steps"
+                        f" WHERE task_id IN ({qm}) ORDER BY task_id, seq", multi)
+    out = []
+    for r in roots:
+        chain = chains.get(r) or []
+        if not chain or chain[0]["id"] != r:
+            continue  # an orphan retry (its original is gone): nothing to group it under
+        g = dict(chain[0])
+        g["params"] = db.loads(g["params"], {})
+        g["chain"] = chain_summary(chain, [s for s in steps if s["task_id"] in
+                                           {t["id"] for t in chain}] if len(chain) > 1 else [])
+        out.append(g)
+    return out
+
+
+def task_chain(task_id: int) -> dict | None:
+    """The chain a task belongs to, plus, for the original's steps, where a later
+    attempt finished them (fixed_in)."""
+    t = db.row("SELECT id, origin_id FROM tasks WHERE id=?", (task_id,))
+    if t is None:
+        return None
+    chain = _chain_rows(t["origin_id"] or t["id"])
+    if not chain:
+        return None
+    summary = chain_summary(chain)
+    summary["position"] = next((a["n"] for a in summary["attempts"] if a["id"] == task_id), 0)
+    if len(chain) > 1:
+        final = _final_steps([c["id"] for c in chain])
+        summary["final"] = {f"{k[0]}|{k[1]}|{k[2]}|{k[3]}": {"status": v["status"],
+                                                            "task_id": v["task_id"]}
+                            for k, v in final.items()}
+    return summary
+
+
 def retry_failed(task_id: int, user: dict) -> int:
+    """Attempt n+1 of the task's chain: only the steps whose last outcome is still open."""
     t = db.row("SELECT * FROM tasks WHERE id=?", (task_id,))
     if t is None:
         raise TaskError("task_not_found")
-    failed = db.rows("SELECT * FROM task_steps WHERE task_id=? AND (status IN"
-                     " ('failed','interrupted') OR (status='skipped' AND agent='chair'"
-                     " AND result LIKE '%\"agent_missing\"%')) ORDER BY seq", (task_id,))
+    origin_id = t["origin_id"] or t["id"]
+    chain = _chain_rows(origin_id)
+    if any(c["status"] in _ACTIVE for c in chain):
+        raise TaskError("retry_running")
+    final = _final_steps([c["id"] for c in chain])
+    failed = [st for st in final.values() if _is_open(st)]
     if not failed:
         raise TaskError("nothing_to_retry")
     order = {"packet_check": 0, "classifier": 1, "method_specialist": 2, "verifier": 3,
              "chair": 4}
-    failed.sort(key=lambda s: (order.get(s["agent"], 9), s["seq"]))  # one model at a time
-    p = db.loads(t["params"], {})
-    p["retry_of"] = task_id
+    failed.sort(key=lambda s: (order.get(s["agent"], 9), s["tafsir"], s["window"],
+                               s.get("variant") or ""))  # one model at a time
+    origin = chain[0]
+    parent = chain[-1]["id"]
+    n = len(chain)  # the original is attempt 0
+    p = db.loads(origin["params"], {})
+    p.update({"retry_of": parent, "origin_id": origin_id, "attempt": n})
     with db.connect() as con:
         cur = con.execute(
-            "INSERT INTO tasks(kind,title_ar,params,status,created_by,created_at,total_steps)"
-            " VALUES (?,?,?,?,?,?,?)",
-            (t["kind"], f"إعادة الفاشل من المهمة #{task_id}", db.dumps(p), "queued",
-             user["id"], db.now(), len(failed)),
+            "INSERT INTO tasks(kind,title_ar,params,status,created_by,created_at,total_steps,"
+            "retry_of,origin_id) VALUES (?,?,?,?,?,?,?,?,?)",
+            (origin["kind"], f"إعادة {n} للمهمة #{origin_id}", db.dumps(p), "queued",
+             user["id"], db.now(), len(failed), parent, origin_id),
         )
         new_id = int(cur.lastrowid)
         con.executemany(
@@ -212,7 +380,8 @@ def retry_failed(task_id: int, user: dict) -> int:
             [(new_id, i, s["agent"], s["tafsir"], s["window"], s["model"],
               s.get("variant") or "") for i, s in enumerate(failed)],
         )
-    db.audit("task.retry", user_id=user["id"], target=str(new_id), detail={"from": task_id})
+    db.audit("task.retry", user_id=user["id"], target=str(new_id),
+             detail={"from": parent, "origin": origin_id, "attempt": n, "steps": len(failed)})
     return new_id
 
 
@@ -285,6 +454,12 @@ def _chair_inputs_missing(step: dict) -> list[str]:
     return missing
 
 
+def _classifier_missing(step: dict) -> bool:
+    slug = pipeline.variant_annotator(pipeline.models()["classifier_slug"],
+                                      step.get("variant") or None)
+    return not pipeline.verified_path(step["tafsir"], slug, step["window"]).is_file()
+
+
 def _run_step(task: dict, step: dict) -> None:
     params = db.loads(task["params"], {})
     started = db.now()
@@ -306,6 +481,12 @@ def _run_step(task: dict, step: dict) -> None:
                        (db.now(), db.dumps({"reason": "already_verified"}), step["id"]))
             db.execute("UPDATE tasks SET skipped_steps=skipped_steps+1 WHERE id=?", (task["id"],))
             return
+    if step["agent"] == "method_specialist" and _classifier_missing(step):
+        # the classifier of this window and arm failed: nothing to review, so this is
+        # not a second failure; «retry failed steps» runs it again after the classifier
+        _record_step(task, step, started, 0, "skipped: no verified result yet from classifier",
+                     {"reason": "agent_missing", "missing": ["classifier"]}, status="skipped")
+        return
     if step["agent"] == "chair":
         missing = _chair_inputs_missing(step)
         if missing:

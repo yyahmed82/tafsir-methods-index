@@ -114,6 +114,7 @@
     flask: 'M9 3h6M10 3v6L4.5 18.5A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 1.7-2.5L14 9V3M7.5 14h9',
     upload: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',
     inbox: 'M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z',
+    chev: 'M9 6l6 6-6 6',
   };
   const ico = (name, cls = '') => `<svg class="ic ${cls}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[name] || ''}"/></svg>`;
 
@@ -447,9 +448,7 @@
         <span class="mono faint">${fNum(r.both)}/${fNum(r.windows)}</span></div>`).join('');
     const g = d.gates;
     const gate = (k, on) => `<div class="gate"><span>${T(k)}</span><span class="chip ${on ? 'ok' : 'warn'}">${ico(on ? 'check' : 'lock')} ${T(on ? 'gate.open' : 'gate.closed')}</span></div>`;
-    const tasks = d.tasks.length ? d.tasks.map((x) => `<tr class="click" data-href="#/tasks/${x.id}"><td class="mono">#${x.id}</td><td style="min-width:200px">${esc(x.title_ar)}</td>
-        <td>${statusChip(x.status)}</td><td class="hide-sm" style="min-width:120px"><div class="bar"><i style="width:${pct(x.done_steps + x.skipped_steps, x.total_steps)}%"></i><i class="r" style="width:${pct(x.failed_steps, x.total_steps)}%"></i></div></td>
-        <td class="num">${fNum(x.done_steps + x.skipped_steps)}/${fNum(x.total_steps)}</td></tr>`).join('')
+    const tasks = d.tasks.length ? d.tasks.map((x) => taskGroupRows(x, { compact: true })).join('')
       : `<tr><td colspan="5" class="empty">${T('tasks.empty')}</td></tr>`;
     const detail = agentDetail(sel, d);
     const sampleBtn = canDo('run_tasks') ? `<button class="btn primary" data-act="run-sample" ${llm.reachable ? '' : `disabled title="${T('dash.engine_offline_note')}"`}>${ico('play')} ${T('dash.start_sample')} <span class="mono">${esc(d.sample_ayah)}</span></button>` : '';
@@ -484,7 +483,7 @@
           <div class="row"><span class="faint">${T('agent.verifier')}:</span>${inst(llm.verifier_model, llm.verifier_installed)}</div></div></div></section>
       </div>
       <section class="mt"><div class="card-h"><h2>${T('dash.recent_tasks')}</h2><a class="btn sm" href="#/tasks">${T('nav.tasks')} ${ico('arrow')}</a></div>
-        <div class="table-wrap"><table class="t"><tbody>${tasks}</tbody></table></div></section>`;
+        <div class="table-wrap"><table class="t tasks-t"><tbody>${tasks}</tbody></table></div></section>`;
   }
   function agentDetail(a, d) {
     const did = (a.recent || []).map((r) => `<div class="ev"><span class="tm">${esc(fTime(r.finished_at))}</span><span>${esc(tafsirName(r.tafsir))} <span class="mono">${esc(r.window)}</span> · ${statusChip(r.status)}
@@ -853,17 +852,67 @@
   }
 
   // ------------------------------------------------------------ tasks
+  // A retry is not a new task: it is attempt n of the original. Lists show one row per
+  // original with the combined result (last outcome of every step); attempts fold under it.
+  const effOf = (x) => (x.chain && x.chain.effective) || { status: x.status, done: x.done_steps, failed: x.failed_steps,
+    skipped: x.skipped_steps, total: x.total_steps, retries: 0, recovered: false };
+  const stepBar = (done, skipped, failed, total) => `<div class="bar"><i style="width:${pct(done + skipped, total)}%"></i><i class="r" style="width:${pct(failed, total)}%"></i></div>`;
+  const stepCounts = (done, failed, skipped, total) => `<span dir="ltr" class="ltr-num">${fNum(done)}✓ ${failed ? `${fNum(failed)}✕ ` : ''}${skipped ? `${fNum(skipped)}↷ ` : ''}/ ${fNum(total)}</span>`;
+  const taskTitle = (x) => `<bdi dir="auto">${esc(x.title_ar)}</bdi>`;  // Arabic titles keep their order in an English page
+  const attemptName = (a) => (a.n ? T('tasks.retry_n', { n: a.n }) : T('tasks.original'));
+  const causeChip = (c) => (c ? ` <span class="chip ${c === 'restart' || c === 'engine' ? 'warn' : 'bad'} cause">${T('tasks.cause.' + c)}</span>` : '');
+  const recoveredChip = (e) => (e.recovered ? ` <span class="chip ok" title="${T('tasks.after_retries', { n: e.retries })}">${ico('refresh')} ${T('tasks.after_retries', { n: e.retries })}</span>` : '');
+  const attemptsOpen = (x) => {
+    const atts = (x.chain && x.chain.attempts) || [];
+    if (atts.length < 2) return false;
+    S.taskOpen = S.taskOpen || {};
+    if (x.id in S.taskOpen) return S.taskOpen[x.id];
+    return atts.some((a) => a.n && ['queued', 'running'].includes(a.status));  // a retry is running: show it
+  };
+  const attemptsToggle = (x, open) => {
+    const e = effOf(x);
+    if (!e.retries) return '';
+    return `<button type="button" class="att-toggle ${open ? 'on' : ''}" data-act="toggle-attempts" data-id="${x.id}" aria-expanded="${open}"
+      title="${T('tasks.retries_title', { n: e.retries })}" aria-label="${T('tasks.retries_title', { n: e.retries })}">${ico('chev', 'chev')}${ico('refresh')}<b>${fNum(e.retries)}</b></button>`;
+  };
+  function taskGroupRows(x, { compact = false } = {}) {
+    const e = effOf(x);
+    const atts = (x.chain && x.chain.attempts) || [];
+    const open = attemptsOpen(x);
+    const main = `<tr class="click grp ${open ? 'open' : ''}" data-href="#/tasks/${x.id}" data-grp="${x.id}">
+        <td class="mono">#${x.id}</td><td${compact ? ' style="min-width:200px"' : ''}><div class="task-title">${taskTitle(x)}${x.params && x.params.bulk ? ` <span class="chip warn">${T('tasks.bulk')}</span>` : ''}${attemptsToggle(x, open)}</div></td>
+        <td>${statusChip(e.status)}${compact ? '' : recoveredChip(e)}</td>
+        <td class="${compact ? 'hide-sm' : ''}" style="min-width:${compact ? 120 : 140}px">${stepBar(e.done, e.skipped, e.failed, e.total)}</td>
+        <td class="num">${compact ? `<span dir="ltr" class="ltr-num">${fNum(e.done + e.skipped)}/${fNum(e.total)}</span>` : stepCounts(e.done, e.failed, e.skipped, e.total)}</td>
+        ${compact ? '' : `<td class="hide-sm">${esc(x.created_by_name || '')}</td><td class="num hide-sm">${esc(fDT(x.created_at))}</td>`}</tr>`;
+    if (atts.length < 2) return main;
+    const subs = atts.map((a, i) => `<tr class="click sub ${i === atts.length - 1 ? 'last' : ''}" data-href="#/tasks/${a.id}" data-parent="${x.id}" ${open ? '' : 'hidden'}>
+        <td class="mono faint">#${a.id}</td><td><span class="tree" aria-hidden="true"></span><span class="att-name">${attemptName(a)}</span>${causeChip(a.cause)}</td>
+        <td>${statusChip(a.status)}</td>
+        <td class="${compact ? 'hide-sm' : ''}">${stepBar(a.done_steps, a.skipped_steps, a.failed_steps, a.total_steps)}</td>
+        <td class="num">${compact ? `<span dir="ltr" class="ltr-num">${fNum(a.done_steps + a.skipped_steps)}/${fNum(a.total_steps)}</span>` : stepCounts(a.done_steps, a.failed_steps, a.skipped_steps, a.total_steps)}</td>
+        ${compact ? '' : `<td class="hide-sm">${esc(a.created_by_name || '')}</td><td class="num hide-sm">${esc(fDT(a.created_at))}</td>`}</tr>`).join('');
+    return main + subs;
+  }
+  function toggleAttempts(id) {
+    const head = $(`tr[data-grp="${id}"]`);
+    if (!head) return;
+    const open = !head.classList.contains('open');
+    S.taskOpen = S.taskOpen || {};
+    S.taskOpen[id] = open;
+    head.classList.toggle('open', open);
+    const b = $('.att-toggle', head);
+    if (b) { b.classList.toggle('on', open); b.setAttribute('aria-expanded', String(open)); }
+    $$(`tr[data-parent="${id}"]`).forEach((r) => { r.hidden = !open; });
+  }
+
   async function viewTasks() {
     const load = async () => {
       const d = await api('/tasks');
-      const rows = d.tasks.length ? d.tasks.map((x) => `<tr class="click" data-href="#/tasks/${x.id}">
-          <td class="mono">#${x.id}</td><td>${esc(x.title_ar)}${x.params.bulk ? ` <span class="chip warn">${T('tasks.bulk')}</span>` : ''}</td>
-          <td>${statusChip(x.status)}</td><td style="min-width:140px"><div class="bar"><i style="width:${pct(x.done_steps + x.skipped_steps, x.total_steps)}%"></i><i class="r" style="width:${pct(x.failed_steps, x.total_steps)}%"></i></div></td>
-          <td class="num">${fNum(x.done_steps)}✓ ${x.failed_steps ? `${fNum(x.failed_steps)}✕ ` : ''}${x.skipped_steps ? `${fNum(x.skipped_steps)}↷ ` : ''}/ ${fNum(x.total_steps)}</td>
-          <td class="hide-sm">${esc(x.created_by_name || '')}</td><td class="num hide-sm">${esc(fDT(x.created_at))}</td></tr>`).join('')
+      const rows = d.tasks.length ? d.tasks.map((x) => taskGroupRows(x)).join('')
         : `<tr><td colspan="7" class="empty">${T('tasks.empty')}</td></tr>`;
       setPage(`${head('tasks.title', 'tasks.subtitle', canDo('run_tasks') ? `<button class="btn primary" data-act="new-task">${ico('plus')} ${T('tasks.new')}</button>` : '')}
-        <div class="table-wrap"><table class="t"><thead><tr><th>#</th><th>${T('tasks.kind')}</th><th>${T('common.status')}</th><th>${T('tasks.steps')}</th><th></th><th class="hide-sm">${T('tasks.created_by')}</th><th class="hide-sm">${T('common.created')}</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+        <div class="table-wrap"><table class="t tasks-t"><thead><tr><th>#</th><th>${T('tasks.kind')}</th><th>${T('common.status')}</th><th>${T('tasks.steps')}</th><th></th><th class="hide-sm">${T('tasks.created_by')}</th><th class="hide-sm">${T('common.created')}</th></tr></thead><tbody>${rows}</tbody></table></div>`);
     };
     await load();
     every(4000, () => { if (!$('.modal')) load().catch(() => {}); });
@@ -955,25 +1004,46 @@
         if (r.reason_code) return `<span class="chip bad mono">${esc(r.reason_code)}</span>`;
         return '';
       };
+      // the chain this task belongs to: the original and its retries (attempt 1, 2, …)
+      const ch = d.chain && d.chain.attempts && d.chain.attempts.length > 1 ? d.chain : null;
+      const eff = ch ? ch.effective : effOf(x);
+      const chainActive = ch ? ch.attempts.some((a) => ['queued', 'running'].includes(a.status)) : false;
+      const isRetry = ch && ch.position > 0;
+      const later = (s) => {  // on the original: which later attempt finished this step
+        if (!ch || !ch.final) return '';
+        const f = ch.final[`${s.agent}|${s.tafsir}|${s.window}|${s.variant || ''}`];
+        if (!f || f.task_id === x.id) return '';
+        return f.status === 'done' ? ` <a class="chip ok" href="#/tasks/${f.task_id}">${ico('check')} ${T('tasks.fixed_in', { id: f.task_id })}</a>`
+          : ` <a class="chip ${['queued', 'running'].includes(f.status) ? 'info' : 'warn'}" href="#/tasks/${f.task_id}">${ico('refresh')} ${T('tasks.retried_in', { id: f.task_id })}</a>`;
+      };
       const rows = d.steps.map((s) => `<tr class="click" data-act="step" data-id="${s.id}"><td class="num">${s.seq + 1}</td><td>${agentName(s.agent)}${s.variant ? ` <span class="chip violet" title="${T('variant.profile')}">${T('variant.short.' + s.variant)}</span>` : ''}</td><td>${esc(tafsirName(s.tafsir))}</td>
-        <td class="mono">${esc(s.window)}</td><td class="mono hide-sm">${esc(s.model || '—')}</td><td>${statusChip(s.status)}${retryChip(s)}</td><td class="num">${fDur(s.duration_ms)}</td>
+        <td class="mono">${esc(s.window)}</td><td class="mono hide-sm">${esc(s.model || '—')}</td><td>${statusChip(s.status)}${retryChip(s)}${causeChip(s.cause)}${later(s)}</td><td class="num">${fDur(s.duration_ms)}</td>
         <td class="hide-sm">${stepNote(s.result)}</td></tr>`).join('');
       const actions = [
         canDo('manage_tasks') && ['queued', 'running'].includes(x.status) ? `<button class="btn danger" data-act="cancel-task" data-id="${x.id}">${ico('stop')} ${T('tasks.cancel')}</button>` : '',
-        canDo('run_tasks') && x.failed_steps && !['queued', 'running'].includes(x.status) ? `<button class="btn warn" data-act="retry-task" data-id="${x.id}">${ico('refresh')} ${T('tasks.retry')}</button>` : '',
+        canDo('run_tasks') && eff.failed && !chainActive && !['queued', 'running'].includes(x.status) ? `<button class="btn warn" data-act="retry-task" data-id="${x.id}" title="${T('tasks.retry_hint')}">${ico('refresh')} ${T('tasks.retry')}</button>` : '',
         `<a class="btn" href="#/tasks">${T('common.back')}</a>`].join('');
       const done = x.done_steps + x.skipped_steps;
       S.taskSteps = d.steps;
-      setPage(`<div class="page-head"><div><div class="kicker">#${x.id}</div><h1>${esc(x.title_ar)}</h1>
-          <p class="muted">${statusChip(x.status)} · ${T('tasks.created_by')} ${esc(x.created_by_name || '—')} · ${esc(fDT(x.created_at))}</p></div><div class="head-actions">${actions}</div></div>
-        <section class="card mb"><div class="row between"><b>${fNum(done)} / ${fNum(x.total_steps)}</b><span class="faint">${fNum(x.failed_steps)} ${T('dash.failed')} · ${fNum(x.skipped_steps)} ${T('tasks.status.skipped')}</span></div>
+      const attempts = ch ? `<section class="card mb attempts-card"><div class="row between"><b>${T('tasks.attempts')}</b>
+          <span class="row tight">${T('tasks.final')}: ${statusChip(eff.status)} <span class="faint num">${stepCounts(eff.done, eff.failed, eff.skipped, eff.total)}</span></span></div>
+          <ol class="attempts">${ch.attempts.map((a) => `<li class="${a.id === x.id ? 'cur' : ''}"><a href="#/tasks/${a.id}" ${a.id === x.id ? 'aria-current="page"' : ''}>
+            <span class="att-top"><span class="mono faint">#${a.id}</span> <b>${attemptName(a)}</b></span>
+            <span class="att-mid">${statusChip(a.status)}${causeChip(a.cause)}</span>
+            <span class="att-bot faint">${stepCounts(a.done_steps, a.failed_steps, a.skipped_steps, a.total_steps)} · ${esc(fDT(a.created_at))}</span></a></li>`).join('')}</ol>
+          <p class="faint mt-s">${T('tasks.chain_note')}</p></section>` : '';
+      const title = isRetry ? T('tasks.retry_of', { n: ch.position, id: ch.origin_id }) : taskTitle(x);
+      setPage(`<div class="page-head"><div><div class="kicker">#${x.id}${isRetry ? ` · <a href="#/tasks/${ch.origin_id}">${T('tasks.original')} #${ch.origin_id}</a>` : ''}</div><h1>${title}</h1>
+          <p class="muted">${statusChip(x.status)}${ch && !isRetry ? recoveredChip(eff) : ''} · ${T('tasks.created_by')} ${esc(x.created_by_name || '—')} · ${esc(fDT(x.created_at))}</p></div><div class="head-actions">${actions}</div></div>
+        ${attempts}
+        <section class="card mb"><div class="row between"><b>${fNum(done)} / ${fNum(x.total_steps)}${ch ? ` <span class="faint">· ${T(isRetry ? 'tasks.this_retry' : 'tasks.this_run')}</span>` : ''}</b><span class="faint">${fNum(x.failed_steps)} ${T('dash.failed')} · ${fNum(x.skipped_steps)} ${T('tasks.status.skipped')}</span></div>
           <div class="bar lg mt-s"><i style="width:${pct(done, x.total_steps)}%"></i><i class="r" style="width:${pct(x.failed_steps, x.total_steps)}%"></i></div>
           <p class="faint mt-s">${T('agent.classifier')}: <span class="mono">${esc((x.params.models || {}).classifier || '')}</span> · ${T('agent.verifier')}: <span class="mono">${esc((x.params.models || {}).verifier || '')}</span></p></section>
         <div class="table-wrap"><table class="t"><thead><tr><th>${T('tasks.step')}</th><th>${T('tasks.agent')}</th><th>${T('tasks.tafsir')}</th><th>${T('tasks.window')}</th><th class="hide-sm">${T('tasks.model')}</th><th>${T('common.status')}</th><th>${T('tasks.duration')}</th><th class="hide-sm">${T('tasks.result')}</th></tr></thead><tbody>${rows}</tbody></table></div>`);
-      return x.status;
+      return ['queued', 'running'].includes(x.status) || chainActive;
     };
-    const st = await load();
-    if (['queued', 'running'].includes(st)) every(3000, () => { if (!$('.modal')) load().catch(() => {}); });
+    const live = await load();
+    if (live) every(3000, () => { if (!$('.modal')) load().catch(() => {}); });
   }
   function stepModal(sid) {
     const s = (S.taskSteps || []).find((x) => String(x.id) === String(sid));
@@ -1595,6 +1665,7 @@
         case 'wf-remind': { const r = await api('/workflow/remind', { method: 'POST' }); toast(t('set.workflow.reminded', r), r.failed ? 'bad' : 'ok'); break; }
         case 'cancel-task': if (await confirmBox(t('tasks.confirm_cancel'))) { await api(`/tasks/${id}/cancel`, { method: 'POST' }); render(); } break;
         case 'retry-task': { const r = await api(`/tasks/${id}/retry`, { method: 'POST' }); location.hash = '#/tasks/' + r.id; break; }
+        case 'toggle-attempts': toggleAttempts(id); break;
         case 'gen-report': await api(`/reports/${el.dataset.day}/generate`, { method: 'POST' }); location.hash = '#/reports/' + el.dataset.day; render(); break;
         case 'mail-report': { const r = await api(`/reports/${el.dataset.day}/mail`, { method: 'POST' }); toast(t('reports.mail_result', r), r.failed ? 'bad' : 'ok'); render(); break; }
         case 'decide': {

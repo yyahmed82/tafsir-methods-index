@@ -702,7 +702,7 @@ def test_classify_api_timeout_from_env(monkeypatch):
 def test_retry_failed_groups_steps_by_model(env):
     uid = add_user("op@example.com", "super_admin")
     tid = db.execute("INSERT INTO tasks(kind,title_ar,params,status,created_by,created_at,total_steps)"
-                     " VALUES ('committee','t','{}','running',?,?,4)", (uid, db.now()))
+                     " VALUES ('committee','t','{}','failed',?,?,4)", (uid, db.now()))
     for seq, agent in enumerate(["verifier", "chair", "classifier", "verifier"]):
         db.execute("INSERT INTO task_steps(task_id,seq,agent,tafsir,window,model,status)"
                    " VALUES (?,?,?,?,?,?,'failed')", (tid, seq, agent, "al_tabari", f"24_2_p0{seq}", None))
@@ -725,6 +725,7 @@ def test_chair_without_verifier_is_skipped_not_failed_and_retried(env, monkeypat
     assert json.loads(st["result"]) == {"reason": "agent_missing", "missing": ["classifier", "verifier"]}
     t = db.row("SELECT * FROM tasks WHERE id=?", (tid,))
     assert t["failed_steps"] == 0 and t["skipped_steps"] == 1
+    db.execute("UPDATE tasks SET status='done' WHERE id=?", (tid,))  # retries start once it ended
     new_id = runner.retry_failed(tid, {"id": uid})
     assert [r["agent"] for r in db.rows("SELECT agent FROM task_steps WHERE task_id=?", (new_id,))] == ["chair"]
     for lang in ("ar", "en", "zh", "ur"):
