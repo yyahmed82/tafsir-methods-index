@@ -287,6 +287,67 @@ button.brand-lockup:focus-visible {
   gap: 8px;
   flex-wrap: wrap;
 }
+.sbs-switch {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 4px 10px;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.sbs-switch .sw-track { flex: 0 0 auto; }
+.read-split { display: block; }
+.read-split.is-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+@media (max-width: 900px) {
+  .read-split.is-split { grid-template-columns: 1fr; }
+}
+.read-pane-h {
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--sub);
+  margin: 0 0 10px;
+  line-height: 1.35;
+}
+.read-pane-orig {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+  min-width: 0;
+}
+.read-split.is-split .read-pane-tagged,
+.read-split.is-split .read-pane-orig {
+  max-height: min(70vh, 720px);
+  overflow: auto;
+}
+.read-split.is-split .reading-article {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+.orig-article {
+  font-family: var(--font-text);
+  font-size: var(--tafsir-size);
+  line-height: 2.3;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.orig-article .src-run:not(.layout-br) { display: inline; }
 
 .btn {
   font-family: var(--font-ui);
@@ -527,15 +588,26 @@ article.reading-article p {
   vertical-align: super;
   cursor: pointer;
 }
-.hide-footnotes .fn { display: none; }
+.hide-footnotes .fn { display: none !important; }
 
 .br-src { display: none; }
 .layout-br { display: block; height: 0.6em; }
 
-/* Highlight spans */
+article.reading-article .src-run:not(.layout-br),
+article.reading-article .hl {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Highlight spans: colour lives inside running prose */
 .hl {
-  border-radius: 2px;
-  padding: 1px 1px;
+  display: inline;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
   border: 0;
   box-shadow: none;
   cursor: pointer;
@@ -544,7 +616,7 @@ article.reading-article p {
   position: relative;
   color: var(--ink) !important;
   text-decoration-line: underline;
-  text-decoration-thickness: 1.5px;
+  text-decoration-thickness: 2px;
   text-underline-offset: 0.2em;
   text-decoration-skip-ink: none;
   transition: outline 0.15s ease, background-color 0.15s ease;
@@ -670,6 +742,100 @@ article.reading-article p {
   padding: 0;
 }
 .evidence-card button.ec-copy:hover { text-decoration: underline; }
+.evidence-card .ec-close:focus-visible,
+.evidence-card .ec-copy:focus-visible,
+.evidence-card #ec-cite-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+#ec-cite-btn, #act-show-evidence {
+  min-height: 24px;
+  min-width: 24px;
+}
+
+/* Grounding status · citation · unverified notes (G-UI-1..4) */
+.g-route-host { margin: 0 0 8px; }
+.g-route {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+.g-route-icon {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  color: var(--ink);
+}
+.g-reason, .g-committee {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--sub);
+  line-height: 1.55;
+}
+.g-reason.is-legacy, .g-reason.is-unknown { font-weight: 400; }
+.g-committee { color: var(--ink); }
+.g-notes {
+  margin: 10px 0 8px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--sub) 8%, var(--surface));
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+.g-notes-label {
+  margin: 0 0 6px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--sub);
+}
+.g-notes-body { margin: 0; font-size: 0.8rem; color: var(--sub); }
+.g-disclaimer {
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  color: var(--sub);
+  line-height: 1.5;
+}
+.src-run.cite-evidence, .cite-evidence {
+  background: color-mix(in srgb, var(--cite, var(--teal)) 16%, transparent);
+  box-shadow: none;
+  outline: none;
+  border: 0;
+  border-radius: 2px;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--cite, var(--teal));
+  text-underline-offset: 0.18em;
+  text-decoration-skip-ink: none;
+}
+.src-run.cite-verdict, .cite-verdict {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  box-shadow: inset 0 -2px 0 var(--warn);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    color-mix(in srgb, var(--ink) 8%, transparent) 3px,
+    color-mix(in srgb, var(--ink) 8%, transparent) 5px
+  );
+  border-radius: 2px;
+}
+@keyframes flash {
+  0%, 100% { filter: brightness(1); }
+  40% { filter: brightness(1.35); }
+}
+.is-flash { animation: flash 1.1s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .is-flash { animation: none; }
+}
 
 /* Aside Sidebar */
 aside.reader-aside {
@@ -762,9 +928,35 @@ aside.reader-aside {
 .switch-wrap {
   display: flex;
   align-items: center;
+  gap: 8px;
   cursor: pointer;
 }
 .switch-wrap input { display: none; }
+.fn-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+}
+.fn-switch-label {
+  font-size: 0.82rem;
+  color: var(--sub);
+  font-weight: 600;
+  line-height: 1.35;
+}
+.switch-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 2px;
+  min-width: 40px;
+  min-height: 24px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
 .sw-track {
   width: 36px;
   height: 20px;
@@ -772,6 +964,7 @@ aside.reader-aside {
   background: #D5D9EA;
   position: relative;
   transition: background 0.2s ease;
+  pointer-events: none;
 }
 .sw-track::after {
   content: "";
@@ -784,10 +977,12 @@ aside.reader-aside {
   background: #FFFFFF;
   transition: transform 0.2s ease;
 }
-.switch-wrap input:checked + .sw-track {
+.switch-wrap input:checked + .sw-track,
+.switch-btn[aria-checked="true"] .sw-track {
   background: var(--accent);
 }
-.switch-wrap input:checked + .sw-track::after {
+.switch-wrap input:checked + .sw-track::after,
+.switch-btn[aria-checked="true"] .sw-track::after {
   transform: translateX(-16px);
 }
 .font-scale-btns {
@@ -861,33 +1056,45 @@ aside.reader-aside {
   overflow: hidden;
 }
 .queue-header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   padding: 14px 14px 8px;
   border-bottom: 1px solid var(--line);
 }
 .queue-header h4 {
+  display: block;
   font-size: 0.88rem;
   font-weight: 700;
-  margin-bottom: 8px;
+  margin: 0;
+  line-height: 1.4;
+  width: 100%;
 }
 .queue-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
+  width: 100%;
   background: var(--base);
   padding: 3px;
   border-radius: 8px;
 }
 .queue-tabs button {
-  flex: 1;
+  flex: 1 1 auto;
   text-align: center;
   font-size: 0.74rem;
   font-family: inherit;
-  padding: 5px 0;
+  padding: 6px 8px;
+  min-height: 24px;
+  min-width: 24px;
   border-radius: 6px;
   border: none;
   background: transparent;
   color: var(--sub);
   cursor: pointer;
   font-weight: 500;
+  white-space: nowrap;
 }
 .queue-tabs button.is-on {
   background: var(--surface);
@@ -987,7 +1194,7 @@ aside.reader-aside {
   position: relative;
 }
 .paper-box p { margin-bottom: 14px; }
-.cur-move {
+.cur-move.pass-frame {
   color: var(--ink);
   background: var(--accent-bg);
   outline: 2px solid var(--accent);
@@ -996,6 +1203,9 @@ aside.reader-aside {
   padding: 1px 3px;
   position: relative;
   font-weight: 500;
+}
+.cur-move.pass-frame .cite-evidence {
+  outline: none;
 }
 .sid {
   font-family: var(--font-ui);
@@ -1050,6 +1260,7 @@ aside.reader-aside {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  scroll-margin-top: 76px;
 }
 .dec-panel h4 {
   font-size: 0.76rem;
@@ -1349,8 +1560,12 @@ aside.reader-aside {
 }
 @media (min-width: 993px) {
   .mobile-queue-toggle { display: none !important; }
-  .queue-panel.is-collapsed .queue-header,
-  .queue-panel.is-collapsed .queue-items { display: flex !important; }
+  .queue-panel.is-collapsed .queue-header {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .queue-panel.is-collapsed .queue-items { display: grid !important; }
 }
 </style>
 
@@ -1367,7 +1582,7 @@ aside.reader-aside {
         <span class="brand-product brand-title">فهرس مناهج التفسير</span>
         </span>
       </button>
-      <span class="mode-badge" id="header-mode-badge" hidden>وضع المراجعة</span>
+      <span class="mode-badge" id="header-mode-badge" hidden>وضع المختص</span>
     </div>
 
     <div class="pick-group">
@@ -1402,9 +1617,13 @@ aside.reader-aside {
     </div>
 
     <div class="header-actions">
+      <button type="button" class="sbs-switch" id="toggle-sbs" role="switch" aria-checked="false" aria-label="اعرض الأصل بجانبه">
+        <span>اعرض الأصل بجانبه</span>
+        <span class="sw-track" aria-hidden="true"></span>
+      </button>
       <button type="button" class="btn" id="btn-export-decisions" hidden title="تصدير قرارات المتخصص بصيغة JSON">صدّر القرارات</button>
       <button type="button" class="btn" id="btn-export-log" hidden title="قرارات حُفظت في هذا المتصفح أثناء تجربة سابقة؛ المراجعة الرسمية في لوحة اللجنة">صدّر قراراتك المحفوظة</button>
-      <button type="button" class="btn btn-primary" id="btn-toggle-mode" hidden>وضع المراجعة ←</button>
+      <button type="button" class="btn btn-primary" id="btn-toggle-mode" hidden>وضع المختص ←</button>
       <button type="button" class="ib-btn" id="btn-theme-toggle" aria-pressed="false" aria-label="تبديل المظهر" title="تبديل المظهر الفاتح/الداكن">◐</button>
       <a href="fahras.html" class="btn btn-ghost" title="الرجوع إلى الواجهة الكلاسيكية">الواجهة الكلاسيكية</a>
     </div>
@@ -1427,9 +1646,18 @@ aside.reader-aside {
 
       <div class="info-banner" id="reader-info-banner"></div>
 
-      <article class="reading-article" id="reading-article">
-        <!-- Reconstructed text with highlights -->
-      </article>
+      <div class="read-split" id="read-split">
+        <div class="read-pane read-pane-tagged" id="tagged-pane">
+          <h3 class="read-pane-h" id="tagged-pane-h" hidden>النص الملوّن بالمناهج</h3>
+          <article class="reading-article" id="reading-article">
+            <!-- Reconstructed text with highlights -->
+          </article>
+        </div>
+        <div class="read-pane read-pane-orig" id="orig-pane" hidden>
+          <h3 class="read-pane-h">النص الأصلي كما في المصدر</h3>
+          <div class="orig-article" id="orig-article"></div>
+        </div>
+      </div>
 
       <!-- Floating Evidence Card Popover -->
       <div class="evidence-card" id="evidence-card" hidden>
@@ -1437,9 +1665,15 @@ aside.reader-aside {
           <div class="ec-title"><i id="ec-dot"></i><span id="ec-method-name"></span></div>
           <button type="button" class="ec-close" id="ec-close-btn" aria-label="إغلاق">×</button>
         </div>
+        <div id="ec-route-host" class="g-route-host"></div>
         <div class="ec-role" id="ec-role-line"></div>
-        <div class="ec-rationale" id="ec-rationale"></div>
-        <div class="ec-status" id="ec-status-line"></div>
+        <button type="button" class="btn" id="ec-cite-btn">أظهر الشاهد</button>
+        <div class="g-notes" id="ec-notes">
+          <p class="g-notes-label">ملاحظة النموذج — غير مُسنَدة، ليست دليلاً</p>
+          <div class="g-notes-body" id="ec-rationale"></div>
+        </div>
+        <div class="ec-status" id="ec-status-line" hidden></div>
+        <p class="g-disclaimer">وجود الشاهد لا يثبت صحة الاستنتاج؛ الاعتماد للمتخصص بعد فحص الدلالة</p>
         <div class="ec-actions">
           <button type="button" class="ec-copy" id="ec-copy-btn">انسخ الموضع مع المرجع</button>
           <span>·</span>
@@ -1461,12 +1695,11 @@ aside.reader-aside {
       </div>
 
       <div class="aside-card">
-        <div class="tg-row">
-          <span>حواشي المحقق</span>
-          <label class="switch-wrap">
-            <input type="checkbox" id="toggle-footnotes" checked>
-            <span class="sw-track"></span>
-          </label>
+        <div class="tg-row fn-switch-row">
+          <span class="fn-switch-label" id="fn-switch-label">إظهار حواشي المحقق</span>
+          <button type="button" class="switch-btn" id="toggle-footnotes" role="switch" aria-checked="true" aria-labelledby="fn-switch-label">
+            <span class="sw-track" aria-hidden="true"></span>
+          </button>
         </div>
         <div class="tg-row">
           <span>حجم الخط</span>
@@ -1486,11 +1719,11 @@ aside.reader-aside {
   <!-- REVIEW MODE VIEW -->
   <main class="review-container" id="review-view" hidden>
     <!-- Column 1: Queue -->
-    <section class="queue-panel is-collapsed" id="review-queue-panel">
+    <section class="queue-panel" id="review-queue-panel">
       <button type="button" class="btn mobile-queue-toggle" id="btn-toggle-mobile-queue">طابور المواضع ▾</button>
       <div class="queue-header">
-        <h4>طابور المواضع</h4>
-        <div class="queue-tabs">
+        <h4 id="queue-heading">طابور المواضع</h4>
+        <div class="queue-tabs" id="queue-tabs">
           <button type="button" class="is-on" data-tab="pending" id="tab-pending">بانتظارك <span id="cnt-pending"></span></button>
           <button type="button" data-tab="candidate" id="tab-candidate">مرشّح <span id="cnt-candidate"></span></button>
           <button type="button" data-tab="done" id="tab-done">تمّ <span id="cnt-done"></span></button>
@@ -1529,6 +1762,7 @@ aside.reader-aside {
 
     <!-- Column 3: Decision Panel -->
     <section class="dec-panel">
+      <div id="dec-route-host" class="g-route-host"></div>
       <div>
         <h4>اقتراح المصنّف <span id="dec-annotator-lbl"></span></h4>
         <div class="prop-box" id="dec-prop-method"><i></i><span>—</span></div>
@@ -1586,6 +1820,15 @@ aside.reader-aside {
         </div>
       </div>
 
+      <button type="button" class="act-btn a-compare" id="act-show-evidence">
+        <span>أظهر الشاهد</span>
+      </button>
+      <div class="g-notes" id="dec-notes">
+        <p class="g-notes-label">ملاحظة النموذج — غير مُسنَدة، ليست دليلاً</p>
+        <div class="g-notes-body" id="dec-notes-body"></div>
+      </div>
+      <p class="g-disclaimer">وجود الشاهد لا يثبت صحة الاستنتاج؛ الاعتماد للمتخصص بعد فحص الدلالة</p>
+
       <textarea class="note-textarea" id="review-note" placeholder="ملاحظة للمتخصص (اختيارية)..."></textarea>
 
       <div class="act-btns">
@@ -1642,6 +1885,7 @@ aside.reader-aside {
   var REVIEW_OPEN = false;
   var THEME_KEY = "tafsir-fahras-v1-theme";
   var TYPE_KEY = "tafsir-fahras-v1-type-scale";
+  var SBS_KEY = "tafsir-reader-v2-sbs";
   var TYPE_STEPS = [1.05, 1.15, 1.25, 1.38, 1.5];
 
   var METHODS = [
@@ -1669,6 +1913,201 @@ aside.reader-aside {
     auto_candidate: "مرشح للقبول",
     specialist: "بانتظار المتخصص"
   };
+  var LABEL_WAIT = "بانتظار المتخصص";
+  var LABEL_CANDIDATE = "مرشّح للمراجعة — ليس اعتماداً";
+  var LABEL_LEGACY_REASON = "لا رمز سبب: تشغيل سابق لعقد الإسناد";
+  var LABEL_UNKNOWN_REASON = "رمز سبب غير معروف: ";
+  var REASON_CODES = DATA.reason_codes || {};
+  var COMMITTEE_REASON_CODES = DATA.committee_reason_codes || {};
+
+  function groundingIcon(kind) {
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 20 20");
+    svg.setAttribute("width", "18");
+    svg.setAttribute("height", "18");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.classList.add("g-route-icon");
+    var p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("fill", "currentColor");
+    if (kind === "specialist") {
+      p.setAttribute("d", "M5 3h10v2.2L11.2 10 15 14.8V17H5v-2.2L8.8 10 5 5.2V3zm2.4 2.4 2.6 3.2-2.6 3.2h5.2L11 8.6l2.6-3.2H7.4z");
+    } else {
+      p.setAttribute("d", "M10 2.2 17.8 10 10 17.8 2.2 10 10 2.2zm0 2.9L5.1 10 10 14.9 14.9 10 10 5.1z");
+    }
+    svg.appendChild(p);
+    return svg;
+  }
+
+  function windowSpanIndex() {
+    var w = currentWindow();
+    var by = {};
+    ((w && w.spans) || []).forEach(function (s) { by[s.id] = s; });
+    return by;
+  }
+
+  function rangesForSpanIds(ids) {
+    var by = windowSpanIndex();
+    var ranges = [];
+    (ids || []).forEach(function (sid) {
+      var sp = by[sid];
+      if (!sp) return;
+      ranges.push({ start: sp.start, end: sp.end, id: sid });
+    });
+    return ranges;
+  }
+
+  function clearCitationHighlights(container) {
+    if (!container) return;
+    Array.prototype.forEach.call(container.querySelectorAll(".cite-evidence, .cite-verdict"), function (n) {
+      n.classList.remove("cite-evidence", "cite-verdict", "is-flash");
+    });
+  }
+
+  function wrapAbsRange(container, absStart, absEnd, className) {
+    if (!container || absStart == null || absEnd == null || absStart >= absEnd) return;
+    var runs = Array.prototype.slice.call(container.querySelectorAll(".src-run"));
+    runs.forEach(function (run) {
+      var a = parseInt(run.getAttribute("data-abs-start"), 10);
+      if (isNaN(a)) return;
+      var text = run.textContent || "";
+      var b = a + text.length;
+      var from = Math.max(absStart, a);
+      var to = Math.min(absEnd, b);
+      if (from >= to) return;
+      if (from === a && to === b) {
+        run.classList.add(className);
+        return;
+      }
+      var localFrom = from - a;
+      var localTo = to - a;
+      var before = text.slice(0, localFrom);
+      var mid = text.slice(localFrom, localTo);
+      var after = text.slice(localTo);
+      run.textContent = "";
+      if (before) run.appendChild(document.createTextNode(before));
+      var mark = document.createElement("span");
+      mark.className = className;
+      mark.textContent = mid;
+      run.appendChild(mark);
+      if (after) run.appendChild(document.createTextNode(after));
+    });
+  }
+
+  function highlightEvidenceSpans(container, evidenceIds, verdictIds) {
+    clearCitationHighlights(container);
+    if (!container) return;
+    rangesForSpanIds(evidenceIds).forEach(function (r) {
+      wrapAbsRange(container, r.start, r.end, "cite-evidence");
+    });
+    rangesForSpanIds(verdictIds).forEach(function (r) {
+      wrapAbsRange(container, r.start, r.end, "cite-verdict");
+    });
+  }
+
+  function committeeBlock(wid) {
+    var T = activeTafsir();
+    var block = (T && T.committee) || DATA.committee || {};
+    return block[wid || state.windowId] || null;
+  }
+
+  function committeeCodeForMove(move) {
+    if (!move) return "";
+    if (move.committee_reason_code) return String(move.committee_reason_code);
+    var c = committeeBlock();
+    if (!c || !c.moves) return "";
+    var mid = move.move_id || move.id;
+    for (var i = 0; i < c.moves.length; i++) {
+      if ((c.moves[i].move_id || c.moves[i].id) === mid) {
+        return c.moves[i].committee_reason_code ? String(c.moves[i].committee_reason_code) : "";
+      }
+    }
+    return "";
+  }
+
+  function modelNotesOf(h) {
+    var u = h && h.unverified_model_notes;
+    if (u && typeof u === "object") {
+      return {
+        rationale: u.rationale_ar || "",
+        alternatives: u.alternatives || []
+      };
+    }
+    return {
+      rationale: (h && h.rationale_ar) || "",
+      alternatives: (h && h.alternatives) || []
+    };
+  }
+
+  function fillRouteStatus(host, move) {
+    if (!host) return;
+    host.textContent = "";
+    if (!move) return;
+    var isAuto = move.route === "auto_candidate";
+    var row = document.createElement("div");
+    row.className = "g-route" + (isAuto ? " is-auto" : " is-specialist");
+    row.setAttribute("role", "status");
+    row.appendChild(groundingIcon(isAuto ? "auto" : "specialist"));
+    var lab = document.createElement("span");
+    lab.className = "g-route-label";
+    lab.textContent = isAuto ? LABEL_CANDIDATE : LABEL_WAIT;
+    row.appendChild(lab);
+    host.appendChild(row);
+    if (!isAuto) {
+      var code = move.reason_code;
+      var missing = (code == null || code === "");
+      var meaning = (!missing && REASON_CODES[code]) ? REASON_CODES[code] : "";
+      var p = document.createElement("p");
+      if (meaning) {
+        p.className = "g-reason";
+        p.textContent = meaning;
+      } else if (missing) {
+        p.className = "g-reason is-legacy";
+        p.textContent = LABEL_LEGACY_REASON;
+      } else {
+        p.className = "g-reason is-unknown";
+        p.textContent = LABEL_UNKNOWN_REASON + String(code);
+      }
+      host.appendChild(p);
+      var ccode = committeeCodeForMove(move);
+      var cmean = ccode ? (COMMITTEE_REASON_CODES[ccode] || "") : "";
+      if (cmean) {
+        var cp = document.createElement("p");
+        cp.className = "g-committee";
+        cp.textContent = cmean;
+        host.appendChild(cp);
+      }
+    }
+  }
+
+  function fillModelNotes(host, move) {
+    if (!host) return;
+    host.textContent = "";
+    var notes = modelNotesOf(move);
+    var p = document.createElement("p");
+    p.textContent = notes.rationale || "—";
+    host.appendChild(p);
+    if (notes.alternatives && notes.alternatives.length) {
+      var alt = document.createElement("p");
+      alt.textContent = "بدائل: " + notes.alternatives.join("، ");
+      host.appendChild(alt);
+    }
+  }
+
+  function flashEvidence() {
+    var move = getSelectedMove();
+    if (!move) return;
+    var container = state.mode === "review"
+      ? document.getElementById("review-paper")
+      : document.getElementById("reading-article");
+    highlightEvidenceSpans(container, move.evidence_span_ids, move.author_verdict_span_ids);
+    var first = container && container.querySelector(".cite-evidence, .cite-verdict");
+    if (first) {
+      first.classList.add("is-flash");
+      first.scrollIntoView({ block: "center", behavior: "smooth" });
+      setTimeout(function () { first.classList.remove("is-flash"); }, 1100);
+    }
+  }
   // Maximum verifier score cap (marker 25 + function 45 + attribution 15 + boundary 15 = 100 in src/v2_verify.py:score_move)
   var VERIFIER_SCORE_MAX = 100;
 
@@ -1714,6 +2153,8 @@ aside.reader-aside {
     activeMethodFilter: null, // null for all
     colorEnabled: true,
     footnotesVisible: true,
+    sideBySide: false,
+    syncScrollLock: false,
     typeStep: 2,
     queueTab: "pending", // "pending" | "candidate" | "done"
     log: [],
@@ -1824,6 +2265,111 @@ aside.reader-aside {
   function currentRaw() {
     var T = activeTafsir();
     return (T && T.raw && T.raw[state.windowId]) || null;
+  }
+
+  function loadSideBySide() {
+    try {
+      var v = localStorage.getItem(SBS_KEY);
+      if (v === "1" || v === "true") {
+        state.sideBySide = true;
+        return;
+      }
+      if (v === "0" || v === "false") {
+        state.sideBySide = false;
+        return;
+      }
+    } catch (e) { /* ignore */ }
+    var mobile = false;
+    try { mobile = window.matchMedia && window.matchMedia("(max-width: 900px)").matches; } catch (e2) { /* ignore */ }
+    state.sideBySide = false;
+    if (mobile) state.sideBySide = false;
+  }
+
+  function saveSideBySide() {
+    try { localStorage.setItem(SBS_KEY, state.sideBySide ? "1" : "0"); } catch (e) { /* ignore */ }
+  }
+
+  function windowSpansInOrder(w) {
+    return ((w && w.spans) || []).slice().sort(function (a, b) { return a.start - b.start; });
+  }
+
+  function concatSpanText(w) {
+    w = w || currentWindow();
+    if (!w) return "";
+    var text = w.window_text || "";
+    var base = w.window_start || 0;
+    return windowSpansInOrder(w).map(function (sp) {
+      return text.slice(sp.start - base, sp.end - base);
+    }).join("");
+  }
+
+  function makePlainRun(absStart, slice) {
+    if (slice === "<br>") {
+      var br = document.createElement("span");
+      br.className = "layout-br src-run";
+      br.setAttribute("data-abs-start", String(absStart));
+      var brSrc = document.createElement("span");
+      brSrc.className = "br-src";
+      brSrc.textContent = "<br>";
+      br.appendChild(brSrc);
+      return br;
+    }
+    var run = document.createElement("span");
+    run.className = "src-run orig-run";
+    run.setAttribute("data-abs-start", String(absStart));
+    run.textContent = slice;
+    return run;
+  }
+
+  function renderOrigColumn() {
+    var pane = document.getElementById("orig-pane");
+    var art = document.getElementById("orig-article");
+    var split = document.getElementById("read-split");
+    var taggedH = document.getElementById("tagged-pane-h");
+    var btn = document.getElementById("toggle-sbs");
+    var on = !!state.sideBySide && state.mode === "reader";
+    if (pane) pane.hidden = !on;
+    if (taggedH) taggedH.hidden = !on;
+    if (split) split.classList.toggle("is-split", on);
+    if (btn) {
+      btn.setAttribute("aria-checked", on ? "true" : "false");
+      btn.hidden = state.mode !== "reader";
+    }
+    if (!art) return;
+    if (!on) {
+      art.textContent = "";
+      return;
+    }
+    var w = currentWindow();
+    art.textContent = "";
+    if (!w) return;
+    var text = w.window_text || "";
+    var base = w.window_start || 0;
+    var frag = document.createDocumentFragment();
+    windowSpansInOrder(w).forEach(function (sp) {
+      frag.appendChild(makePlainRun(sp.start, text.slice(sp.start - base, sp.end - base)));
+    });
+    art.appendChild(frag);
+  }
+
+  function bindSbsScroll() {
+    var tagged = document.getElementById("tagged-pane");
+    var orig = document.getElementById("orig-pane");
+    if (!tagged || !orig || tagged._sbsBound) return;
+    tagged._sbsBound = true;
+    function syncFrom(src, dst) {
+      return function () {
+        if (!state.sideBySide || state.syncScrollLock || state.mode !== "reader") return;
+        var maxS = src.scrollHeight - src.clientHeight;
+        var maxD = dst.scrollHeight - dst.clientHeight;
+        if (maxS <= 0 || maxD <= 0) return;
+        state.syncScrollLock = true;
+        dst.scrollTop = (src.scrollTop / maxS) * maxD;
+        state.syncScrollLock = false;
+      };
+    }
+    tagged.addEventListener("scroll", syncFrom(tagged, orig), { passive: true });
+    orig.addEventListener("scroll", syncFrom(orig, tagged), { passive: true });
   }
 
   var STATUS = {
@@ -2236,12 +2782,12 @@ aside.reader-aside {
       infoEl.classList.add("has-approved");
       b.textContent = "معتمد: " + toArabicDigits(approvedCount);
       infoEl.appendChild(b);
-      infoEl.appendChild(document.createTextNode(" بواسطة متخصص · باقي الوسوم (" + toArabicDigits(proposedCount) + ") مقترحة آلياً · النص مطابق للمصدر حرفاً بحرف (sha256 " + res.sha + ")"));
+      infoEl.appendChild(document.createTextNode(" بواسطة متخصص · باقي الوسوم (" + toArabicDigits(proposedCount) + ") اقتراح آلي · غير معتمد بعد · النص مطابق للمصدر حرفاً بحرف (sha256 " + res.sha + ")"));
     } else {
       infoEl.classList.remove("has-approved");
-      b.textContent = "الوسوم مقترحة آلياً";
+      b.textContent = "اقتراح آلي";
       infoEl.appendChild(b);
-      infoEl.appendChild(document.createTextNode(" ولم يعتمدها متخصص بعد · النص نفسه مطابق للمصدر حرفاً بحرف (sha256 " + res.sha + ")"));
+      infoEl.appendChild(document.createTextNode(" · غير معتمد بعد · النص مطابق للمصدر حرفاً بحرف (sha256 " + res.sha + ")"));
     }
   }
 
@@ -2478,6 +3024,8 @@ aside.reader-aside {
       exportBtn.hidden = false;
       toggleModeBtn.textContent = "خروج إلى القراءة";
       toggleModeBtn.classList.remove("btn-primary");
+      var sbsHide = document.getElementById("toggle-sbs");
+      if (sbsHide) sbsHide.hidden = true;
       try {
         var url = new URL(window.location.href);
         url.searchParams.set("mode", "review");
@@ -2490,11 +3038,13 @@ aside.reader-aside {
       modeBadge.hidden = true;
       headerStats.hidden = true;
       exportBtn.hidden = true;
-      toggleModeBtn.textContent = "وضع المراجعة ←";
+      toggleModeBtn.textContent = "وضع المختص ←";
       toggleModeBtn.classList.add("btn-primary");
       toggleModeBtn.hidden = !REVIEW_OPEN;
       var logBtn = document.getElementById("btn-export-log");
       if (logBtn) logBtn.hidden = !(state.log && state.log.length);
+      var sbsShow = document.getElementById("toggle-sbs");
+      if (sbsShow) sbsShow.hidden = false;
       try {
         var url2 = new URL(window.location.href);
         url2.searchParams.delete("mode");
@@ -2587,6 +3137,7 @@ aside.reader-aside {
 
     // Build Reader Text Article letter-by-letter with reconstruction checking
     renderReaderArticle();
+    renderOrigColumn();
     updateReaderReconstructionBanner();
     observeReaderArticle();
 
@@ -2765,6 +3316,7 @@ aside.reader-aside {
       });
 
       if (isNonAuth) {
+        if (!state.footnotesVisible) continue;
         var fn = document.createElement("span");
         fn.className = "fn src-run";
         fn.setAttribute("data-abs-start", String(base + a));
@@ -2856,19 +3408,21 @@ aside.reader-aside {
     var certStr = "اليقين: " + (CERT_AR[move.certainty] || move.certainty || "—");
     document.getElementById("ec-role-line").textContent = roleStr + " · " + certStr;
 
-    var ratEl = document.getElementById("ec-rationale");
-    ratEl.textContent = move.rationale_ar || "";
+    fillRouteStatus(document.getElementById("ec-route-host"), move);
+    fillModelNotes(document.getElementById("ec-rationale"), move);
 
     var stEl = document.getElementById("ec-status-line");
     if (move.review_status === "approved") {
+      stEl.hidden = false;
       stEl.className = "ec-status st-ok";
-      stEl.textContent = "حالة: معتمد ✓ (بواسطة متخصص)";
+      stEl.textContent = "حالة: معتمد (بواسطة متخصص)";
     } else if (move.review_status === "needs_recheck") {
+      stEl.hidden = false;
       stEl.className = "ec-status st-pending";
       stEl.textContent = "حالة: قرار سابق يحتاج إعادة تحقق";
     } else {
-      stEl.className = "ec-status st-pending";
-      stEl.textContent = "حالة: مقترح آلي — لم يُعتمد بعد";
+      stEl.hidden = true;
+      stEl.textContent = "";
     }
 
     var ayahParts = parseWindowKey(state.windowId);
@@ -3060,6 +3614,7 @@ aside.reader-aside {
     var paper = document.getElementById("review-paper");
     if (!paper) return;
     paper.textContent = "";
+    paper.style.removeProperty("--cite");
 
     var w = currentWindow();
     if (!w) return;
@@ -3070,6 +3625,10 @@ aside.reader-aside {
     moves.forEach(function (m) {
       if ((m.move_id || m.id) === state.selectedId) curMove = m;
     });
+    if (curMove) {
+      var citeMeta = METHOD_MAP[curMove.primary];
+      paper.style.setProperty("--cite", citeMeta && citeMeta.color ? citeMeta.color : "var(--teal)");
+    }
 
     var cuts = {};
     cuts[0] = true;
@@ -3096,15 +3655,45 @@ aside.reader-aside {
       if (s0 < s1) { cuts[s0] = true; cuts[s1] = true; }
     }
 
+    var evidRanges = curMove ? rangesForSpanIds(curMove.evidence_span_ids) : [];
+    var verdRanges = curMove ? rangesForSpanIds(curMove.author_verdict_span_ids) : [];
+    evidRanges.concat(verdRanges).forEach(function (r) {
+      var c0 = Math.max(0, r.start - base);
+      var c1 = Math.min(text.length, r.end - base);
+      if (c0 < c1) { cuts[c0] = true; cuts[c1] = true; }
+    });
+
     var pts = Object.keys(cuts).map(Number).sort(function (a, b) { return a - b; });
 
     var frag = document.createDocumentFragment();
+    var passFrame = null;
+    var sidDone = false;
+
+    function closePassFrame() {
+      passFrame = null;
+    }
+    function ensurePassFrame() {
+      if (passFrame) return passFrame;
+      passFrame = document.createElement("span");
+      passFrame.className = "cur-move pass-frame";
+      if (!sidDone && curMove) {
+        var sid = document.createElement("span");
+        sid.className = "sid";
+        sid.textContent = (curMove.span_ids && curMove.span_ids[0]) || "span";
+        passFrame.appendChild(sid);
+        sidDone = true;
+      }
+      frag.appendChild(passFrame);
+      return passFrame;
+    }
 
     for (var i = 0; i < pts.length - 1; i++) {
       var a = pts[i];
       var b = pts[i + 1];
       if (a >= b) continue;
       var slice = text.slice(a, b);
+      var isCurMove = !!(curMove && (curMove.start - base) <= a && (curMove.end - base) >= b);
+      var host = isCurMove ? ensurePassFrame() : (closePassFrame(), frag);
 
       if (slice === "<br>") {
         var br = document.createElement("span");
@@ -3114,7 +3703,7 @@ aside.reader-aside {
         brSrc.className = "br-src";
         brSrc.textContent = "<br>";
         br.appendChild(brSrc);
-        frag.appendChild(br);
+        host.appendChild(br);
         continue;
       }
 
@@ -3127,33 +3716,30 @@ aside.reader-aside {
         fn.className = "fn src-run";
         fn.setAttribute("data-abs-start", String(base + a));
         fn.textContent = slice;
-        frag.appendChild(fn);
+        host.appendChild(fn);
         continue;
       }
 
-      var isCurMove = curMove && (curMove.start - base) <= a && (curMove.end - base) >= b;
-
       if (isCurMove) {
-        var spanWrap = document.createElement("span");
-        spanWrap.className = "cur-move";
-        if (a === (curMove.start - base)) {
-          var sid = document.createElement("span");
-          sid.className = "sid";
-          sid.textContent = (curMove.span_ids && curMove.span_ids[0]) || "span";
-          spanWrap.appendChild(sid);
-        }
         var run = document.createElement("span");
         run.className = "src-run";
         run.setAttribute("data-abs-start", String(base + a));
         run.textContent = slice;
-        spanWrap.appendChild(run);
-        frag.appendChild(spanWrap);
+        var absA = base + a;
+        var absB = base + b;
+        evidRanges.forEach(function (r) {
+          if (r.start <= absA && r.end >= absB) run.classList.add("cite-evidence");
+        });
+        verdRanges.forEach(function (r) {
+          if (r.start <= absA && r.end >= absB) run.classList.add("cite-verdict");
+        });
+        host.appendChild(run);
       } else {
         var plain = document.createElement("span");
         plain.className = "other-move src-run";
         plain.setAttribute("data-abs-start", String(base + a));
         plain.textContent = slice;
-        frag.appendChild(plain);
+        host.appendChild(plain);
       }
     }
 
@@ -3196,6 +3782,8 @@ aside.reader-aside {
       var scaleEl0 = document.getElementById("dec-score-scale");
       if (scaleEl0) scaleEl0.textContent = "";
       if (routeEl) routeEl.textContent = "—";
+      fillRouteStatus(document.getElementById("dec-route-host"), null);
+      fillModelNotes(document.getElementById("dec-notes-body"), null);
       return;
     }
 
@@ -3219,16 +3807,14 @@ aside.reader-aside {
       markerEl.textContent = mHit ? (mHit.marker || mHit.family) : "—";
     }
 
-    var evSpans = curMove.evidence_span_ids || curMove.span_ids || [];
+    var evSpans = curMove.evidence_span_ids || [];
     if (evEl) evEl.textContent = evSpans.length ? evSpans.join(" – ") : "—";
 
     var hasScore = curMove.score && curMove.score.total != null;
     var scaleEl = document.getElementById("dec-score-scale");
     if (scoreEl) scoreEl.textContent = hasScore ? toArabicDigits(curMove.score.total) : "—";
     if (scaleEl) scaleEl.textContent = hasScore ? (" / " + toArabicDigits(VERIFIER_SCORE_MAX)) : "";
-    if (routeEl) {
-      routeEl.textContent = ROUTE_AR[curMove.route] || curMove.route || "—";
-    }
+    if (routeEl) routeEl.textContent = "";
 
     // Parts breakdown — show «—» unless verified/ data supplies real values (Item 5)
     var parts = (curMove.score && curMove.score.parts) || null;
@@ -3286,6 +3872,8 @@ aside.reader-aside {
     if (noteEl) {
       noteEl.value = curMove.note || "";
     }
+    fillRouteStatus(document.getElementById("dec-route-host"), curMove);
+    fillModelNotes(document.getElementById("dec-notes-body"), curMove);
   }
 
   // --- REVIEW ACTIONS ---
@@ -3395,6 +3983,13 @@ aside.reader-aside {
       });
     }
 
+    var actShowEvidence = document.getElementById("act-show-evidence");
+    if (actShowEvidence) {
+      actShowEvidence.addEventListener("click", function () {
+        flashEvidence();
+      });
+    }
+
     var actApprove = document.getElementById("act-approve");
     if (actApprove) {
       actApprove.addEventListener("click", function () {
@@ -3448,6 +4043,9 @@ aside.reader-aside {
     // Mobile queue toggle
     var btnMobileQ = document.getElementById("btn-toggle-mobile-queue");
     var queuePanel = document.getElementById("review-queue-panel");
+    if (queuePanel && window.matchMedia && window.matchMedia("(max-width: 992px)").matches) {
+      queuePanel.classList.add("is-collapsed");
+    }
     if (btnMobileQ && queuePanel) {
       btnMobileQ.addEventListener("click", function () {
         queuePanel.classList.toggle("is-collapsed");
@@ -3721,6 +4319,15 @@ aside.reader-aside {
   }
 
   function setupReaderEvents() {
+    var toggleSbs = document.getElementById("toggle-sbs");
+    if (toggleSbs) {
+      toggleSbs.addEventListener("click", function () {
+        state.sideBySide = !state.sideBySide;
+        saveSideBySide();
+        renderOrigColumn();
+      });
+    }
+    bindSbsScroll();
     var chipNone = document.getElementById("chip-none");
     if (chipNone) {
       chipNone.addEventListener("click", function () {
@@ -3732,8 +4339,9 @@ aside.reader-aside {
 
     var toggleFootnotes = document.getElementById("toggle-footnotes");
     if (toggleFootnotes) {
-      toggleFootnotes.addEventListener("change", function () {
-        state.footnotesVisible = toggleFootnotes.checked;
+      toggleFootnotes.addEventListener("click", function () {
+        state.footnotesVisible = !state.footnotesVisible;
+        toggleFootnotes.setAttribute("aria-checked", state.footnotesVisible ? "true" : "false");
         var rvFnLabel = document.getElementById("rv-fn-label");
         if (rvFnLabel) rvFnLabel.textContent = state.footnotesVisible ? "ظاهرة" : "مخفية";
         renderReaderArticle();
@@ -3757,6 +4365,14 @@ aside.reader-aside {
         state.selectedId = null;
         var sel = document.querySelectorAll(".reader-article .hl.is-selected");
         sel.forEach(function (el) { el.classList.remove("is-selected"); });
+        clearCitationHighlights(document.getElementById("reading-article"));
+      });
+    }
+
+    var ecCite = document.getElementById("ec-cite-btn");
+    if (ecCite) {
+      ecCite.addEventListener("click", function () {
+        flashEvidence();
       });
     }
 
@@ -3783,6 +4399,7 @@ aside.reader-aside {
     loadLog();
     loadTheme();
     loadTypeScale();
+    loadSideBySide();
 
     // Check URL mode parameter
     try {
@@ -3835,7 +4452,10 @@ aside.reader-aside {
     runCompareWithSource: runCompareWithSource,
     getRenderedMoveText: getRenderedMoveText,
     updateReaderReconstructionBanner: updateReaderReconstructionBanner,
-    checkReconstructionFidelity: checkReconstructionFidelity
+    checkReconstructionFidelity: checkReconstructionFidelity,
+    collectSourceRunText: collectSourceRunText,
+    concatSpanText: concatSpanText,
+    renderOrigColumn: renderOrigColumn
   };
   window.getSelectedMove = getSelectedMove;
   window.recordDecision = recordDecision;

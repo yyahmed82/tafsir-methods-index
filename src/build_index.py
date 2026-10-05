@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import re
@@ -546,7 +547,7 @@ def build_index_data() -> dict:
     summary = _summary_from_reports(comparison, recon)
     summary["source_a_suspect_typos"] = _collect_suspect_typos(ayat, src_b_by_ayah)
     return {
-        "title_ar": "فهرس تفسير ابن كثير — نموذج تجريبي",
+        "title_ar": "فهرس مناهج التفسير",
         "summary": summary,
         "tags": TAG_INFO,
         "ayat": ayat,
@@ -577,8 +578,42 @@ def write_outputs(data: dict) -> tuple[Path, Path]:
     return json_path, html_path
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Build searchable Tafsir Index demo data and HTML from raw inputs."
+    )
+    parser.add_argument(
+        "--from-cached-json",
+        action="store_true",
+        help=(
+            "Opt-in: inject existing web/index_data.json into the template. "
+            "Does not rebuild from raw data. Default path never falls back."
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    if args.from_cached_json:
+        existing = ROOT / "web" / "index_data.json"
+        if not existing.is_file():
+            print(
+                "ERROR: --from-cached-json requires web/index_data.json",
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            "WARNING: --from-cached-json: injecting existing web/index_data.json "
+            "into the template; not rebuilding from raw data",
+            file=sys.stderr,
+        )
+        data = json.loads(existing.read_text(encoding="utf-8"))
+        data["title_ar"] = "فهرس مناهج التفسير"
+        json_path, html_path = write_outputs(data)
+        print(f"Wrote {html_path.relative_to(ROOT)} from cached JSON")
+        print(f"html_bytes={html_path.stat().st_size}")
+        return 0
+
     data = build_index_data()
+    data["title_ar"] = "فهرس مناهج التفسير"
     json_path, html_path = write_outputs(data)
 
     n_units = sum(len(a["units"]) for a in data["ayat"])

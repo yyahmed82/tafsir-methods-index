@@ -1,7 +1,7 @@
 <meta charset="utf-8">
 <script>try{var __t=localStorage.getItem("tafsir-fahras-v1-theme");if(__t==="dark"||__t==="light")document.documentElement.setAttribute("data-theme",__t);}catch(e){}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>فهرس تفسير ابن كثير — نموذج تجريبي</title>
+<title>فهرس مناهج التفسير</title>
 <link rel="icon" href="assets/brand/mirqah-icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="assets/brand/icon-180.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap">
@@ -739,6 +739,41 @@ details.why[open] > summary {
   border-color: var(--primary);
   color: #fff;
 }
+:root[data-theme="dark"] .btn.primary {
+  color: #10211f;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.hero-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 24px;
+  padding: 10px 18px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.trust-line {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  max-width: 46em;
+}
+.facts {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.fact .caption {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
 
 .btn.ok {
   background: var(--approved-bg);
@@ -844,7 +879,7 @@ details.why[open] > summary {
     grid-template-columns: 1fr;
   }
   .facts {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
   .filters-grid {
     grid-template-columns: 1fr;
@@ -877,40 +912,48 @@ details.why[open] > summary {
       <span class="brand-product product-title">فهرس مناهج التفسير</span>
       </span>
     </div>
-    <h1>فهرس تفسير ابن كثير — نموذج تجريبي</h1>
-    <p class="subtitle">نصّ ابن كثير كما هو، مقسّم إلى وحدات موسومة، مع بيان حالة كل وحدة ومطابقتها للأصل.</p>
-    <div class="top-bar">
-      <label class="toggle">
-        <input type="checkbox" id="reviewerMode" />
-        <span>وضع المراجع</span>
-      </label>
+    <h1>فهرس مناهج التفسير</h1>
+    <p class="subtitle">منهج المفسّر ظاهراً على نصّه — أربعة تفاسير على سورة النور</p>
+    <div class="hero-actions">
+      <a class="btn primary" href="reader.html">افتح وضع القراءة</a>
+      <a class="btn" href="https://console.mirqah.app">لوحة اللجنة (للمتخصص)</a>
       <button type="button" class="btn" id="theme-btn" aria-pressed="false" aria-label="فاتح/داكن" title="بدّل بين المظهر الفاتح والداكن">◐</button>
-      <button type="button" class="btn" id="exportBtn" hidden>تصدير قرارات المراجع</button>
+      <button type="button" class="btn" id="exportBtn" hidden>تصدير قرارات المختص</button>
     </div>
+    <p class="trust-line">الوسوم مقترحة آلياً ولم يعتمدها متخصص بعد · النص مطابق للمصدر حرفاً بحرف</p>
+    <label class="toggle" hidden>
+      <input type="checkbox" id="reviewerMode" />
+      <span>وضع المختص (تجربة القرارات في هذه الصفحة)</span>
+    </label>
   </div>
 
   <section class="section" aria-labelledby="how-title">
-    <h2 id="how-title">كيف يعمل؟</h2>
+    <h2 id="how-title">مسار المعالجة الصارم</h2>
     <div class="steps">
-      <div class="step"><div class="n">١</div><p>نأخذ النص آلياً من مصدر موثّق دون أن يكتبه أحد.</p></div>
-      <div class="step"><div class="n">٢</div><p>نفصل كلام ابن كثير عن حواشي المحقق.</p></div>
-      <div class="step"><div class="n">٣</div><p>فاحصان آليان يضعان الوسوم دون أن يلمسا النص.</p></div>
-      <div class="step"><div class="n">٤</div><p>نطابق كل وحدة مع الأصل، والمتخصص يعتمد.</p></div>
+      <div class="step"><div class="n">١</div><p>نص مثبّت</p></div>
+      <div class="step"><div class="n">٢</div><p>اقتراح آلي بمعرّفات الأجزاء</p></div>
+      <div class="step"><div class="n">٣</div><p>فحص حتمي</p></div>
+      <div class="step"><div class="n">٤</div><p>قرار المختص</p></div>
     </div>
   </section>
 
   <section class="section" aria-labelledby="facts-title">
-    <h2 id="facts-title">ماذا أثبتت التجربة؟</h2>
-    <p class="note">نتائج تجربة أولى صغيرة</p>
-    <div class="facts" id="facts"></div>
+    <h2 id="facts-title">نطاق الفهرسة</h2>
+    <p class="note">أعداد توجيه وليست دقة</p>
+    <div class="facts" id="facts">
+      <div class="fact"><div class="value">٢٩٦</div><div class="label">نافذة</div><div class="caption">٦٤ آية × ٤ تفاسير</div></div>
+      <div class="fact"><div class="value">٤</div><div class="label">تفاسير مقارنة</div><div class="caption">الطبري · ابن كثير · البغوي · السعدي</div></div>
+      <div class="fact"><div class="value">٦٤</div><div class="label">آية من سورة النور</div><div class="caption">النص مطابق للمصدر حرفاً بحرف</div></div>
+      <div class="fact"><div class="value">—</div><div class="label">لا اعتماد إلا من المتخصص</div><div class="caption">غير معتمد بعد</div></div>
+    </div>
   </section>
 
   <section class="section" aria-labelledby="legend-title">
     <h2 id="legend-title">معاني الحالات</h2>
     <div class="legend">
-      <div class="legend-item"><span aria-hidden="true">🟡</span><div><strong>مقترح</strong> — اتفق الفاحصان (لم يراجعه متخصص بعد)</div></div>
-      <div class="legend-item"><span aria-hidden="true">🟠</span><div><strong>بانتظار المتخصص</strong> — اختلاف أو ثقة منخفضة أو وسم حساس</div></div>
-      <div class="legend-item"><span aria-hidden="true">🟢</span><div><strong>معتمد</strong> — اعتمده المراجع في هذه الصفحة</div></div>
+      <div class="legend-item"><span aria-hidden="true">🟡</span><div><strong>اقتراح آلي</strong> — غير معتمد بعد</div></div>
+      <div class="legend-item"><span aria-hidden="true">🟠</span><div><strong>بانتظار المتخصص</strong> — إحالة لقرار المختص</div></div>
+      <div class="legend-item"><span aria-hidden="true">🟢</span><div><strong>معتمد</strong> — قرار المختص في هذه الصفحة</div></div>
     </div>
   </section>
 
@@ -939,7 +982,7 @@ details.why[open] > summary {
           <label for="filterStatus">الحالة</label>
           <select id="filterStatus">
             <option value="">الكل</option>
-            <option value="agreed">مقترح</option>
+            <option value="agreed">اقتراح آلي</option>
             <option value="needs_review">بانتظار المتخصص</option>
             <option value="approved">معتمد</option>
             <option value="rejected">مرفوض</option>
@@ -984,7 +1027,7 @@ details.why[open] > summary {
 
   <div class="export-box" id="exportBox">
     <div class="top-bar">
-      <strong>قرارات المراجع (JSON)</strong>
+      <strong>قرارات المختص (JSON)</strong>
       <button type="button" class="btn primary" id="copyDecisions">نسخ</button>
     </div>
     <textarea id="exportText" readonly dir="ltr"></textarea>
@@ -993,7 +1036,7 @@ details.why[open] > summary {
 
   <div class="site-footer">
     <div>النص: مركز تفسير للدراسات القرآنية (CC BY 4.0) · المصدر الثاني للمطابقة: quran.com</div>
-    <div>نموذج تجريبي: لم يعتمد متخصص أي وحدة بعد.</div>
+    <div>لا اعتماد إلا من المتخصص · أعداد توجيه وليست دقة · النص مطابق للمصدر حرفاً بحرف</div>
   </div>
 </div>
 
@@ -1037,10 +1080,6 @@ details.why[open] > summary {
     });
   }
 
-  function pctAr(x) {
-    return toEastern(Number(x).toFixed(1).replace(/\.0$/, "")) + "٪";
-  }
-
   function stripSearch(s) {
     return String(s || "")
       .replace(/[\u064B-\u065F\u0670]/g, "")
@@ -1061,7 +1100,7 @@ details.why[open] > summary {
       return { emoji: "🟠", label: "مرفوض", cls: "rejected" };
     }
     if (status === "agreed") {
-      return { emoji: "🟡", label: "مقترح", cls: "agreed" };
+      return { emoji: "🟡", label: "اقتراح آلي", cls: "agreed" };
     }
     return { emoji: "🟠", label: "بانتظار المتخصص", cls: "needs_review" };
   }
@@ -1135,56 +1174,6 @@ details.why[open] > summary {
         );
       })
       .join("");
-  }
-
-  function renderFacts() {
-    var s = data.summary;
-    var afterParts = ["2_255", "17_105", "2_102"]
-      .map(function (k) {
-        var row = s.cross_source_after[k];
-        return row.label_ar + ": " + pctAr(row.pct);
-      })
-      .join(" · ");
-    var typos = s.source_a_suspect_typos || [];
-    var typoItems = typos
-      .map(function (t) {
-        return (
-          "<li><strong>" +
-          t.ayah_label_ar +
-          "</strong>: مركز تفسير «" +
-          escText(t.a_word) +
-          "» · quran.com «" +
-          escText(t.b_word) +
-          "»</li>"
-        );
-      })
-      .join("");
-    var finding =
-      '<div class="fact finding">' +
-      '<p class="finding-title">المطابقة كشفت فروقاً بحرف واحد بين النسختين (' + toEastern(typos.length) + ')</p>' +
-      '<p class="note">بعضها خطأ طباعي ظاهر، وبعضها اختلاف طبعات أو إملاء. لا يحكم النظام أيّ النسختين أصح؛ يحسمها المتخصص بالرجوع إلى المطبوع.</p>' +
-      '<p class="example">أوضحها: في حديث «أي آية في القرآن أعظم؟» جاءت في نسخة مركز تفسير «القرن» — خطأ طباعي في النسخة الرقمية لا في كلام ابن كثير.</p>' +
-      (typoItems
-        ? "<details><summary>اعرض الفروق كلها</summary><ul>" + typoItems + "</ul></details>"
-        : "<p class=\"note\">لم تُرصد فروق حرفية في هذه النافذة.</p>") +
-      "</div>";
-    var html =
-      '<div class="fact"><div class="value">' +
-      pctAr(s.verbatim_pct) +
-      '</div><div class="label">سلامة النص حرفاً بحرف</div></div>' +
-      '<div class="fact"><div class="value">' +
-      pctAr(s.source_tag_agreement_pct) +
-      '</div><div class="label">اتفاق وسوم المصدر بين الفاحصين</div></div>' +
-      '<div class="fact"><div class="value">' +
-      pctAr(s.content_tag_agreement_pct) +
-      '</div><div class="label">اتفاق وسوم المحتوى بين الفاحصين</div></div>' +
-      '<div class="fact"><div class="value">' +
-      toEastern(Object.keys(s.cross_source_after).length) +
-      ' آيات</div><div class="label">مطابقة المصدرين بعد عزل الحواشي</div><div class="sub">' +
-      afterParts +
-      "</div></div>" +
-      finding;
-    document.getElementById("facts").innerHTML = html;
   }
 
   function escText(s) {
@@ -1598,7 +1587,6 @@ details.why[open] > summary {
   }
 
   loadDecisions();
-  renderFacts();
   fillTagSelects();
   renderApparatus();
   buildCards();
