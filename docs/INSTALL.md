@@ -10,13 +10,13 @@ For the production server (Cloudflare Tunnel, CI-gated deploys) see [`deploy/REA
 ## ١. أمر واحد / One command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/build/committee-console/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/main/install.sh | bash
 ```
 
 Or from a clone (installs that clone in place):
 
 ```bash
-git clone -b build/committee-console https://github.com/yyahmed82/tafsir-methods-index.git mirqah
+git clone https://github.com/yyahmed82/tafsir-methods-index.git mirqah
 cd mirqah && ./install.sh
 ```
 
@@ -97,7 +97,7 @@ turn off "show the code on screen" in Settings → Security before anyone else c
 |---|---|---|
 | `--tier auto\|full\|lite\|none` | `auto` | AI engine size |
 | `--dir PATH` | `~/mirqah` | Install folder (ignored when run from inside a clone) |
-| `--branch NAME` | `build/committee-console` | Branch to clone |
+| `--branch NAME` | `main` | Branch to clone |
 | `--port N` / `--reader-port N` | `8800` / `8080` | Console and reader ports |
 | `--bind ADDR` | `127.0.0.1` | Listen address |
 | `--email ADDR` `--name "NAME"` | `admin@mirqah.local` | The local super admin (also a specialist, so you can try reviews) |
