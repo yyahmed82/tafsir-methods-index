@@ -149,6 +149,12 @@ def _set_session_cookie(request: Request, response: Response, token: str, hours:
 
 
 VIEW_AS_ALLOW = {"/api/view-as/stop", "/api/mode"}
+# Demo mode is read-only for the whole API, not only for the committee's routes
+# (audit D-07). The few writes that stay open never touch live committee data:
+# switching back to live, signing out, (re)building, configuring or deleting the
+# simulation, looking through another account, and the viewer's interface language.
+DEMO_ALLOW = {"/api/mode", "/api/auth/logout", "/api/demo/seed", "/api/demo",
+              "/api/settings/demo", "/api/view-as", "/api/view-as/stop", "/api/me"}
 
 
 def real_user(request: Request) -> dict:
@@ -170,6 +176,9 @@ def current_user(request: Request) -> dict:
     who is not a super admin the header does nothing.
     """
     real = real_user(request)
+    if real.get("mode") == "demo" and request.method not in ("GET", "HEAD", "OPTIONS") \
+            and request.url.path not in DEMO_ALLOW:
+        raise HTTPException(423, {"error": "demo_read_only"})
     target = auth.normalize_email(request.headers.get(config.VIEW_AS_HEADER) or "")
     if not target or not auth.has_role(real, "super_admin") or target == real["email"]:
         return real
@@ -390,6 +399,17 @@ def _probe(force: bool = False) -> dict:
     return _PROBE_CACHE["value"]
 
 
+def _llm_for(user: dict, llm: dict) -> dict:
+    """The model server's address is for operators only: judges, guests, viewers and
+    specialists see that a private engine answers, not where it lives."""
+    if "run_tasks" in user.get("permissions", ()):
+        return llm
+    out = {k: v for k, v in (llm or {}).items() if k not in ("base_url", "work_root", "error")}
+    out["base_url"] = ""
+    out["address_hidden"] = True
+    return out
+
+
 def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
 
     # ---------- public
@@ -464,7 +484,8 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
 
     @app.get("/api/me")
     def me(user: dict = Depends(current_user)) -> dict:
-        return {"user": auth.public_user(user), "default_lang": default_lang(),
+        return {"user": {**auth.public_user(user), "sample_ayah": settings.get("general")["sample_ayah"]},
+                "default_lang": default_lang(),
                 "demo_available": demo.available()}
 
     # ---------- live / demo (per browser; the simulation is read-only)
@@ -518,6 +539,8 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
 
     @app.patch("/api/me")
     def me_patch(body: MeIn, user: dict = Depends(current_user)) -> dict:
+        if body.name and user.get("mode") == "demo":
+            raise _err(423, "demo_read_only")   # only the interface language may change
         if body.lang is not None:
             if body.lang and not db.row("SELECT 1 FROM languages WHERE code=? AND enabled=1",
                                         (body.lang,)):
@@ -532,7 +555,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     @operational()
     def dashboard(user: dict = Depends(need("view_dashboard"))) -> dict:
         tasks = runner.task_groups(6)  # originals with their retries folded in
-        return {"llm": _probe(), "agents": runner.agents_state(), "progress": pipeline.progress(),
+        return {"llm": _llm_for(user, _probe()), "agents": runner.agents_state(), "progress": pipeline.progress(),
                 "gates": pipeline.gates(), "tasks": tasks, "simulated": db.mode() == "demo",
                 "sample_ayah": settings.get("general")["sample_ayah"],
                 "server_time": time.time()}
@@ -545,14 +568,14 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     @app.get("/api/llm/probe")
     @operational()
     def llm_probe(user: dict = Depends(need("view_dashboard"))) -> dict:
-        return _probe(force=True)
+        return _llm_for(user, _probe(force=True))
 
     # ---------- mission-control hover cards (real step timings and token counts)
     @app.get("/api/agents/{key}")
     @operational()
     def agent_card(key: str, user: dict = Depends(need("view_dashboard"))) -> dict:
         if key == "model":
-            return {**runner.model_layer(), "llm": _probe()}
+            return {**runner.model_layer(), "llm": _llm_for(user, _probe())}
         try:
             return runner.agent_detail(key, with_output="view_tasks" in user["permissions"])
         except runner.TaskError as e:

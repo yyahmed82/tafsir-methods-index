@@ -275,6 +275,10 @@ def init(db_path: Path | None = None) -> Path:
     with connect() as con:
         con.executescript(SCHEMA)
         _migrate(con)
+    # a simulation built by an older release gets the same additive columns, otherwise
+    # demo mode fails with "no such column" after an upgrade (dashboard, tasks)
+    if demo_path().exists():
+        init_demo()
     return _DB_PATH
 
 

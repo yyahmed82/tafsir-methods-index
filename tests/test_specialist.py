@@ -128,7 +128,7 @@ class TestChairBlockOnly(unittest.TestCase):
         v2_verify.configure(v2_verify.DEFAULT_BASE)
         return anns
 
-    def _run(self, verdict: dict, stale: bool = False) -> dict:
+    def _run(self, verdict: dict, stale: bool = False, missing: bool = False) -> dict:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp) / "ibn_kathir"
             anns = self._arm_b(base)
@@ -138,6 +138,8 @@ class TestChairBlockOnly(unittest.TestCase):
                                         http_post=_reply({"move_id": "m01", **verdict}))
             self.assertTrue((base / "specialist_profile" / "17_105.json").is_file())
             self.assertEqual(out["summary"]["moves"], 1)
+            if missing:
+                (base / "specialist_profile" / "17_105.json").unlink()
             if stale:
                 p = base / "specialist_profile" / "17_105.json"
                 d = read_json(p)
@@ -162,11 +164,22 @@ class TestChairBlockOnly(unittest.TestCase):
         self.assertEqual(v["route"], "specialist")
         self.assertEqual(v["committee_reason_code"], "specialist_block")
 
-    def test_stale_specialist_file_ignored(self) -> None:
-        c, _v = self._run({"verdict": "reject", "primary": None, "evidence_span_ids": ["s002"],
-                           "reason_code": "target_verse"}, stale=True)
-        self.assertEqual(c["committee_route"], "auto_candidate")
+    def test_stale_specialist_file_blocks_candidate(self) -> None:
+        # audit C-01: a verdict made for another packet is not a verdict; no auto candidate
+        c, v = self._run({"verdict": "confirm", "primary": "M_QURAN", "evidence_span_ids": ["s002"],
+                          "reason_code": "ok"}, stale=True)
+        self.assertEqual(c["committee_route"], "specialist")
+        self.assertEqual(c["abstention_reasons"], ["specialist_missing"])
+        self.assertEqual(v["committee_reason_code"], "specialist_missing")
         self.assertNotIn("method_specialist", c)
+
+    def test_missing_specialist_file_blocks_candidate(self) -> None:
+        # the specialist step failed or never ran: arm B must not leave a candidate
+        c, v = self._run({"verdict": "confirm", "primary": "M_QURAN", "evidence_span_ids": ["s002"],
+                          "reason_code": "ok"}, missing=True)
+        self.assertEqual(c["committee_route"], "specialist")
+        self.assertEqual(c["abstention_reasons"], ["specialist_missing"])
+        self.assertEqual(v["route"], "specialist")
 
 
 if __name__ == "__main__":

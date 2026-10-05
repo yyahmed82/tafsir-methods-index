@@ -370,6 +370,70 @@ def test_view_as_is_super_admin_only_read_only_and_audited(env):
 
 # ------------------------------------------------------------------ demo mode
 
+def test_demo_mode_refuses_every_live_write(env):
+    """Audit D-07: in demo mode no route may change live settings, users, roles,
+    languages, translations or the profile name; switching back must still work."""
+    add_user("adm@x.org", "super_admin")
+    login(env, "adm@x.org")
+    assert env.post("/api/demo/seed", json={"months": 3}, headers=H).status_code == 200
+    assert env.post("/api/mode", json={"mode": "demo"}, headers=H).status_code == 200
+    before = env.get("/api/settings").json()
+    users_before = len(env.get("/api/users").json()["users"])
+    writes = [
+        ("patch", "/api/settings/general", {"values": {"project_name": "HACK"}}),
+        ("post", "/api/users", {"email": "new@x.org", "name": "N", "role": "viewer"}),
+        ("post", "/api/roles", {"key": "r1", "name_ar": "ر", "name_en": "R", "permissions": []}),
+        ("post", "/api/languages", {"code": "fr", "name_native": "Français", "name_en": "French", "dir": "ltr"}),
+        ("put", "/api/translations/en", {"strings": {"app.subtitle": "HACK"}}),
+        ("patch", "/api/me", {"name": "HACK"}),
+        ("post", "/api/tasks", {"kind": "dryrun", "scope": "sample", "tafsirs": ["al_saadi"]}),
+    ]
+    for method, path, body in writes:
+        r = getattr(env, method)(path, json=body, headers=H)
+        assert r.status_code == 423 and r.json()["detail"]["error"] == "demo_read_only", (path, r.text[:200])
+    assert env.patch("/api/me", json={"lang": "en"}, headers=H).status_code == 200   # interface language only
+    assert env.post("/api/mode", json={"mode": "live"}, headers=H).status_code == 200
+    assert env.get("/api/settings").json() == before
+    assert len(env.get("/api/users").json()["users"]) == users_before
+
+
+def test_model_address_only_for_operators(env):
+    add_user("op@x.org", "committee_operator")
+    add_user("view@x.org", "viewer")
+    login(env, "view@x.org")
+    for path in ("/api/dashboard", "/api/llm/probe", "/api/agents/model"):
+        body = env.get(path).json()
+        llm = body.get("llm", body)
+        assert llm.get("address_hidden") is True and not llm.get("base_url"), path
+        assert "11434" not in env.get(path).text, path
+    env.post("/api/auth/logout", headers=H)
+    login(env, "op@x.org")
+    assert env.get("/api/dashboard").json()["llm"]["base_url"].endswith(":11434")
+
+
+def test_demo_built_by_an_older_release_still_opens(env):
+    """A demo.db seeded before tasks.origin_id existed must not break demo mode
+    after an upgrade (Internal Server Error on the dashboard and tasks, 5 Oct)."""
+    import sqlite3
+    from console import demo
+    add_user("old@x.org", "super_admin")
+    login(env, "old@x.org")
+    assert env.post("/api/demo/seed", json={"months": 3}, headers=H).status_code == 200
+    # make it look like an older release built it: no retry-chain columns
+    con = sqlite3.connect(db.demo_path())
+    con.execute("DROP INDEX IF EXISTS tasks_origin")
+    con.execute("ALTER TABLE tasks DROP COLUMN origin_id")
+    con.execute("ALTER TABLE tasks DROP COLUMN retry_of")
+    con.commit()
+    con.close()
+    db.init(db.demo_path().with_name("console.db"))   # what a restart does
+    assert env.post("/api/mode", json={"mode": "demo"}, headers=H).status_code == 200
+    for path in ("/api/dashboard", "/api/tasks", "/api/progress", "/api/reports"):
+        r = env.get(path)
+        assert r.status_code == 200, (path, r.text[:200])
+    assert demo.available()
+
+
 def test_demo_mode_is_isolated_and_read_only(env):
     from console import demo
     add_user("sa@example.com", "super_admin")

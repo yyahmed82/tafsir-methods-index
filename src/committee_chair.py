@@ -39,6 +39,7 @@ DEFAULT_ABSTENTION_AR: dict[str, str] = {
     "unclear_bounds": "حدود غير واضحة: لا يوجد تقاطع كافٍ في حدود الأجزاء بين النموذجين أو رُصد عدم اتصال في الأجزاء.",
     "weak_evidence": "دليل ضعيف: درجة المصنّف دون عتبة اللجنة (85) أو اليقين ضعيف أو رُصدت أعلام على الدليل.",
     "specialist_block": "منع الأخصائي الآلي: لم يؤكد أخصائي المنهج هذه الحركة، فتُحال إلى المتخصص البشري.",
+    "specialist_missing": "لا حكم من أخصائي المنهج: خطوة الأخصائي فشلت أو لم تُشغَّل أو حكمها لحزمة أخرى، فلا ترشيح آلي وتُحال إلى المتخصص البشري.",
 }
 
 
@@ -410,7 +411,9 @@ def evaluate_window(
     r_moves = r_verified.get("moves") or []
 
     # Arm B: method specialists may only block a candidate, never create one. A
-    # specialist file made for another packet (stale) is ignored.
+    # specialist file made for another packet (stale) does not count, and a move with
+    # no current verdict (step failed, skipped, absent or stale) cannot stay an
+    # automatic candidate: it goes to the human specialist (audit C-01).
     spec_by_move: dict[str, dict] = {}
     if variant:
         import specialist as _specialist  # local import keeps the baseline chair unchanged
@@ -459,6 +462,11 @@ def evaluate_window(
                 m_eval["outcome"] = "بانتظار المتخصص"
                 m_eval["abstention_reasons"] = ["specialist_block"]
                 m_eval["abstention_ar"] = format_abstention_ar("specialist_block")
+        elif variant and m_eval["committee_route"] == ROUTE_AUTO:
+            m_eval["committee_route"] = ROUTE_SPECIALIST
+            m_eval["outcome"] = "بانتظار المتخصص"
+            m_eval["abstention_reasons"] = ["specialist_missing"]
+            m_eval["abstention_ar"] = format_abstention_ar("specialist_missing")
         evaluated_moves.append(m_eval)
 
         # Build verified move for verified/committee

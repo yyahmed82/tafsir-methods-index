@@ -1082,6 +1082,7 @@ REASON_AR = {
     "agent_disagree": "اختلاف الوكيلين", "unclear_bounds": "حدود غير متقاطعة",
     "weak_evidence": "دليل غير كافٍ", "agent_missing": "لم يعمل المدقّق بعد",
     "specialist_block": "منع الأخصائي الآلي",
+    "specialist_missing": "لا حكم من الأخصائي الآلي",
 }
 
 
@@ -1137,7 +1138,7 @@ def build_report(day: str, as_of: float | None = None) -> dict:
     if not gates["phase0_merged"]:
         nxt.append("إغلاق فجوات الإسناد السبع (المرحلة ٠) ودمجها قبل أي وسم جماعي.")
     if prog["totals"]["classifier"] == 0:
-        nxt.append("تشغيل اللجنة على العيّنة (آية النور ٢٤:٣٥) بالتفاسير الأربعة.")
+        nxt.append(f"تشغيل اللجنة على العيّنة (آية النور {settings.get('general')['sample_ayah']}) بالتفاسير الأربعة.")
     elif not gates["sample_reviewed"]:
         nxt.append("مراجعة العيّنة من المتخصص قبل فتح الوسم الجماعي.")
     if failed:

@@ -520,7 +520,7 @@ if [ "$TIER" != none ]; then
   run "AI models → ${MODELS[0]} (classifier) + ${MODELS[1]} (verifier)" \
     cons settings-set llm base_url="$OLLAMA_URL" classifier_model="${MODELS[0]}" verifier_model="${MODELS[1]}"
 fi
-run "Console link → http://localhost:$PORT" cons settings-set general console_url="http://localhost:$PORT"
+run "Console link → http://localhost:$PORT · sample ayah 24:11" cons settings-set general console_url="http://localhost:$PORT" sample_ayah=24:11
 run "Super admin → $ADMIN_EMAIL" cons create-user --email "$ADMIN_EMAIL" --name "$ADMIN_NAME" --role super_admin,specialist
 if [ -s "$DIR/console/var/demo.db" ]; then
   ok "Simulated year already built" "rebuild: .venv/bin/python -m console demo-seed"

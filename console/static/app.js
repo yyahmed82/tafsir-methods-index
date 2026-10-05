@@ -20,6 +20,8 @@
   // read-only views: "view as user" blocks every write; demo mode blocks the committee's writes
   const viewingAs = () => !!(S.me && S.me.view_as);
   const inDemo = () => !!(S.me && S.me.mode === 'demo');
+  // the sample ayah comes from Settings → General (server), never from the code
+  const sampleAyah = () => (S.me && S.me.sample_ayah) || '24:11';
   const canDo = (p) => has(p) && !viewingAs() && !inDemo();
   const canAdmin = (p) => has(p) && !viewingAs();
   const store = {
@@ -449,10 +451,10 @@
     const tot = p.totals;
     const tafRows = p.tafsirs.map((r) => `<div class="tafsir-row"><b>${esc(r.name_ar)}</b>
         <div><div class="bar lg" title="${r.both}/${r.windows}"><i style="width:${pct(r.both, r.windows)}%"></i><i class="b" style="width:${pct(r.classifier - r.both, r.windows)}%"></i></div>
-        <div class="faint mt-s">${T('dash.classified')} ${fNum(r.classifier)} · ${T('dash.both')} ${fNum(r.both)} · ${T('dash.committee')} ${fNum(r.committee)} · ${T('dash.candidates')} ${fNum(r.committee_candidates)} · ${T('dash.specialist')} ${fNum(r.committee_specialist)}</div></div>
+        <div class="faint mt-s">${T('dash.classified')} ${fNum(r.classifier)} · ${T('dash.both')} ${fNum(r.both)} · ${T('dash.committee')} ${fNum(r.committee)} ${T('dash.unit_windows')} · ${T('dash.moves_of_these')}: ${T('dash.candidates')} ${fNum(r.committee_candidates)} · ${T('dash.specialist')} ${fNum(r.committee_specialist)}</div></div>
         <span class="mono faint">${fNum(r.both)}/${fNum(r.windows)}</span></div>`).join('');
     const g = d.gates;
-    const gate = (k, on) => `<div class="gate"><span>${T(k)}</span><span class="chip ${on ? 'ok' : 'warn'}">${ico(on ? 'check' : 'lock')} ${T(on ? 'gate.open' : 'gate.closed')}</span></div>`;
+    const gate = (k, on, v) => `<div class="gate"><span>${T(k, v)}</span><span class="chip ${on ? 'ok' : 'warn'}">${ico(on ? 'check' : 'lock')} ${T(on ? 'gate.open' : 'gate.closed')}</span></div>`;
     const tasks = d.tasks.length ? d.tasks.map((x) => taskGroupRows(x, { compact: true })).join('')
       : `<tr><td colspan="5" class="empty">${T('tasks.empty')}</td></tr>`;
     const detail = agentDetail(sel, d);
@@ -467,7 +469,7 @@
         <div class="brain"><div class="brain-orb ${llm.reachable ? '' : 'off'} ${busy ? 'busy' : ''} ${HC.key === 'model' ? 'hc-on' : ''}" data-hc="model" tabindex="0" role="button" aria-label="${T('dash.llm_layer')}" aria-describedby="hovercard">${ico('brain')}</div>
           <div class="brain-meta"><div class="kicker">${T('dash.llm_layer')} · ${esc(llm.runtime || '')}</div>
             <div class="m">${esc(llm.classifier_model || '')} <span class="faint">+</span> ${esc(llm.verifier_model || '')}</div>
-            <div class="faint">${llm.simulated ? T('mode.demo_engine') : `<span class="mono">${esc(llm.base_url || '')}</span>`} · ${llm.reachable ? `<span class="c-green">${T('dash.reachable')}</span>` : `<span style="color:var(--warn)">${T('dash.unreachable')}</span>`}${llm.version && !llm.simulated ? ` · v${esc(llm.version)}` : ''} · ${busy ? `<span class="c-green">${T('dash.brain_busy')}</span>` : T('dash.brain_idle')}</div></div></div>
+            <div class="faint">${llm.simulated ? T('mode.demo_engine') : (llm.address_hidden ? T('dash.engine_private') : `<span class="mono">${esc(llm.base_url || '')}</span>`)} · ${llm.reachable ? `<span class="c-green">${T('dash.reachable')}</span>` : `<span style="color:var(--warn)">${T('dash.unreachable')}</span>`}${llm.version && !llm.simulated ? ` · v${esc(llm.version)}` : ''} · ${busy ? `<span class="c-green">${T('dash.brain_busy')}</span>` : T('dash.brain_idle')}</div></div></div>
         <svg class="wires" viewBox="0 0 1000 70" preserveAspectRatio="none" aria-hidden="true">${wires}</svg>
         <div class="agents">${cards}</div>
       </section>
@@ -478,10 +480,10 @@
             <div><div class="kicker">${T('dash.windows')}</div><div class="stat">${fNum(tot.windows)}</div></div>
             <div><div class="kicker">${T('dash.classified')}</div><div class="stat">${fNum(tot.classifier)}<small> / ${fNum(tot.windows)}</small></div></div>
             <div><div class="kicker">${T('dash.both')}</div><div class="stat">${fNum(tot.both)}</div></div>
-            <div><div class="kicker">${T('dash.committee')}: ${T('dash.candidates')} · ${T('dash.specialist')}</div><div class="stat">${fNum(tot.committee_candidates)}<small> · ${fNum(tot.committee_specialist)}</small></div></div>
+            <div><div class="kicker">${T('dash.committee')} (${T('dash.moves')}): ${T('dash.candidates')} · ${T('dash.specialist')}</div><div class="stat">${fNum(tot.committee_candidates)}<small> · ${fNum(tot.committee_specialist)}</small></div></div>
           </div>${tafRows}</section>
         <section class="card"><div class="card-h"><h2>${T('dash.gates')}</h2>${has('manage_settings') ? `<a class="btn sm" href="#/settings/gates">${ico('gear')}</a>` : ''}</div>
-          ${gate('gate.phase0', g.phase0_merged)}${gate('gate.sample', g.sample_reviewed)}
+          ${gate('gate.phase0', g.phase0_merged)}${gate('gate.sample', g.sample_reviewed, { a: esc(d.sample_ayah || sampleAyah()) })}
           <p class="faint mt-s">${T('gate.bulk_rule')}</p>
           <div class="mt"><div class="kicker">${T('dash.models_on_host')}</div><div class="row mt-s">${llmModels || `<span class="faint">—</span>`}</div>
           <div class="stack mt-s"><div class="row"><span class="faint">${T('agent.classifier')}:</span>${inst(llm.classifier_model, llm.classifier_installed)}</div>
@@ -790,7 +792,7 @@
           ${hcTile(T('hc.tokens'), fCompact((td.tokens_in || 0) + (td.tokens_out || 0)), T('hc.in_out', { i: fCompact(td.tokens_in), o: fCompact(td.tokens_out) }))}
         </div>
         <div class="hc-sec"><div class="hc-k">${T('hc.in_memory')}</div>${loaded}</div>
-        <div class="hc-kv"><div><span>${T('hc.host')}</span><b class="mono">${llm.simulated ? T('mode.demo_engine') : esc(llm.base_url || '—')}</b></div></div>
+        <div class="hc-kv"><div><span>${T('hc.host')}</span><b class="${llm.address_hidden ? '' : 'mono'}">${llm.simulated ? T('mode.demo_engine') : (llm.address_hidden ? T('dash.engine_private') : esc(llm.base_url || '—'))}</b></div></div>
         ${per ? `<div class="hc-sec"><div class="hc-k">${T('hc.per_model')}</div><table class="hc-tab"><thead><tr><th>${T('tasks.model')}</th><th>${T('hc.steps')}</th><th>${T('hc.t_in')}</th><th>${T('hc.t_out')}</th><th>${T('hc.max_prompt')}</th></tr></thead><tbody>${per}</tbody></table></div>` : ''}
       </div>`;
   }
@@ -1120,7 +1122,7 @@
   }
 
   function newTaskModal(preset = {}) {
-    const sample = '24:35';
+    const sample = sampleAyah();
     const kinds = ['committee', 'classifier', 'verifier', 'chair', 'dryrun'];
     const taf = ['al_tabari', 'ibn_kathir', 'al_baghawi', 'al_saadi'];
     const m = modal(`${modalHead(t('tasks.new'))}
@@ -1262,7 +1264,7 @@
   async function viewProgress() {
     const d = await api('/progress');
     const cols = d.matrix.columns;
-    const sampleN = 35;
+    const sampleN = Number(sampleAyah().split(':')[1]);
     const cells = d.matrix.rows.map((r) => `<div class="ma">${r.ayah_number}</div>` + cols.map((c) => {
       const x = r.cells[c.tafsir] || { status: 'none', windows: 0 };
       return `<div class="cell ${x.status} ${r.ayah_number === sampleN ? 'sample' : ''}" title="${esc(c.name_ar)} ${r.ayah_number} · ${x.committee || 0}/${x.windows}">${x.windows > 1 ? x.windows : ''}</div>`;

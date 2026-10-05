@@ -286,7 +286,8 @@ AGENT_AR = {"classifier": "المصنّف", "verifier": "المدقّق", "chair
 REASON_AR = {"written_abstain": "امتناع مكتوب", "force_specialist": "إحالة الفاحص",
              "agent_disagree": "اختلاف الوكيلين", "unclear_bounds": "حدود غير متقاطعة",
              "weak_evidence": "دليل غير كافٍ", "agent_missing": "لم يعمل المدقّق بعد",
-             "specialist_block": "منع الأخصائي الآلي"}
+             "specialist_block": "منع الأخصائي الآلي",
+             "specialist_missing": "لا حكم من الأخصائي الآلي"}
 
 
 def report(c: dict, text: str) -> Mail:
