@@ -13,7 +13,7 @@
 Installs the committee console, the public reader and a local AI engine (Ollama) on Ubuntu/Debian, WSL2 or macOS, sized to your machine.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/install/local/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/build/committee-console/install.sh | bash
 ```
 
 | المستوى / Tier | الذاكرة / RAM | القرص / Disk | النماذج / Models |

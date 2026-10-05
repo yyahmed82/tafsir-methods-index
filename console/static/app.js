@@ -312,6 +312,9 @@
   }
   let fitT;
   window.addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(fitTopbar, 80); });
+  // web fonts can arrive after the first fit and widen the labels: fit again once they are in
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitTopbar());
+  window.addEventListener('load', () => fitTopbar());
   // windows the chair gave me that still wait for my decision (nav badge)
   async function refreshBadges() {
     const el = $('#nb-review');

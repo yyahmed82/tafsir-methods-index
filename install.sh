@@ -4,14 +4,14 @@
 #  Committee console + public reader + (optional) a local AI engine, on one machine.
 #  Ubuntu / Debian (incl. WSL2) and macOS. Safe to run again: it resumes and updates.
 #
-#    curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/install/local/install.sh | bash
+#    curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/build/committee-console/install.sh | bash
 #    ./install.sh --help
 # ──────────────────────────────────────────────────────────────────────────────
 set -Eeuo pipefail
 
 INSTALLER_VERSION="1.0.0"
 REPO_URL="${MIRQAH_REPO_URL:-https://github.com/yyahmed82/tafsir-methods-index.git}"
-BRANCH="${MIRQAH_BRANCH:-install/local}"
+BRANCH="${MIRQAH_BRANCH:-build/committee-console}"
 DIR="${MIRQAH_DIR:-$HOME/mirqah}"
 TIER="auto"
 PORT=8800
