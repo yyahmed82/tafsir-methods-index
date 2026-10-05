@@ -47,8 +47,8 @@ def _source(tafsir: str, rel: str | None) -> tuple[str | None, str | None]:
     if not rel:
         return None, None
     p = (config.work_root() / rel).resolve()
-    root = pipeline.data_root()
-    if not p.is_relative_to(root) or not p.is_file():
+    roots = (pipeline.data_root(), (config.work_root() / "data").resolve())
+    if not any(p.is_relative_to(r) for r in roots) or not p.is_file():
         return None, None
     raw = p.read_bytes()
     return raw.decode("utf-8"), hashlib.sha256(raw).hexdigest()
@@ -126,7 +126,49 @@ def candidate() -> dict[str, Any]:
                 if a["primary"] != b["primary"] and set(a["span_ids"]) & set(b["span_ids"]):
                     overlaps.append({"tafsir": t, "window": w, "a": a["id"], "b": b["id"],
                                      "a_primary": a["primary"], "b_primary": b["primary"]})
-    return {"units": kept, "failed": failed, "duplicates": duplicates, "overlaps": overlaps}
+    return {"units": kept, "failed": failed, "duplicates": duplicates, "overlaps": overlaps,
+            "windows": _windows_for(kept, sources)}
+
+
+def _windows_for(units: list[dict], sources: dict) -> list[dict]:
+    """The pinned passage of every window that carries an approved unit, so the public
+    reader can show each approved unit inside the mufassir's own text. The text is the
+    source slice (never a model's output); the verse is taken from the head of the
+    commentary when the mufassir quotes it."""
+    out: list[dict] = []
+    seen: set[tuple] = set()
+    for u in units:
+        key = (u["tafsir"], u["window"])
+        if key in seen:
+            continue
+        seen.add(key)
+        w = pipeline.load_window(u["tafsir"], u["window"]) or {}
+        text, sha = sources.get(u.get("source_file"), (None, None))
+        start, end = int(w.get("window_start") or 0), int(w.get("window_end") or 0)
+        if text is None or sha != u.get("source_sha256") or not 0 <= start < end <= len(text):
+            continue
+        ayah = str(w.get("ayah") or u.get("ayah") or "")
+        surah = int(w.get("surah") or (ayah.split(":")[0] if ":" in ayah else 0) or 0)
+        n = int(w.get("ayah_number") or (ayah.split(":")[1] if ":" in ayah else 0) or 0)
+        parts = pipeline.window_parts(u["tafsir"], n) if n else []
+        out.append({
+            "tafsir": u["tafsir"], "tafsir_name_ar": u["tafsir_name_ar"], "window": u["window"],
+            "ayah": ayah, "surah": surah, "surah_name_ar": pipeline.surah_name(surah),
+            "ayah_number": n, "part": (parts.index(u["window"]) + 1) if u["window"] in parts else 1,
+            "parts": len(parts) or 1, "ayah_text": pipeline.ayah_text(u["tafsir"], n) if n else None,
+            "source_file": u.get("source_file"), "source_sha256": sha,
+            "window_start": start, "window_end": end, "text": text[start:end],
+        })
+    out.sort(key=lambda w: (w["tafsir"], w["ayah_number"], w["part"]))
+    return out
+
+
+def _method_names() -> dict[str, str]:
+    try:
+        from . import learning
+        return learning.method_names()
+    except Exception:  # pragma: no cover - names are a convenience for the reader
+        return {}
 
 
 def _counts(units: list[dict]) -> dict:
@@ -229,7 +271,8 @@ def publish(user: dict, note: str = "") -> dict:
             "published_at": db.now(), "project": gen["project_name"], "team": gen["team_name"],
             "note": note.strip()[:500], "counts": counts,
             "notice_ar": "وحدات اعتمدها متخصص بشري وروجعت مقابل النص المثبّت؛ أعداد وليست دقة.",
-            "units": _public(cand["units"])}
+            "units": _public(cand["units"]), "windows": cand["windows"],
+            "methods_ar": _method_names()}
     raw = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     sha = hashlib.sha256(raw).hexdigest()
     name = f"v{version:04d}.json"

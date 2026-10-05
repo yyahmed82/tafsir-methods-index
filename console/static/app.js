@@ -357,9 +357,7 @@
           <input class="input ltr" id="email" type="email" autocomplete="email" inputmode="email" required placeholder="${T('auth.email_ph')}" value="${esc(S.loginEmail)}"></div>
         <button class="btn primary block" type="submit">${ico('mail')} ${T('auth.send_code')}</button>
         <p class="faint" id="login-msg"></p></form>
-        ${S.pub.guest_access ? `<div class="auth-or"><span>${T('auth.or')}</span></div>
-        <button class="btn outline-accent block" type="button" data-act="guest">${ico('user')} ${T('auth.guest_btn')}</button>
-        <p class="faint mt-s">${T('auth.guest_note')}</p>` : ''}`;
+`;
     } else {
       body = `<form id="f-code" class="stack" novalidate>
         <p class="muted">${T('auth.sent_generic')}</p>
@@ -1336,7 +1334,53 @@
   }
 
   // ------------------------------------------------------------ review
+  // ------------------------------------------------------------ review: text with the moves placed in it
+  const METHOD_KEYS = ['M_QURAN', 'M_SUNNAH', 'M_SAHABA', 'M_TABIIN', 'M_LUGHA', 'M_QIRAAT', 'M_NUZUL', 'M_SIRA', 'M_ISRAILIYYAT', 'M_RAY'];
+  const mClass = (code) => METHOD_KEYS.includes(code) ? 'm-' + code.slice(2).toLowerCase() : 'm-none';
+  const decCls = (dec) => dec === 'approve' ? 'ok' : dec === 'reject' ? 'bad' : dec === 'needs_edit' ? 'warn' : '';
+  // escape + the editor's apparatus (¬…¥) dimmed; the open/closed state survives across chunks
+  function textFormatter() {
+    let inApp = false;
+    return (chunk) => {
+      let out = '';
+      for (const part of chunk.split(/([¬¥\n])/)) {
+        if (part === '¬') { if (!inApp) { out += '<span class="app">¬'; inApp = true; } else out += '¬'; }
+        else if (part === '¥') { if (inApp) { out += '¥</span>'; inApp = false; } else out += '¥'; }
+        else if (part === '\n') out += '<br>';
+        else out += esc(part);
+      }
+      return inApp ? out + '</span>' : out;
+    };
+  }
+  // text with every move wrapped: <mark class="u m-…" data-key>; overlaps are skipped (first wins)
+  function markedText(text, moves, base) {
+    const fmt = textFormatter();
+    const sorted = moves.filter((m) => Number.isInteger(m.start) && Number.isInteger(m.end) && m.end > m.start)
+      .map((m) => ({ ...m, s: m.start - base, e: m.end - base })).filter((m) => m.s >= 0 && m.e <= text.length).sort((a, b) => a.s - b.s);
+    let out = ''; let pos = 0;
+    for (const m of sorted) {
+      if (m.s < pos) continue;
+      out += fmt(text.slice(pos, m.s));
+      const dec = m.decision && (m.decision.decision || m.decision);
+      out += `<mark class="u ${mClass(m.primary)} ${dec ? 'd-' + dec : 'd-open'}" data-key="${esc(m.key)}" data-act="goto-move" title="${esc(m.key)}${m.title ? ' · ' + esc(m.title) : ''}"><i class="dot"></i>${fmt(text.slice(m.s, m.e))}</mark>`;
+      pos = m.e;
+    }
+    return out + fmt(text.slice(pos));
+  }
+  function methodLegend(names, counts, hidden) {
+    hidden = hidden || new Set();
+    return `<div class="legend" role="group" aria-label="${T('review.legend')}">${METHOD_KEYS.map((k) => `<button type="button" class="lg ${mClass(k)}${hidden.has(k) ? ' off' : ''}" data-act="legend-toggle" data-m="${k}" aria-pressed="${!hidden.has(k)}"><i class="dot"></i>${esc(names[k] || k)}${counts && counts[k] ? ` <b>${fNum(counts[k])}</b>` : ''}</button>`).join('')}</div>`;
+  }
+  function applyLegend(root) {
+    const hidden = S.legendHidden || new Set();
+    $$('mark.u', root).forEach((m) => { m.classList.toggle('off', [...hidden].some((k) => m.classList.contains(mClass(k)))); });
+  }
+  const arNum = (n) => String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]);
+  const ayahRef = (d) => `${T('review.surah')} ${esc(d.surah_name_ar || '')} · ${T('review.ayah')} ${arNum(d.ayah_number || '')}`;
+  const verseBlock = (d) => d.ayah_text ? `<blockquote class="ayah-text">﴿${esc(d.ayah_text)}﴾</blockquote>` : '';
+
   async function viewReview() {
+    if (S.reviewView === 'reader') return viewReviewReader();
     const d = await api('/review/units');
     const meId = S.me.id;
     const open = (u) => (u.decided || 0) < (u.moves || 0);
@@ -1358,16 +1402,71 @@
       const me = a.user_id === meId;
       return `<span class="chip ${a.status === 'done' ? 'ok' : me ? 'info' : ''}">${a.status === 'done' ? ico('check') + ' ' : ''}${esc(me ? t('review.you') : a.name || '—')}</span>`;
     };
+    // the decisions of a window: ✓ approved · ✎ needs edit · ✗ rejected, then what is still open
+    const status = (u) => {
+      const c = u.decisions || {};
+      const openN = (u.moves || 0) - (u.decided || 0);
+      if (!u.decided) return `<span class="chip">${T('review.status.open', { n: fNum(openN) })}</span>`;
+      return `<span class="dec-chips">${c.approve ? `<span class="chip ok" title="${T('review.decision.approve')}">${ico('check')} ${fNum(c.approve)}</span>` : ''}${c.needs_edit ? `<span class="chip warn" title="${T('review.decision.needs_edit')}">✎ ${fNum(c.needs_edit)}</span>` : ''}${c.reject ? `<span class="chip bad" title="${T('review.decision.reject')}">${ico('x')} ${fNum(c.reject)}</span>` : ''}${openN ? `<span class="chip" title="${T('review.filter.pending')}">${T('review.status.open', { n: fNum(openN) })}</span>` : `<span class="chip ok soft">${T('review.status.done')}</span>`}</span>`;
+    };
+    const notes = (u) => {
+      const ns = u.notes || [];
+      if (!ns.length) return '<span class="faint">—</span>';
+      const line = (n) => `${n.move}: ${[n.error, n.note].filter(Boolean).join(' — ')}`;
+      return `<span class="notes" title="${esc(ns.map(line).join('\n'))}">${ns.slice(0, 2).map((n) => `<span class="note-line ${decCls(n.decision)}">${esc(line(n))}</span>`).join('')}${ns.length > 2 ? `<span class="faint">+${fNum(ns.length - 2)}</span>` : ''}</span>`;
+    };
     const rows = units.length ? units.map((u) => `<tr class="click" data-href="#/review/${u.tafsir}/${u.window}${u.arm ? '/' + u.arm : ''}"><td class="mono">${esc(u.ayah)}</td><td>${esc(u.name_ar)}</td>
       <td class="mono">${esc(u.window)} ${u.committee ? `<span class="chip violet">${T('dash.committee')}</span>` : ''} ${armChip(u)}</td><td class="num">${fNum(u.moves)}</td><td class="num hide-sm">${fNum(u.auto_candidate)}</td><td class="num hide-sm">${fNum(u.specialist)}</td>
-      <td class="num hide-sm">${u.flags == null ? '—' : fNum(u.flags)}</td><td>${who(u)}</td><td class="num">${u.decided ? `<span class="chip ok">${fNum(u.decided)}/${fNum(u.moves)}</span>` : `<span class="chip">0/${fNum(u.moves)}</span>`}</td></tr>`).join('')
+      <td>${who(u)}</td><td>${status(u)}</td><td class="notes-cell hide-sm">${notes(u)}</td></tr>`).join('')
       : `<tr><td colspan="9" class="empty">${T(S.reviewFilter === 'mine' ? 'review.mine_empty' : S.reviewFilter === 'pending' && d.units.length ? 'review.pending_empty' : 'review.empty')}</td></tr>`;
-    const tabs = `<div class="seg mb" role="tablist">${filters.map(([k, key]) => `<button type="button" role="tab" class="${S.reviewFilter === k ? 'on' : ''}" data-act="review-filter" data-f="${k}">${T(key)} <span class="chip">${fNum(counts[k])}</span></button>`).join('')}</div>`;
+    const tabs = `<div class="row between wrap mb"><div class="seg" role="tablist">${filters.map(([k, key]) => `<button type="button" role="tab" class="${S.reviewFilter === k ? 'on' : ''}" data-act="review-filter" data-f="${k}">${T(key)} <span class="chip">${fNum(counts[k])}</span></button>`).join('')}</div>
+      <div class="seg" role="tablist" aria-label="${T('review.view')}"><button type="button" class="on" data-act="review-view" data-v="table">${ico('tasks')} ${T('review.view.table')}</button><button type="button" data-act="review-view" data-v="reader">${ico('eye')} ${T('review.view.reader')}</button></div></div>`;
     const decideNote = !d.can_decide && has('review_units') ? `<div class="notice mb">${ico('shield')}<span>${T('review.specialists_only')}</span></div>` : '';
     setPage(`${head('review.title', 'review.subtitle', `<a class="btn outline-accent" href="#/review/learning">${ico('chart')} ${T('learn.title')}</a>${has('review_units') ? `<a class="btn" href="/api/review/export">${ico('download')} ${T('review.export')}</a>` : ''}`)}
       ${decideNote}${tabs}
       <p class="faint mb">${T('agent.classifier')}: <span class="mono">${esc(d.models.classifier)}</span> · ${T('dash.caption_counts')} · ${T('review.assign_note')}</p>
-      <div class="table-wrap"><table class="t"><thead><tr><th>${T('progress.ayah')}</th><th>${T('tasks.tafsir')}</th><th>${T('tasks.window')}</th><th>${T('dash.moves')}</th><th class="hide-sm">${T('dash.candidates')}</th><th class="hide-sm">${T('dash.specialist')}</th><th class="hide-sm">${T('dash.flags')}</th><th>${T('review.assigned_to')}</th><th>${T('review.decided')}</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+      <div class="table-wrap"><table class="t"><thead><tr><th>${T('progress.ayah')}</th><th>${T('tasks.tafsir')}</th><th>${T('tasks.window')}</th><th>${T('dash.moves')}</th><th class="hide-sm">${T('dash.candidates')}</th><th class="hide-sm">${T('dash.specialist')}</th><th>${T('review.assigned_to')}</th><th>${T('review.status')}</th><th class="hide-sm">${T('review.notes')}</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+  }
+
+  // the same list as a reader: one ayah of one tafsir, the moves placed in the text
+  async function viewReviewReader() {
+    const list = await api('/review/units');
+    const byT = {};
+    list.units.forEach((u) => { (byT[u.tafsir] = byT[u.tafsir] || new Set()).add(u.ayah_number); });
+    const tafsirs = Object.keys(byT);
+    if (!tafsirs.length) { setPage(`${head('review.title', 'review.subtitle')}<div class="empty">${T('review.empty')}</div>`); return; }
+    if (!S.readerTafsir || !byT[S.readerTafsir]) S.readerTafsir = tafsirs[0];
+    const ayat = [...byT[S.readerTafsir]].sort((a, b) => a - b);
+    if (!ayat.includes(S.readerAyah)) S.readerAyah = ayat[0];
+    const d = await api(`/review/ayah/${encodeURIComponent(S.readerTafsir)}/${S.readerAyah}`);
+    const names = d.method_names || {};
+    const arms = [...new Set(d.windows.flatMap((w) => w.arms.map((a) => a.arm)).filter(Boolean))];
+    if (arms.length && !arms.includes(S.readerArm)) S.readerArm = arms[0];
+    const counts = {}; let total = 0; let decided = 0;
+    const sections = d.windows.map((w) => {
+      const arm = w.arms.find((a) => !arms.length || a.arm === S.readerArm) || w.arms[0];
+      const moves = arm ? arm.moves.map((m) => { counts[m.primary] = (counts[m.primary] || 0) + 1; total += 1; if (m.decision) decided += 1; return { ...m, title: `${names[m.primary] || m.primary || '—'}${m.decision ? ' · ' + t('review.decision.' + m.decision) : ''}` }; }) : [];
+      const href = `#/review/${d.tafsir}/${w.window}${arm && arm.arm ? '/' + arm.arm : ''}`;
+      return `<section class="card mb reader-win" data-win="${esc(w.window)}" data-arm="${esc((arm && arm.arm) || '')}"><div class="row between wrap"><div class="row"><b>${d.windows.length > 1 ? T('review.part', { n: arNum(w.part), m: arNum(d.windows.length) }) : T('review.text')}</b><span class="mono faint">${esc(w.window)}</span>${arm && arm.committee ? `<span class="chip violet">${T('dash.committee')}</span>` : ''}</div>
+          <div class="row">${arm ? `<span class="chip ${arm.decided === arm.total ? 'ok' : ''}">${T('review.progress', { done: fNum(arm.decided), total: fNum(arm.total) })}</span>` : `<span class="chip">${T('review.reader.no_run')}</span>`}<a class="btn sm outline-accent" href="${href}">${ico('review')} ${T('review.reader.open')}</a></div></div>
+        <div class="move-text ctx mt-s">${markedText(w.text, moves, w.window_start || 0)}</div></section>`;
+    }).join('') || `<div class="empty">${T('common.empty')}</div>`;
+    const tabs = `<div class="row between wrap mb"><div class="seg" role="tablist">${tafsirs.map((k) => `<button type="button" role="tab" class="${S.readerTafsir === k ? 'on' : ''}" data-act="reader-tafsir" data-t="${k}">${esc(tafsirName(k))} <span class="chip">${fNum(byT[k].size)}</span></button>`).join('')}</div>
+      <div class="seg" role="tablist" aria-label="${T('review.view')}"><button type="button" data-act="review-view" data-v="table">${ico('tasks')} ${T('review.view.table')}</button><button type="button" class="on" data-act="review-view" data-v="reader">${ico('eye')} ${T('review.view.reader')}</button></div></div>`;
+    const i = ayat.indexOf(S.readerAyah);
+    const nav = `<div class="row between wrap mb reader-nav"><div class="row"><button type="button" class="btn sm" data-act="reader-ayah" data-n="${ayat[i - 1] ?? ''}" ${i <= 0 ? 'disabled' : ''}>${T('review.reader.prev')}</button>
+        <select class="input sm" id="reader-ayah" aria-label="${T('review.ayah')}">${ayat.map((n) => `<option value="${n}" ${n === S.readerAyah ? 'selected' : ''}>${esc(d.surah_name_ar)} ${arNum(n)}</option>`).join('')}</select>
+        <button type="button" class="btn sm" data-act="reader-ayah" data-n="${ayat[i + 1] ?? ''}" ${i >= ayat.length - 1 ? 'disabled' : ''}>${T('review.reader.next')}</button></div>
+      <div class="row">${arms.length > 1 ? `<div class="seg sm">${arms.map((a) => `<button type="button" class="${S.readerArm === a ? 'on' : ''}" data-act="reader-arm" data-a="${a}">${T('review.arm', { a })}</button>`).join('')}</div>` : ''}
+        <span class="chip ${decided === total && total ? 'ok' : ''}">${T('review.progress', { done: fNum(decided), total: fNum(total) })}</span>${d.source_url ? `<a class="btn sm" href="${esc(d.source_url)}" target="_blank" rel="noopener">${ico('out')} ${T('review.read_source')}</a>` : ''}</div></div>`;
+    setPage(`${head('review.title', 'review.subtitle', `<a class="btn outline-accent" href="#/review/learning">${ico('chart')} ${T('learn.title')}</a>`)}
+      ${tabs}${nav}
+      <section class="card mb"><div class="kicker">${ayahRef(d)} · ${esc(d.name_ar)}</div>${verseBlock(d)}</section>
+      <div class="reader-grid"><div>${sections}</div>
+        <aside class="card reader-legend"><div class="kicker mb-s">${T('review.legend')}</div>${methodLegend(names, counts, S.legendHidden)}<p class="faint mt-s">${T('review.legend_note')}</p></aside></div>`);
+    applyLegend($('#app'));
+    const sel = $('#reader-ayah');
+    if (sel) sel.addEventListener('change', () => { S.readerAyah = Number(sel.value); viewReviewReader(); });
   }
   async function viewReviewWindow(tafsir, win, arm) {
     const d = await api(`/review/${encodeURIComponent(tafsir)}/${encodeURIComponent(win)}${arm ? '?arm=' + encodeURIComponent(arm) : ''}`);
@@ -1432,23 +1531,6 @@
       const cutAfter = b + CTX_CHARS < ctx.text.length ? ' …' : '';
       return `<div class="move-text move-ctx"><span class="ctx-out">${fromPrev}${cutBefore}${esc(before)}</span><mark class="ctx-cur">${esc(ctx.text.slice(a, b))}</mark><span class="ctx-out">${esc(after)}${cutAfter}${toNext}</span></div>`;
     };
-    // the whole window with every move marked; a click jumps to that move
-    const fullText = () => {
-      if (!ctx) return '';
-      const marks = d.moves.map((m) => ({ m, r: moveRange(m) })).filter((x) => x.r).sort((x, y) => x.r[0] - y.r[0]);
-      let pos = 0; let html = '';
-      for (const { m, r } of marks) {
-        if (r[0] < pos) continue;   // overlapping moves: the first one keeps the mark
-        html += esc(ctx.text.slice(pos, r[0]));
-        html += `<mark class="ctx-mv ${m.decision ? 'done ' + m.decision.decision : 'open'}" data-act="goto-move" data-k="${esc(m.key)}" title="${esc(m.key)}"><b class="ctx-tag">${esc(m.key)}</b>${esc(ctx.text.slice(r[0], r[1]))}</mark>`;
-        pos = r[1];
-      }
-      html += esc(ctx.text.slice(pos));
-      return `<details class="card mb ctx-full"><summary>${ico('eye')} <b>${T('review.ctx_full')}</b> <span class="faint">${T('review.ctx_full_hint')}</span></summary>
-        ${ctx.prev ? `<p class="faint ctx-edge">${T('review.ctx_prev_part')} <span class="mono">${esc(ctx.prev.window)}</span></p>` : ''}
-        <div class="move-text ctx-doc">${html}</div>
-        ${ctx.next ? `<p class="faint ctx-edge">${T('review.ctx_next_part')} <span class="mono">${esc(ctx.next.window)}</span></p>` : ''}</details>`;
-    };
     const moves = d.moves.map((m) => {
       const c = m.committee;
       const p = preview[m.move_id];
@@ -1466,7 +1548,8 @@
           <div><div class="k">${T('review.score')}</div><div class="v">${score ?? '—'}</div></div>
           <div><div class="k">${T('review.flags')}</div><div class="v mono" style="font-size:12px">${esc((m.flags || []).join(', ') || '—')}</div></div></div>`;
       const article = `<article class="move" data-move="${esc(m.key)}"${dec ? ' data-decided="1"' : ''}>
-        <div class="row between"><div class="row"><b class="mono">${esc(m.key)}</b><span class="chip ${m.route === 'auto_candidate' ? 'ok' : 'warn'}">${T('route.' + (m.route || 'specialist'))}</span>
+        <div class="row between"><div class="row"><b class="mono">${esc(m.key)}</b><span class="dot-chip ${mClass(m.primary)}" title="${esc(names[m.primary] || m.primary || '')}"><i class="dot"></i></span><span class="chip ${m.route === 'auto_candidate' ? 'ok' : 'warn'}">${T('route.' + (m.route || 'specialist'))}</span>
+          ${d.window_text ? `<button type="button" class="btn sm ghost" data-act="goto-mark" data-key="${esc(m.key)}">${ico('eye')} ${T('review.show_in_text')}</button>` : ''}
           ${chairChip}${reasonChip(m.reason_code)}</div>
           <div class="row">${dec ? `<span class="chip ${dec.decision === 'approve' ? 'ok' : dec.decision === 'reject' ? 'bad' : 'warn'}">${T('review.decision.' + dec.decision)} · ${esc(dec.user_name)} · ${esc(fDT(dec.created_at))}</span>` : ''}${lessonChip(dec)}</div></div>
         ${agents}
@@ -1490,9 +1573,25 @@
     const reasons = Object.entries(sum.by_abstention_reason || {}).filter(([, v]) => v).map(([k, v]) => `<span class="chip violet">${T('review.reason.' + k)} ${fNum(v)}</span>`).join(' ');
     const mdl = d.models ? `${T('agent.classifier')}: <span class="mono">${esc((d.models.proposer || {}).tag || '')}</span> · ${T('agent.verifier')}: <span class="mono">${esc((d.models.reviewer || {}).tag || '')}</span>` : '';
     S.reviewCtx = { tafsir, win, arm: arm || '' };
-    setPage(`<div class="page-head"><div><div class="kicker">${T('review.title')}</div><h1>${esc(d.name_ar)} · <span class="mono">${esc(d.window)}</span>${d.arm ? ` <span class="chip info">${T('review.arm', { a: d.arm })}${d.variant ? ' · ' + T('variant.short.' + d.variant) : ''}</span>` : ''}</h1>
+    const ctxKey = `${tafsir}/${win}/${arm || ''}`;
+    const chk = S.sourceCheck && S.sourceCheck.key === ctxKey ? S.sourceCheck.r : null;
+    // the whole pinned passage with every move placed in it (the fahras view, for the reviewer)
+    const inText = d.moves.map((m) => ({ key: m.key, start: m.start, end: m.end, primary: m.primary, decision: m.decision, title: `${names[m.primary] || m.primary || '—'}${m.decision ? ' · ' + t('review.decision.' + m.decision.decision) : ''}` }));
+    const mCounts = {}; d.moves.forEach((m) => { mCounts[m.primary] = (mCounts[m.primary] || 0) + 1; });
+    const context = d.window_text && !d.simulated ? `<section class="card mb ctx-card"><div class="row between wrap"><div class="row"><b>${T('review.in_context')}</b><span class="faint">${T('review.in_context_note')}</span></div>
+        <div class="row"><button type="button" class="btn sm" data-act="toggle-context">${T(S.reviewHideText ? 'review.show_text' : 'review.hide_text')}</button></div></div>
+        <div class="ctx-body"${S.reviewHideText ? ' hidden' : ''}>${methodLegend(names, mCounts, S.legendHidden)}
+          <div class="move-text ctx mt-s" id="ctx-text">${markedText(d.window_text, inText, d.window_start || 0)}</div></div></section>` : '';
+    const compareBox = chk ? (chk.ok ? `<div class="notice ok mb"><span>${ico('check')}</span><span>${T('review.compare_ok', { n: fNum(chk.moves_ok), m: fNum(chk.moves.length) })} <span class="mono">${esc((chk.sha256 || '').slice(0, 12))}…</span></span>
+        <button type="button" class="btn sm" data-act="toggle-source">${T(S.showSource ? 'review.hide_source' : 'review.show_source')}</button></div>${S.showSource ? `<section class="card mb"><div class="kicker mb-s">${T('review.source_text')} · <span class="mono">${esc(chk.source_file || '')}</span></div><div class="move-text ctx src">${textFormatter()(chk.source_text || '')}</div></section>` : ''}`
+      : `<div class="notice bad mb"><span>${ico('warn')}</span><span>${T(chk.reason === 'source_missing' ? 'review.compare_missing' : !chk.sha_ok ? 'review.compare_sha' : !chk.window_ok ? 'review.compare_diff' : 'review.compare_moves', { n: fNum(chk.moves_ok || 0), m: fNum((chk.moves || []).length), pos: fNum(chk.first_diff ?? 0) })}</span></div>
+        ${chk.context ? `<section class="card mb"><div class="grid g2"><div><div class="kicker">${T('review.shown')}</div><div class="move-text ctx">${esc(chk.context.shown)}</div></div><div><div class="kicker">${T('review.source_text')}</div><div class="move-text ctx">${esc(chk.context.source)}</div></div></div></section>` : ''}`) : '';
+    setPage(`<div class="page-head"><div><div class="kicker">${T('review.title')} · ${esc(d.name_ar)} · <span class="mono">${esc(d.window)}</span></div>
+        <h1>${ayahRef(d)}${d.parts > 1 ? ` <span class="chip">${T('review.part', { n: arNum(d.part), m: arNum(d.parts) })}</span>` : ''}${d.arm ? ` <span class="chip info">${T('review.arm', { a: d.arm })}${d.variant ? ' · ' + T('variant.short.' + d.variant) : ''}</span>` : ''}</h1>
+        ${verseBlock(d)}
         <p class="muted">${T('progress.ayah')} <span class="mono">${esc(d.ayah)}</span> · ${d.simulated ? T('demo.source_none') : `${T('review.source')}: <span class="mono">${esc(d.source_file)}</span> · sha256 <span class="mono">${esc((d.source_sha256 || '').slice(0, 12))}…</span>`}</p></div>
-        <div class="head-actions"><a class="btn" href="#/review">${T('common.back')}</a></div></div>
+        <div class="head-actions">${d.simulated ? '' : `<button type="button" class="btn ${chk ? '' : 'outline-accent'}" data-act="compare-source">${ico('shield')} ${T('review.compare_btn')}</button>`}${d.source_url ? `<a class="btn" href="${esc(d.source_url)}" target="_blank" rel="noopener">${ico('out')} ${T('review.read_source')}</a>` : ''}<a class="btn" href="#/review">${T('common.back')}</a></div></div>
+      ${compareBox}${context}
       ${asg || (d.specialists || []).length ? `<section class="card mb assign-bar"><div class="row between"><div class="row">${ico('inbox')}<b>${T('review.assigned_to')}</b>
           ${asg ? `<span class="chip ${asg.status === 'done' ? 'ok' : asg.user_id === S.me.id ? 'info' : ''}">${esc(asg.user_id === S.me.id ? t('review.you') : asg.name || '—')}</span><span class="faint">${T(asg.assigned_by ? 'review.assigned_manual' : 'review.assigned_chair')} · ${esc(fDT(asg.assigned_at))}</span>` : `<span class="faint">${T('review.unassigned')}</span>`}</div>
           ${(d.specialists || []).length && canDo('manage_tasks') ? `<div class="row"><select class="input sm" id="reassign-to" aria-label="${T('review.reassign')}">${d.specialists.map((p) => `<option value="${p.id}" ${asg && asg.user_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
@@ -1505,11 +1604,13 @@
       ${d.is_committee ? `<section class="card mb"><div class="row between"><div class="row"><b>${T('review.committee')}</b> ${mdl}</div>
         <span class="faint">${T('dash.moves')} ${fNum(sum.move_count)} · ${T('dash.candidates')} ${fNum(sum.auto_candidate)} · ${T('dash.specialist')} ${fNum(sum.specialist)} · ${esc(sum.caption || '')}</span></div>
         ${reasons ? `<div class="row mt-s">${reasons}</div>` : ''}</section>` : ''}
-      ${fullText()}${progress}${moves}`);
+      ${progress}${moves}`);
+    applyLegend($('#app'));
+    if (chk && chk.ok) $$('[data-compare]').forEach((c) => { c.checked = true; });
     if (S.reviewFocus) {
       const next = $(`[data-move="${CSS.escape(S.reviewFocus)}"]`);
       S.reviewFocus = null;
-      if (next) next.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      if (next) { const fold = next.closest('details.move-fold'); if (fold) fold.open = true; next.scrollIntoView({ block: 'start', behavior: 'smooth' }); next.classList.add('flash'); }
     }
   }
 
@@ -1945,6 +2046,41 @@
         case 'new-task': newTaskModal(); break;
         case 'step': stepModal(id); break;
         case 'review-filter': S.reviewFilter = el.dataset.f; viewReview(); break;
+        case 'review-view': S.reviewView = el.dataset.v; viewReview(); break;
+        case 'reader-tafsir': S.readerTafsir = el.dataset.t; S.readerAyah = null; viewReviewReader(); break;
+        case 'reader-ayah': if (el.dataset.n) { S.readerAyah = Number(el.dataset.n); viewReviewReader(); } break;
+        case 'reader-arm': S.readerArm = el.dataset.a; viewReviewReader(); break;
+        case 'legend-toggle': {
+          S.legendHidden = S.legendHidden || new Set();
+          if (S.legendHidden.has(el.dataset.m)) S.legendHidden.delete(el.dataset.m); else S.legendHidden.add(el.dataset.m);
+          el.classList.toggle('off', S.legendHidden.has(el.dataset.m)); el.setAttribute('aria-pressed', String(!S.legendHidden.has(el.dataset.m)));
+          applyLegend($('#app')); break;
+        }
+        case 'goto-move': {   // a mark in the text → its decision card (or the window page from the reader)
+          const win = el.closest('.reader-win');
+          if (win) { S.reviewFocus = el.dataset.key; location.hash = `#/review/${S.readerTafsir}/${win.dataset.win}${win.dataset.arm ? '/' + win.dataset.arm : ''}`; break; }
+          const art = $(`article.move[data-move="${CSS.escape(el.dataset.key)}"]`);
+          if (art) { const fold = art.closest('details.move-fold'); if (fold) fold.open = true; art.scrollIntoView({ block: 'start', behavior: 'smooth' }); art.classList.remove('flash'); void art.offsetWidth; art.classList.add('flash'); }
+          break;
+        }
+        case 'goto-mark': {
+          const mk = $(`mark.u[data-key="${CSS.escape(el.dataset.key)}"]`);
+          const body = $('.ctx-body');
+          if (body && body.hidden) { S.reviewHideText = false; body.hidden = false; const b = $('[data-act="toggle-context"]'); if (b) b.textContent = t('review.hide_text'); }
+          if (mk) { mk.scrollIntoView({ block: 'center', behavior: 'smooth' }); mk.classList.remove('flash'); void mk.offsetWidth; mk.classList.add('flash'); }
+          break;
+        }
+        case 'toggle-context': S.reviewHideText = !S.reviewHideText; { const b = $('.ctx-body'); if (b) b.hidden = S.reviewHideText; el.textContent = t(S.reviewHideText ? 'review.show_text' : 'review.hide_text'); } break;
+        case 'toggle-source': S.showSource = !S.showSource; render(); break;
+        case 'compare-source': {
+          el.disabled = true; el.innerHTML = '<span class="spinner sm"></span>';
+          try {
+            const r = await api(`/review/${encodeURIComponent(S.reviewCtx.tafsir)}/${encodeURIComponent(S.reviewCtx.win)}/source${S.reviewCtx.arm ? '?arm=' + encodeURIComponent(S.reviewCtx.arm) : ''}`);
+            S.sourceCheck = { key: `${S.reviewCtx.tafsir}/${S.reviewCtx.win}/${S.reviewCtx.arm || ''}`, r };
+            toast(t(r.ok ? 'review.compare_ok_toast' : 'review.compare_bad_toast'), r.ok ? 'ok' : 'bad');
+          } finally { render(); }
+          break;
+        }
         case 'reassign': {
           await api('/review/assign', { method: 'POST', body: { tafsir: el.dataset.t, window: el.dataset.w, user_id: Number($('#reassign-to').value) } });
           toast(t('common.saved'), 'ok'); render(); break;
@@ -1985,16 +2121,6 @@
           break;
         }
         case 'toggle-decided': S.reviewShowDecided = !S.reviewShowDecided; render(); break;
-        case 'goto-move': {
-          const art = $(`[data-move="${CSS.escape(el.dataset.k)}"]`);
-          if (art) {
-            const fold = art.closest('details.move-fold');
-            if (fold) fold.open = true;
-            art.scrollIntoView({ block: 'start', behavior: 'smooth' });
-            art.classList.add('flash'); setTimeout(() => art.classList.remove('flash'), 1400);
-          }
-          break;
-        }
         case 'add-user': userModal(null); break;
         case 'edit-user': userModal((S.usersCache || []).find((u) => String(u.id) === id)); break;
         case 'revoke-user': await api(`/users/${id}/revoke-sessions`, { method: 'POST' }); toast(t('common.saved'), 'ok'); break;

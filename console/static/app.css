@@ -732,11 +732,6 @@ a.chip:hover { filter: brightness(1.08); }
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
 .ctx-part { font-family: inherit; font-size: 12px; color: var(--violet); background: var(--violet-soft); border-radius: 6px; padding: 1px 6px; margin-inline-end: 4px; }
 .ctx-sep { color: var(--text-3); }
-.ctx-full > summary { cursor: pointer; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; list-style: none; }
-.ctx-full > summary::-webkit-details-marker { display: none; }
-.ctx-full[open] > summary { margin-bottom: 10px; }
-.ctx-full .ctx-doc { max-height: 60vh; }
-.ctx-full .ctx-edge { margin: 6px 0; }
 .ctx-doc mark.ctx-mv { cursor: pointer; border-radius: 4px; padding: 1px 2px; color: var(--text); background: var(--warn-soft);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--warn) 30%, transparent); }
 .ctx-doc mark.ctx-mv.done { background: var(--accent-soft); box-shadow: none; }
@@ -744,5 +739,63 @@ a.chip:hover { filter: brightness(1.08); }
 .ctx-doc mark.ctx-mv:hover, .ctx-doc mark.ctx-mv:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .ctx-doc .ctx-tag { font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-2); background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 5px; padding: 1px 4px; margin-inline-end: 4px; vertical-align: 2px; }
-.move.flash { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); transition: box-shadow .3s; }
-@media (max-width: 640px) { .move-ctx { font-size: 17px; } .ctx-full .ctx-doc { max-height: 55vh; } }
+@media (max-width: 640px) { .move-ctx { font-size: 17px; } /* review: the mufassir's text with the moves placed in it (method colours as on the public reader) */
+:root {
+  --m-quran: #3C2BB8; --m-sunnah: #0C5C52; --m-sahaba: #7A4E0D; --m-tabiin: #1A4F86; --m-lugha: #6A3418;
+  --m-qiraat: #8C2348; --m-nuzul: #0E4F6E; --m-sira: #5A2E86; --m-israiliyyat: #3E2A78; --m-ray: #1F4D2A; --m-none: #6b7280;
+}
+:root[data-theme="dark"], :root[data-theme="auto"].sys-dark {
+  --m-quran: #C4B6FF; --m-sunnah: #5EEAD4; --m-sahaba: #E2B15A; --m-tabiin: #9ECAF5; --m-lugha: #F5A77B;
+  --m-qiraat: #F0A3C0; --m-nuzul: #7BD7F5; --m-sira: #D4B2FA; --m-israiliyyat: #BBA7F5; --m-ray: #86E39C; --m-none: #9ca3af;
+}
+.m-quran { --mc: var(--m-quran); } .m-sunnah { --mc: var(--m-sunnah); } .m-sahaba { --mc: var(--m-sahaba); }
+.m-tabiin { --mc: var(--m-tabiin); } .m-lugha { --mc: var(--m-lugha); } .m-qiraat { --mc: var(--m-qiraat); }
+.m-nuzul { --mc: var(--m-nuzul); } .m-sira { --mc: var(--m-sira); } .m-israiliyyat { --mc: var(--m-israiliyyat); }
+.m-ray { --mc: var(--m-ray); } .m-none { --mc: var(--m-none); }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--mc, var(--text-3)); flex: none; vertical-align: middle; }
+.dot-chip { display: inline-flex; align-items: center; padding: 0 2px; }
+.move-text.ctx { max-height: 60vh; overflow: auto; padding: 14px 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; font-size: 17.5px; }
+.move-text.ctx .app { color: var(--text-3); font-size: .82em; font-style: italic; }
+.move-text.ctx.src { max-height: 48vh; }
+mark.u { background: color-mix(in srgb, var(--mc) 14%, transparent); color: inherit; border-bottom: 2px solid var(--mc); padding: 1px 2px; border-radius: 3px;
+  cursor: pointer; box-decoration-break: clone; -webkit-box-decoration-break: clone; transition: background .15s; }
+mark.u:hover { background: color-mix(in srgb, var(--mc) 28%, transparent); }
+mark.u .dot { margin-inline-end: 4px; box-shadow: 0 0 0 2px var(--surface-2); width: 10px; height: 10px; }
+mark.u.d-approve { border-bottom-style: solid; } mark.u.d-approve .dot { box-shadow: 0 0 0 2px var(--accent); }
+mark.u.d-needs_edit .dot { box-shadow: 0 0 0 2px var(--warn); }
+mark.u.d-reject { text-decoration: line-through; text-decoration-color: var(--danger); opacity: .75; } mark.u.d-reject .dot { box-shadow: 0 0 0 2px var(--danger); }
+mark.u.d-open { border-bottom-style: dashed; }
+mark.u.off { background: transparent; border-bottom-color: transparent; cursor: text; } mark.u.off .dot { display: none; }
+mark.u.flash, article.move.flash { animation: flash 1.6s ease-out; }
+@keyframes flash { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.legend { display: flex; flex-wrap: wrap; gap: 6px; }
+.legend .lg { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); border-radius: 999px;
+  padding: 4px 11px 4px 9px; font: inherit; font-size: 13px; cursor: pointer; transition: background .15s, color .15s; }
+.legend .lg b { font-weight: 650; color: var(--text); font-size: 12px; }
+.legend .lg:hover { background: var(--surface-3); color: var(--text); }
+.legend .lg.off { opacity: .45; text-decoration: line-through; }
+.legend .lg .dot { width: 10px; height: 10px; }
+.ayah-text { font-family: "Amiri", "Noto Naskh Arabic", serif; font-size: 22px; line-height: 2; direction: rtl; text-align: right; margin: 8px 0 6px;
+  padding: 12px 18px; background: color-mix(in srgb, var(--accent) 7%, var(--surface)); border-inline-start: 3px solid var(--accent); border-radius: 8px; color: var(--text); }
+.page-head h1 .chip { vertical-align: middle; font-size: 13px; }
+.reader-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
+.reader-legend { position: sticky; top: 84px; }
+.reader-legend .legend { flex-direction: column; align-items: stretch; }
+.reader-legend .legend .lg { justify-content: space-between; border-radius: 8px; }
+.reader-legend .legend .lg .dot { order: 2; }
+.reader-win .move-text.ctx { max-height: none; }
+.reader-nav select.input.sm { min-width: 150px; }
+.dec-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.dec-chips .chip svg { width: 12px; height: 12px; }
+.chip.soft { background: transparent; border: 1px dashed var(--border); }
+.notes-cell { max-width: 320px; }
+.notes { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
+.note-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; border-inline-start: 2px solid var(--border); padding-inline-start: 6px; }
+.note-line.ok { border-color: var(--accent); } .note-line.warn { border-color: var(--warn); } .note-line.bad { border-color: var(--danger); }
+.row.wrap { flex-wrap: wrap; gap: 8px; }
+.seg.sm button { padding: 4px 10px; font-size: 12.5px; }
+.mb-s { margin-bottom: 6px; }
+.notice.ok .btn.sm, .notice.bad .btn.sm { margin-inline-start: auto; }
+@media (max-width: 900px) { .reader-grid { grid-template-columns: 1fr; } .reader-legend { position: static; } .reader-legend .legend { flex-direction: row; } .reader-legend .legend .lg .dot { order: 0; }
+  .move-text.ctx { font-size: 16.5px; max-height: 50vh; } .notes-cell { display: none; } }
+.kicker .mono { text-transform: none; }

@@ -109,6 +109,74 @@ def window_ids(tafsir: str) -> set[str]:
     return {w["window"] for w in windows(tafsir)}
 
 
+SURAH_NAMES_AR = {2: "البقرة", 8: "الأنفال", 17: "الإسراء", 24: "النور"}
+
+
+def _verse_from(text: str, n: int) -> str | None:
+    """The verse quoted at the head of a commentary: the text before «(n)», without
+    the editor's apparatus (¬…¥), the opening formula and the braces."""
+    t = re.sub(r"¬[^¥]*¥", "", (text or "")[:3000])
+    m = re.search(rf"\({n}\)", t)
+    if not m:
+        return None
+    head = t[:m.start()]
+    i = head.find("{")
+    if 0 <= i <= 80:
+        head = head[i + 1:]
+    head = head.strip().strip("{}").strip()
+    return head if 8 <= len(head) <= 1500 else None
+
+
+QURANPEDIA_BOOKS = {"al_tabari": "tabary", "ibn_kathir": "katheer", "al_baghawi": "baghawy",
+                    "al_saadi": "saadi"}
+
+
+def source_url(tafsir: str, surah: int | None, ayah: int | None) -> str | None:
+    """Where a reader can read the same commentary in a public mushaf site."""
+    book = QURANPEDIA_BOOKS.get(tafsir)
+    if not book or not surah or not ayah:
+        return None
+    return f"https://quranpedia.app/tafseer/{book}/sura{int(surah)}-aya{int(ayah)}.html"
+
+
+def surah_name(surah: int | None) -> str:
+    return SURAH_NAMES_AR.get(int(surah or 0), f"سورة {surah}" if surah else "")
+
+
+def load_window(tafsir: str, window: str) -> dict | None:
+    """The pinned window file (text, offsets, spans) or None."""
+    if tafsir not in config.TAFSIRS or not WINDOW_RE.match(window):
+        return None
+    p = base_dir(tafsir) / "windows" / f"{window}.json"
+    return _read_json(p) if p.is_file() else None
+
+
+def window_parts(tafsir: str, ayah_number: int) -> list[str]:
+    """Window ids of one ayah in reading order (24_11, or 24_11_p01, 24_11_p02 …)."""
+    return [w["window"] for w in windows(tafsir) if w["ayah_number"] == int(ayah_number)]
+
+
+def ayah_text(tafsir: str, ayah_number: int) -> str | None:
+    """The verse as the mufassir quotes it at the head of his commentary ({…} in the
+    first window of the ayah); None when the text does not start with the verse."""
+    key = f"ayah:{data_root()}:{tafsir}:{ayah_number}"
+    with _CACHE_LOCK:
+        hit = _CACHE.get(key)
+    if hit:
+        return hit[1]
+    out = None
+    for t in [tafsir] + [x for x in config.TAFSIRS if x != tafsir]:
+        parts = window_parts(t, ayah_number)
+        w = load_window(t, parts[0]) if parts else None
+        out = _verse_from((w or {}).get("window_text") or "", int(ayah_number))
+        if out:
+            break
+    if out:
+        with _CACHE_LOCK:
+            _CACHE[key] = (0.0, out)
+    return out
+
+
 def verified_path(tafsir: str, annotator: str, window: str) -> Path:
     return base_dir(tafsir) / "verified" / annotator / f"{window}.json"
 

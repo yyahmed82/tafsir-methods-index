@@ -537,9 +537,17 @@ def test_publish_candidate_requires_source_comparison(env, tmp_path, monkeypatch
         db.execute("INSERT INTO decisions(tafsir,window,annotator,move_id,decision,"
                    "compared_with_source,user_id,created_at) VALUES ('al_saadi','24_35',"
                    "'qwen2_5_14b',?,'approve',?,?,?)", (move, compared, uid, now))
+    (base / "windows").mkdir()
+    (base / "windows" / "24_35.json").write_text(json.dumps({
+        "window_id": "24_35", "ayah": "24:35", "surah": 24, "ayah_number": 35,
+        "window_start": 0, "window_end": len(text), "window_text": text, "spans": []}),
+        encoding="utf-8")
     cand = publish.candidate()
     assert {u["move"] for u in cand["units"]} == {"m02"}
     assert [f["id"] for f in cand["failed"] if f["id"].rsplit("/", 1)[-1] in ("m01", "m03")] == []
+    # the public reader gets the pinned passage of every window with an approved unit
+    assert [(w["window"], w["text"], w["surah_name_ar"], w["part"], w["parts"])
+            for w in cand["windows"]] == [("24_35", text, "النور", 1, 1)]
 
 
 def test_demo_built_by_an_older_release_still_opens(env):
@@ -807,6 +815,25 @@ def test_committee_runs_pipeline_end_to_end(env, tmp_path, monkeypatch):
         assert env.post("/api/review/decision", json=body, headers=H).status_code == 200
         assert env.post("/api/review/decision", json={**body, "decision": "reject"},
                         headers=H).json()["detail"]["error"] == "note_required"
+        # the review screen carries the pinned passage, the verse and where it sits
+        rv = env.get("/api/review/al_saadi/24_35").json()
+        assert rv["surah_name_ar"] == "النور" and rv["ayah_number"] == 35 and rv["parts"] == 1
+        assert rv["window_text"] and rv["window_start"] == 0 and rv["ayah_text"]
+        assert rv["source_url"].endswith("/tafseer/saadi/sura24-aya35.html")
+        # «compare with the source»: letter for letter, nothing changed
+        chk = env.get("/api/review/al_saadi/24_35/source").json()
+        assert chk["ok"] and chk["sha_ok"] and chk["window_ok"] and chk["first_diff"] is None
+        assert chk["moves_ok"] == len(chk["moves"]) == len(rv["moves"])
+        assert chk["source_text"] == rv["window_text"]
+        # the list shows the decisions and their reasons, and the reader places the moves
+        u = next(x for x in env.get("/api/review/units").json()["units"] if x["window"] == "24_35")
+        assert u["decisions"] == {"approve": 1, "needs_edit": 0, "reject": 0} and u["decided"] == 1
+        rd = env.get("/api/review/ayah/al_saadi/35").json()
+        assert rd["ayah_text"] == rv["ayah_text"] and rd["windows"][0]["window"] == "24_35"
+        arm = rd["windows"][0]["arms"][0]
+        assert arm["committee"] and arm["decided"] == 1 and arm["total"] == len(rv["moves"])
+        assert next(m for m in arm["moves"] if m["key"] == "P-m01")["decision"] == "approve"
+        assert rd["ayat_with_moves"] == [35]
 
         # skip_done: a second run skips both steps
         tid2 = env.post("/api/tasks", json={"kind": "committee", "scope": "sample",

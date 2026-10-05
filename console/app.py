@@ -758,14 +758,30 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
     @operational()
     def review_units(user: dict = Depends(need("view_tasks")), tafsir: str | None = None) -> dict:
         units = pipeline.review_units(tafsir)
-        counts = {(r["tafsir"], r["window"], r["annotator"]): r for r in db.rows(
-            "SELECT tafsir, window, annotator, COUNT(DISTINCT move_id) AS decided FROM decisions"
-            " GROUP BY tafsir, window, annotator")}
+        latest: dict[tuple, dict] = {}   # the last decision of every move (latest wins)
+        for r in db.rows("SELECT tafsir, window, annotator, move_id, decision, note, teach,"
+                         " created_at FROM decisions ORDER BY id"):
+            latest[(r["tafsir"], r["window"], r["annotator"], r["move_id"])] = r
+        by_unit: dict[tuple, list[dict]] = {}
+        for (t, w, a, _m), r in latest.items():
+            by_unit.setdefault((t, w, a), []).append(r)
+        labels = learning.error_types()
         reveal = _reveals_arms(user)
         amap = workflow.assignments_map()
         for u in units:
-            u["decided"] = (counts.get((u["tafsir"], u["window"], u.get("annotator"))) or {}
-                            ).get("decided", 0)
+            rows = by_unit.get((u["tafsir"], u["window"], u.get("annotator"))) or []
+            u["decided"] = len(rows)
+            u["decisions"] = {k: sum(1 for r in rows if r["decision"] == k)
+                              for k in ("approve", "needs_edit", "reject")}
+            notes = []
+            for r in sorted(rows, key=lambda r: r["move_id"]):
+                teach = db.loads(r.get("teach"), {}) or {}
+                err = labels.get(teach.get("error_type") or "", "")
+                if r.get("note") or err:
+                    notes.append({"move": r["move_id"], "decision": r["decision"],
+                                  "error": err, "note": r.get("note") or ""})
+            u["notes"] = notes
+            u["last_decision_at"] = max((r["created_at"] for r in rows), default=None)
             a = amap.get((u["tafsir"], u["window"]))
             u["assigned"] = ({"user_id": a["user_id"], "name": a.get("user_name"),
                               "status": a["status"], "assigned_at": a["assigned_at"]} if a else None)
@@ -837,6 +853,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                                 if "manage_tasks" in user["permissions"] else []),
                 "ayah": v.get("ayah"), "annotator": annotator if reveal else None,
                 "arm": arm or None, "variant": variant if reveal else None,
+                **_window_context(tafsir, window),
                 "source_file": v.get("source_file"), "source_sha256": v.get("source_sha256"),
                 "packet_sha256": v.get("packet_sha256"),
                 "summary": (com or {}).get("summary") or v.get("summary"),
@@ -847,6 +864,112 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                 "error_types": learning.error_types(), "methods": list(learning.METHODS),
                 "method_names": learning.method_names(), "history": dec,
                 "context": pipeline.window_context(tafsir, window)}
+
+    def _window_context(tafsir: str, window: str) -> dict:
+        """The pinned passage and where it sits: verse, part n of m, reading link."""
+        w = pipeline.load_window(tafsir, window) or {}
+        ayah = str(w.get("ayah") or "")
+        n = int(w.get("ayah_number") or (ayah.split(":")[1] if ":" in ayah else 0) or 0)
+        surah = int(w.get("surah") or (ayah.split(":")[0] if ":" in ayah else 0) or 0)
+        parts = pipeline.window_parts(tafsir, n) if n else []
+        return {"window_text": w.get("window_text"), "window_start": w.get("window_start"),
+                "window_end": w.get("window_end"), "surah": surah,
+                "surah_name_ar": pipeline.surah_name(surah), "ayah_number": n,
+                "ayah_text": pipeline.ayah_text(tafsir, n) if n else None,
+                "part": (parts.index(window) + 1) if window in parts else 1,
+                "parts": len(parts) or 1,
+                "source_url": pipeline.source_url(tafsir, surah, n)}
+
+    @app.get("/api/review/{tafsir}/{window}/source")
+    @operational()
+    def review_source_check(tafsir: str, window: str, arm: str | None = None,
+                            user: dict = Depends(need("view_tasks"))) -> dict:
+        """Compare what the screen shows with the pinned source file, letter for letter:
+        the file's sha256 against the pinned one, the window text against the file
+        slice, and every move's text against its slice. Nothing is changed."""
+        if tafsir not in config.TAFSIRS or not pipeline.WINDOW_RE.match(window):
+            raise _err(400, "bad_unit")
+        if db.mode() == "demo":
+            raise _err(409, "demo_read_only")
+        variant = _variant(tafsir, window, arm)
+        annotator, v, com = pipeline.review_source(tafsir, window, variant)
+        w = pipeline.load_window(tafsir, window)
+        if v is None or w is None:
+            raise _err(404, "unit_not_found")
+        text, sha = publish._source(tafsir, w.get("source_file"))
+        if text is None:
+            return {"ok": False, "reason": "source_missing", "source_file": w.get("source_file")}
+        start, end = int(w.get("window_start") or 0), int(w.get("window_end") or 0)
+        slice_ = text[start:end]
+        shown = w.get("window_text") or ""
+        first_diff = next((i for i, (a, b) in enumerate(zip(shown, slice_)) if a != b),
+                          None if len(shown) == len(slice_) else min(len(shown), len(slice_)))
+        moves = []
+        for key, mv, _c in _units(v, com):
+            ms, me = mv.get("start"), mv.get("end")
+            good = isinstance(ms, int) and isinstance(me, int) and 0 <= ms < me <= len(text)
+            same = good and (mv.get("text") is None or text[ms:me] == mv.get("text"))
+            moves.append({"key": key, "ok": bool(same)})
+        sha_ok = sha == w.get("source_sha256") == v.get("source_sha256")
+        ok = sha_ok and first_diff is None and all(m["ok"] for m in moves)
+        db.audit("review.compare_source", user_id=user["id"], target=f"{tafsir}/{window}",
+                 detail={"ok": ok, "sha_ok": sha_ok, "moves": len(moves)})
+        return {"ok": ok, "sha_ok": sha_ok, "sha256": sha, "pinned_sha256": w.get("source_sha256"),
+                "window_ok": first_diff is None, "first_diff": first_diff,
+                "shown_chars": len(shown), "source_chars": len(slice_),
+                "context": None if first_diff is None else {
+                    "shown": shown[max(0, first_diff - 40):first_diff + 40],
+                    "source": slice_[max(0, first_diff - 40):first_diff + 40]},
+                "moves": moves, "moves_ok": sum(1 for m in moves if m["ok"]),
+                "source_file": w.get("source_file"), "source_text": slice_,
+                "checked_at": db.now()}
+
+    @app.get("/api/review/ayah/{tafsir}/{ayah_number}")
+    @operational()
+    def review_ayah(tafsir: str, ayah_number: int,
+                    user: dict = Depends(need("view_tasks"))) -> dict:
+        """One ayah of one tafsir as a reader: every window of its commentary with the
+        moves of each arm placed in the text, and the latest decision of each move."""
+        if tafsir not in config.TAFSIRS:
+            raise _err(400, "bad_unit")
+        if db.mode() == "demo":
+            raise _err(409, "demo_read_only")
+        latest: dict[tuple, dict] = {}
+        for r in db.rows("SELECT tafsir, window, annotator, move_id, decision FROM decisions"
+                         " WHERE tafsir=? ORDER BY id", (tafsir,)):
+            latest[(r["window"], r["annotator"], r["move_id"])] = r["decision"]
+        units = {(u["window"], u.get("arm")): u for u in pipeline.review_units(tafsir)}
+        wins = []
+        for i, wid in enumerate(pipeline.window_parts(tafsir, ayah_number)):
+            w = pipeline.load_window(tafsir, wid) or {}
+            arms = []
+            for (uw, arm), u in units.items():
+                if uw != wid:
+                    continue
+                variant = u.get("variant")
+                annotator, v, com = pipeline.review_source(tafsir, wid, variant)
+                if v is None:
+                    continue
+                moves = [{"key": key, "start": mv.get("start"), "end": mv.get("end"),
+                          "primary": mv.get("primary"), "route": mv.get("route"),
+                          "certainty": mv.get("certainty"),
+                          "decision": latest.get((wid, annotator, key))}
+                         for key, mv, _c in _units(v, com)]
+                arms.append({"arm": arm, "committee": u["committee"], "moves": moves,
+                             "assigned": None, "decided": sum(1 for m in moves if m["decision"]),
+                             "total": len(moves)})
+            arms.sort(key=lambda a: a["arm"] or "")
+            wins.append({"window": wid, "part": i + 1, "window_start": w.get("window_start"),
+                         "window_end": w.get("window_end"), "text": w.get("window_text") or "",
+                         "arms": arms})
+        surah = int((pipeline.load_window(tafsir, wins[0]["window"]) or {}).get("surah") or 0) if wins else 0
+        return {"tafsir": tafsir, "name_ar": config.TAFSIR_NAMES_AR[tafsir],
+                "surah": surah, "surah_name_ar": pipeline.surah_name(surah),
+                "source_url": pipeline.source_url(tafsir, surah, ayah_number),
+                "ayah_number": ayah_number, "ayah_text": pipeline.ayah_text(tafsir, ayah_number),
+                "windows": wins, "method_names": learning.method_names(),
+                "ayat": sorted({w["ayah_number"] for w in pipeline.windows(tafsir)}),
+                "ayat_with_moves": sorted({u["ayah_number"] for u in units.values()})}
 
     @app.post("/api/review/decision")
     @operational(write=True)
