@@ -265,6 +265,9 @@ EXTRA_CSS = """
 .site-empty h2 { margin: 0 0 8px; }
 /* the text is the source, letter for letter: no added glyphs, the apparatus markers hidden */
 .hl-status { display: none !important; }
+/* working states and model notes have no place on the published page (every unit here is approved) */
+#ec-route-host, #ec-notes, .g-route-host, .g-notes, .g-disclaimer { display: none !important; }
+#ec-status-line[hidden] { display: block !important; }
 .app-glyph { display: none; }
 @media (max-width: 640px) { .pub-badge { display: none; } }
 </style>
