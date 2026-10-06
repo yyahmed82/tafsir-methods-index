@@ -26,7 +26,7 @@ python -m playwright install chromium
 python deck/qa/qa_runner.py
 ```
 
-`qa_runner.py` وبقية سكربتات `deck/qa/` تتصل بـ http://localhost:8791/fahras.html. اختبار التصدير يتوقع ٢٢ نجاحاً. `qa_runner.py` يستخدم Chrome إن وُجد وإلا Chromium (أو `QA_CHROMIUM_EXECUTABLE`)، ويخرج برمز ١ عند أي فشل. قبل التسليم: [`docs/SUBMISSION_CHECKLIST.md`](docs/SUBMISSION_CHECKLIST.md).
+`qa_runner.py` وبقية سكربتات `deck/qa/` تتصل بـ http://localhost:8791/fahras.html. اختبار التصدير يتوقع ٢٥ نجاحاً. `qa_runner.py` يستخدم Chrome إن وُجد وإلا Chromium (أو `QA_CHROMIUM_EXECUTABLE`)، ويخرج برمز ١ عند أي فشل. قبل التسليم: [`docs/SUBMISSION_CHECKLIST.md`](docs/SUBMISSION_CHECKLIST.md).
 
 ## إضافة آيات
 
@@ -46,4 +46,4 @@ python deck/qa/qa_runner.py
 
 ## English
 
-From the repo root: `pip install -r requirements.txt`, then `python src/build_fahras.py`, then `python -m http.server 8791 --directory web`, and open http://127.0.0.1:8791/fahras.html. QA: `python src/v2_selftest.py`, `python -m unittest tests.test_export_approved -v` (22 tests), `python -m unittest tests.test_classify_api`, `python -m playwright install chromium` (once, for QA only), and `python deck/qa/qa_runner.py` against that server. AI classify: [`docs/AI_RUN.md`](docs/AI_RUN.md). To add verses, follow [`docs/RUN.md`](docs/RUN.md) — do not hand-edit `web/`. No generated tafsir text. AI proposals stay labeled «مقترح آلي»; only «معتمد» is publishable. No API keys anywhere in the repo. Never commit `quran.db`. Everyone may run `python src/build_fahras.py` locally; only committing `web/fahras.html` is limited to one designated person. Each model writes only under `<base>/moves/<annotator>/`. One branch per person; `git diff` before every commit.
+From the repo root: `pip install -r requirements.txt`, then `python src/build_fahras.py`, then `python -m http.server 8791 --directory web`, and open http://127.0.0.1:8791/fahras.html. QA: `python src/v2_selftest.py`, `python -m unittest tests.test_export_approved -v` (25 tests), `python -m unittest tests.test_classify_api`, `python -m playwright install chromium` (once, for QA only), and `python deck/qa/qa_runner.py` against that server. AI classify: [`docs/AI_RUN.md`](docs/AI_RUN.md). To add verses, follow [`docs/RUN.md`](docs/RUN.md) — do not hand-edit `web/`. No generated tafsir text. AI proposals stay labeled «مقترح آلي»; only «معتمد» is publishable. No API keys anywhere in the repo. Never commit `quran.db`. Everyone may run `python src/build_fahras.py` locally; only committing `web/fahras.html` is limited to one designated person. Each model writes only under `<base>/moves/<annotator>/`. One branch per person; `git diff` before every commit.

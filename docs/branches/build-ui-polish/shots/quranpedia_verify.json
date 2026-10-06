@@ -5,7 +5,7 @@
     "title": "تفسير سورة النور - الآية 35 - تفسير الطبري",
     "book_ok": true,
     "ayah_ok": true,
-    "shot": "C:\\Users\\Khale\\Documents\\Codex\\2026-09-28\\islamic-ai-contest\\wt-ui-mirqat\\qa\\ui-mirqat\\quranpedia_al_tabari.png"
+    "shot": "quranpedia_al_tabari.png"
   },
   "ibn_kathir": {
     "url": "https://quranpedia.app/tafseer/katheer/sura24-aya35.html",
@@ -13,7 +13,7 @@
     "title": "تفسير سورة النور - الآية 35 - تفسير ابن كثير",
     "book_ok": true,
     "ayah_ok": true,
-    "shot": "C:\\Users\\Khale\\Documents\\Codex\\2026-09-28\\islamic-ai-contest\\wt-ui-mirqat\\qa\\ui-mirqat\\quranpedia_ibn_kathir.png"
+    "shot": "quranpedia_ibn_kathir.png"
   },
   "al_baghawi": {
     "url": "https://quranpedia.app/tafseer/baghawy/sura24-aya35.html",
@@ -21,7 +21,7 @@
     "title": "تفسير سورة النور - الآية 35 - تفسير البغوي",
     "book_ok": true,
     "ayah_ok": true,
-    "shot": "C:\\Users\\Khale\\Documents\\Codex\\2026-09-28\\islamic-ai-contest\\wt-ui-mirqat\\qa\\ui-mirqat\\quranpedia_al_baghawi.png"
+    "shot": "quranpedia_al_baghawi.png"
   },
   "al_saadi": {
     "url": "https://quranpedia.app/tafseer/saadi/sura24-aya35.html",
@@ -29,6 +29,6 @@
     "title": "تفسير سورة النور - الآية 35 - تفسير السعدي",
     "book_ok": true,
     "ayah_ok": true,
-    "shot": "C:\\Users\\Khale\\Documents\\Codex\\2026-09-28\\islamic-ai-contest\\wt-ui-mirqat\\qa\\ui-mirqat\\quranpedia_al_saadi.png"
+    "shot": "quranpedia_al_saadi.png"
   }
 }

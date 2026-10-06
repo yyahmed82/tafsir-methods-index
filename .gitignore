@@ -37,3 +37,10 @@ deck/pitch/_check_*/
 deck/qa/shots/
 deck/qa/gallery/
 deck/qa/qa_raw_results.json
+
+# local environments and tool caches
+.venv/
+.pytest_cache/
+node_modules/
+.DS_Store
+Thumbs.db
