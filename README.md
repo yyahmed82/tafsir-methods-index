@@ -3,7 +3,12 @@
 Indexing the *method* of classical Quran commentators — verified by code, decided by human specialists, without an AI writing a single letter of the source text.
 فهرسة **منهج** المفسِّر في نص التفسير: يتحقّق منها الكود، ويقرّرها متخصصون بشر، ولا يكتب الذكاء الاصطناعي حرفاً واحداً من النص.
 
+[![CI](https://github.com/yyahmed82/tafsir-methods-index/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yyahmed82/tafsir-methods-index/actions/workflows/ci.yml) [![Code: MIT](https://img.shields.io/badge/code-MIT-2b6cb0.svg)](LICENSE) [![Text: CC BY 4.0](https://img.shields.io/badge/tafsir%20text-CC%20BY%204.0-5b7f3a.svg)](ATTRIBUTION.md) [![Live](https://img.shields.io/badge/live-mirqah.app-0b7a75.svg)](https://mirqah.app) [![Console](https://img.shields.io/badge/console-console.mirqah.app-7a5a0b.svg)](https://console.mirqah.app)
+
 **Live reader:** https://mirqah.app · **Committee console:** https://console.mirqah.app · **Repo:** https://github.com/yyahmed82/tafsir-methods-index
+
+**Status (6 Oct 2026):** Surah An-Nur prepared for 4 tafsirs (296 windows, text fidelity 76,773 / 76,773); committee runs and blind review in progress in the console; **published v1** = the units a specialist approved after comparing with the source (counts, not accuracy — [`docs/EVALUATION.md`](docs/EVALUATION.md)). Judges: the console's read-only link is `https://console.mirqah.app/judges`.
+**الحالة (٦ أكتوبر ٢٠٢٦):** سورة النور محضَّرة لأربعة تفاسير (٢٩٦ نافذة، سلامة نص ٧٦٬٧٧٣ / ٧٦٬٧٧٣)؛ تشغيل اللجنة والمراجعة المعمّاة جاريان في اللوحة؛ **المنشور v1** = ما اعتمده متخصص بعد مقارنة المصدر (أعداد لا دقة — [`docs/EVALUATION.md`](docs/EVALUATION.md)). للمحكّمين رابط قراءة فقط: `https://console.mirqah.app/judges`.
 
 Team **مِرْقاة (840)** — Track 4 (knowledge and verification tools), Islamic AI Challenge 2026. [English](#english) · [العربية](#العربية)
 
@@ -57,6 +62,10 @@ Cloudflare (Pages + Tunnel) in front of a small Ubuntu server, pull-based CI-gat
 
 ### 2. What it is
 
+| Committee console — mission control (`console.mirqah.app`) | Public reader (`mirqah.app`) |
+|---|---|
+| [![Committee console](docs/img/console-dashboard.jpg)](https://console.mirqah.app) | [![Public reader](docs/img/mirqah-app.jpg)](https://mirqah.app) |
+
 Classical tafsir is long continuous prose in which hadith, Companions' sayings, grammar, legal rulings and isra'iliyyat run together. Mirqah cuts a commentary into small units and tags each unit with the commentator's *method* (Quran by Quran, Sunnah, Companions, Successors, language, readings, the commentator's own opinion…) and its content type. Models only *propose*; code verifies every proposal against the pinned source letter by letter; a human specialist decides; a super admin publishes; the public reader shows nothing else. The tool indexes — it never interprets a verse or answers a religious question.
 
 ### 3. Scope
@@ -92,22 +101,46 @@ pinned source ─► spans (code) ─► classifier model proposes by span ids o
 | `web/` | earlier pilot pages, generated — kept for the existing tests |
 | `data/` | pinned source text and derived data (`nur/`, `v2/`, `multi/`, `anfal/`); never edited by hand |
 | `deploy/` | server tools (`mirqah`, `mirqah-deploy`, `mirqah-backup`), systemd units, bootstrap |
-| `docs/` | install, deploy, workflow, data format, tagging plan, AI disclosure, team notes |
+| `docs/` | install, deploy, workflow, data format, tagging plan, **model card, data card, evaluation, AI disclosure**, team notes |
+| `SECURITY.md` | security policy: what the console stores, secrets, transport, reporting |
 | `tests/` | unit and end-to-end tests (`pytest -q`) |
 | `method/` | taxonomy, classifier prompt, method profiles, research, agent briefs |
 
-### 6. Sources and licences
+### 6. Documents and where to verify
+
+| Document | What it answers |
+|---|---|
+| [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) | which models, what they receive and may return, the checker's score and the chair's threshold, known failure modes |
+| [`docs/DATA_CARD.md`](docs/DATA_CARD.md) | where the text comes from, how it is pinned and cut, counts, licence, known data issues |
+| [`docs/EVALUATION.md`](docs/EVALUATION.md) | what is measured: text fidelity, routing counts, human review outcomes, tests — no accuracy claim |
+| [`docs/AI_DISCLOSURE.md`](docs/AI_DISCLOSURE.md) | every AI model and tool used, and what each did |
+| [`SECURITY.md`](SECURITY.md) | authentication, stored data, secrets, transport, audit, how to report |
+| [`docs/INSTALL.md`](docs/INSTALL.md) · [`deploy/README.md`](deploy/README.md) · [`docs/WORKFLOW.md`](docs/WORKFLOW.md) · [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) · [`deck/deck.pdf`](deck/deck.pdf) | run, deploy, review workflow, demo script, presentation |
+
+For the final-round criteria, where the evidence is:
+
+| Criterion | Look at |
+|---|---|
+| Technical quality and use of AI | §4 above; `docs/MODEL_CARD.md`; `src/v2_verify.py`, `src/committee_chair.py`, `src/specialist.py`; the console's mission control |
+| Benefit against the track's success measure (traceable source, state of evidence) | the public reader: every unit shows its method, the exact source slice with SHA-256, and a link to the source; `docs/EVALUATION.md` §4 |
+| Reliability and scholarly safety | pinned text, 76,773 / 76,773 fidelity checks, specialist-only approval, publish gate, abstention codes — `docs/DATA_CARD.md` §5, `docs/MODEL_CARD.md` §6 |
+| Innovation and added value | span-id-only proposals, deterministic committee chair, block-only method specialists, blind A/B review — §4 |
+| User experience, communication, accessibility | mirqah.app (Arabic-first, light/dark, phone and tablet), console in 4 languages, judges' read-only link |
+| Operational realism and continuation | `install.sh` one-command install (Linux/macOS, 3 AI tiers), CI-gated pull deploys with rollback, nightly backups — `docs/INSTALL.md`, `deploy/README.md` |
+| Clarity and verifiability | this README, §8 starting version, the compare link, `docs/EVALUATION.md`, the published snapshot's SHA-256 |
+
+### 7. Sources and licences
 
 - **Code:** MIT — [`LICENSE`](LICENSE).
 - **Tafsir text and derived data:** Tafsir Center for Quranic Studies (مركز تفسير), dataset `tafsircenter/tafsir-mcp-data`, CC BY 4.0 with attribution; non-commercial use, prior permission for commercial redistribution — [`ATTRIBUTION.md`](ATTRIBUTION.md).
 - **«آيات» (King Saud University):** linked as a reading reference from each passage; no text is copied from it.
 - **AI disclosure:** every model and tool used, and what each did, is in [`docs/AI_DISCLOSURE.md`](docs/AI_DISCLOSURE.md).
 
-### 7. Starting version
+### 8. Starting version
 
 The challenge build days were 4–6 October 2026. Everything up to commit [`ec616f4`](https://github.com/yyahmed82/tafsir-methods-index/commit/ec616f4) (3 October 2026, 22:27 UTC+1) is the team's prior work — the three-ayah pilot, the text pipeline and the first pages. Everything after it was built during the challenge: [compare ec616f4...main](https://github.com/yyahmed82/tafsir-methods-index/compare/ec616f4...main).
 
-### 8. Team and contributing
+### 9. Team and contributing
 
 **مِرْقاة (840):** Dr. Khaled Al-Refay · Yosri Yahmed · Ahmed Gomaa · Sherif Ezzeldin · Mohamed Rezk.
 
@@ -163,6 +196,10 @@ Cloudflare (Pages + Tunnel) أمام خادم Ubuntu صغير، ونشر بال�
 
 ### ٢. ما هو المشروع
 
+| لوحة اللجنة — غرفة القيادة (`console.mirqah.app`) | القارئ العام (`mirqah.app`) |
+|---|---|
+| [![لوحة اللجنة](docs/img/console-dashboard.jpg)](https://console.mirqah.app) | [![القارئ العام](docs/img/mirqah-app.jpg)](https://mirqah.app) |
+
 كتب التفسير نثر طويل متصل يختلط فيه الحديث، وقول الصحابي، والشرح اللغوي، والحكم الفقهي، والإسرائيليات. تقطّع مِرْقاة التفسير إلى وحدات صغيرة، وتَسِم كل وحدة بـ**منهج** المفسِّر فيها (قرآن بالقرآن، سنة، صحابة، تابعون، لغة، قراءات، رأي المفسر…) وبنوع محتواها. النماذج **تقترح** فقط؛ والكود يتحقّق من كل اقتراح بمطابقته مع المصدر المثبَّت حرفاً بحرف؛ والمتخصص البشري يقرّر؛ والمشرف العام ينشر؛ ولا يعرض القارئ العام سوى ذلك. الأداة تفهرس ولا تفسّر آية ولا تجيب عن سؤال شرعي.
 
 ### ٣. النطاق
@@ -198,22 +235,46 @@ Cloudflare (Pages + Tunnel) أمام خادم Ubuntu صغير، ونشر بال�
 | `web/` | صفحات التجربة الأولى، مولَّدة — محفوظة للاختبارات القائمة |
 | `data/` | النص المثبَّت والبيانات المشتقة (`nur/` و`v2/` و`multi/` و`anfal/`)؛ لا تُحرَّر يدوياً أبداً |
 | `deploy/` | أدوات الخادم (`mirqah` و`mirqah-deploy` و`mirqah-backup`) ووحدات systemd والتهيئة الأولى |
-| `docs/` | التثبيت، النشر، سير العمل، صيغة البيانات، خطة الوسم، الإفصاح عن الذكاء الاصطناعي، ملاحظات الفريق |
+| `docs/` | التثبيت، النشر، سير العمل، صيغة البيانات، خطة الوسم، **بطاقة النماذج، بطاقة البيانات، التقييم، الإفصاح عن الذكاء الاصطناعي**، ملاحظات الفريق |
+| `SECURITY.md` | سياسة الأمن: ما تحفظه اللوحة، الأسرار، النقل، الإبلاغ |
 | `tests/` | اختبارات الوحدات والاختبارات الشاملة (`pytest -q`) |
 | `method/` | التصنيف، موجّه المصنِّف، ملفات المناهج، البحث، التعليمات |
 
-### ٦. المصادر والتراخيص
+### ٦. الوثائق وأين تتحقق
+
+| الوثيقة | ما تجيب عنه |
+|---|---|
+| [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) | أي نماذج، وما تستلمه وما يجوز لها أن تُرجعه، ودرجة الفاحص وعتبة الرئيس، وأنماط الفشل المعروفة |
+| [`docs/DATA_CARD.md`](docs/DATA_CARD.md) | من أين النص، وكيف يُثبَّت ويُقطَّع، والأعداد، والترخيص، والمشكلات المعروفة |
+| [`docs/EVALUATION.md`](docs/EVALUATION.md) | ما يُقاس: سلامة النص، أعداد التوجيه، نتائج المراجعة البشرية، الاختبارات — بلا ادعاء دقة |
+| [`docs/AI_DISCLOSURE.md`](docs/AI_DISCLOSURE.md) | كل نموذج وأداة ذكاء اصطناعي استُعملت وما فعله كلٌّ منها |
+| [`SECURITY.md`](SECURITY.md) | المصادقة، البيانات المحفوظة، الأسرار، النقل، التدقيق، وكيفية الإبلاغ |
+| [`docs/INSTALL.md`](docs/INSTALL.md) · [`deploy/README.md`](deploy/README.md) · [`docs/WORKFLOW.md`](docs/WORKFLOW.md) · [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) · [`deck/deck.pdf`](deck/deck.pdf) | التشغيل، النشر، سير المراجعة، سيناريو العرض، العرض التقديمي |
+
+أين الدليل على معايير التحكيم النهائي:
+
+| المعيار | انظر |
+|---|---|
+| جودة الحل التقني وتوظيف الذكاء الاصطناعي | §٤ أعلاه؛ `docs/MODEL_CARD.md`؛ `src/v2_verify.py` و`src/committee_chair.py` و`src/specialist.py`؛ غرفة القيادة في اللوحة |
+| تحقيق النفع وفق معيار نجاح المسار (مصدر قابل للتتبع وحالة الدليل) | القارئ العام: كل وحدة تعرض منهجها ومقطع المصدر بعينه ببصمة SHA-256 ورابطاً إلى المصدر؛ `docs/EVALUATION.md` §٤ |
+| الموثوقية والسلامة العلمية | نص مثبَّت، ٧٦٬٧٧٣ / ٧٦٬٧٧٣ فحص سلامة، اعتماد المتخصص وحده، بوابة النشر، رموز الامتناع — `docs/DATA_CARD.md` §٥ و`docs/MODEL_CARD.md` §٦ |
+| الابتكار والقيمة المضافة | اقتراح بمعرّفات الأجزاء فقط، رئيس لجنة حتمي، أخصائيو منهج يحجبون ولا يعتمدون، مراجعة A/B معمّاة — §٤ |
+| تجربة المستفيد والتواصل والإتاحة | mirqah.app (عربي أولاً، فاتح/داكن، هاتف ولوحي)، اللوحة بأربع لغات، رابط قراءة للمحكّمين |
+| واقعية التشغيل والاستكمال | تثبيت بأمر واحد `install.sh` (Linux/macOS، ثلاثة مستويات ذكاء)، نشر بالسحب مشروط بـCI مع تراجع تلقائي، نسخ احتياطي ليلي — `docs/INSTALL.md` و`deploy/README.md` |
+| وضوح العرض وإتاحة التحقق | هذا الملف، §٨ نسخة البداية ورابط المقارنة، `docs/EVALUATION.md`، بصمة اللقطة المنشورة |
+
+### ٧. المصادر والتراخيص
 
 - **الكود:** MIT — [`LICENSE`](LICENSE).
 - **نص التفسير والبيانات المشتقة:** مركز تفسير للدراسات القرآنية، مجموعة `tafsircenter/tafsir-mcp-data`، بترخيص CC BY 4.0 مع النسبة؛ الاستعمال غير تجاري، وإعادة التوزيع التجاري تتطلب إذناً مسبقاً — [`ATTRIBUTION.md`](ATTRIBUTION.md).
 - **«آيات» (جامعة الملك سعود):** رابط للقراءة من كل موضع إلى الآية نفسها؛ ولا نُعيد نشر أي نص منه.
 - **الإفصاح عن الذكاء الاصطناعي:** كل نموذج وأداة استُخدمت وما فعلته بالضبط في [`docs/AI_DISCLOSURE.md`](docs/AI_DISCLOSURE.md).
 
-### ٧. نسخة البداية
+### ٨. نسخة البداية
 
 أيام البناء في التحدي: ٤–٦ أكتوبر ٢٠٢٦. كل ما قبل الإيداع [`ec616f4`](https://github.com/yyahmed82/tafsir-methods-index/commit/ec616f4) (٣ أكتوبر ٢٠٢٦، 22:27 بتوقيت UTC+1) عمل سابق للفريق: تجربة الآيات الثلاث، وخط معالجة النص، والصفحات الأولى. وكل ما بعده بُني أثناء التحدي: [المقارنة ec616f4...main](https://github.com/yyahmed82/tafsir-methods-index/compare/ec616f4...main).
 
-### ٨. الفريق والمساهمة
+### ٩. الفريق والمساهمة
 
 **مِرْقاة (840):** د. خالد الرفاعي · يسري يحمد · أحمد جمعة · شريف عز الدين · محمد رزق.
 
