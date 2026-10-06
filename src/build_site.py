@@ -229,7 +229,7 @@ def collect(snapshot: dict) -> dict:
 # ---- the template, made public: reader only, no working states, a version line ----
 PATCHES: list[tuple[str, str]] = [
     # review mode is never entered
-    ('if (params.get("mode") === "review") {', 'if (false) {'),
+    ('if (REVIEW_OPEN && params.get("mode") === "review") {', 'if (false) {'),
     # the verse list and prev/next follow the active tafsir (not every tafsir covers every ayah)
     ('    (DATA.window_order || []).forEach(function (wid) {\n      var opt = document.createElement("option");\n      opt.value = wid;',
      '    availableWindows().forEach(function (wid) {\n      var opt = document.createElement("option");\n      opt.value = wid;'),
@@ -244,7 +244,7 @@ PATCHES: list[tuple[str, str]] = [
      '      infoEl.appendChild(document.createTextNode(" بواسطة متخصص بشري" + (proposedCount ? " · باقي الوسوم (" + toArabicDigits(proposedCount) + ") مقترحة آلياً" : "") + " · النص مطابق للمصدر حرفاً بحرف (sha256 " + res.sha + ")"));'),
     # header: no review toggle, no export, no classic page; the brand goes home
     ('<button type="button" class="btn" id="btn-export-decisions" hidden', '<button type="button" class="btn" id="btn-export-decisions" hidden style="display:none!important"'),
-    ('<button type="button" class="btn btn-primary" id="btn-toggle-mode">', '<button type="button" class="btn btn-primary" id="btn-toggle-mode" hidden style="display:none!important">'),
+    ('<button type="button" class="btn btn-primary" id="btn-toggle-mode" hidden>', '<button type="button" class="btn btn-primary" id="btn-toggle-mode" hidden style="display:none!important">'),
     ('<a href="fahras.html" class="btn btn-ghost" title="الرجوع إلى الواجهة الكلاسيكية">', '<a href="/" class="btn btn-ghost" hidden style="display:none!important" title="">'),
     ('<span class="mode-badge" id="header-mode-badge" hidden>وضع المراجعة</span>',
      '<span class="mode-badge pub-badge" id="header-mode-badge" hidden>وضع المراجعة</span><span class="pub-badge" id="pub-badge"></span>'),
@@ -255,9 +255,8 @@ PATCHES: list[tuple[str, str]] = [
     ('    var pref = ["codex", "deepseek", "mimo"];', '    var pref = ["approved"];'),
     ('(T.annotators && T.annotators[0]) || "codex";', '(T.annotators && T.annotators[0]) || "approved";'),
     ('// Re-run strict fidelity verification on replay (Codex DELTA 3):', '// Re-run strict fidelity verification on replay:'),
-    # the brand: the مِرْقاة wordmark (light / dark variants) instead of the pilot's line mark
-    ('        <span class="brand-team">\n        <svg class="mirqat-mark"',
-     '        <span class="brand-team"><img class="brand-img brand-img-light" src="assets/brand/mirqah-wordmark.svg" alt="مِرْقاة" height="30"><img class="brand-img brand-img-dark" src="assets/brand/mirqah-wordmark-on-dark.svg" alt="" height="30" aria-hidden="true"></span>\n        <span class="brand-team" hidden style="display:none!important">\n        <svg class="mirqat-mark"'),
+    # a browser-stored log from an earlier pilot has no place on the public page
+    ('<button type="button" class="btn" id="btn-export-log" hidden', '<button type="button" class="btn" id="btn-export-log" hidden style="display:none!important"'),
 ]
 
 EXTRA_CSS = """
@@ -272,11 +271,7 @@ EXTRA_CSS = """
 /* the text is the source, letter for letter: no added glyphs, the apparatus markers hidden */
 .hl-status { display: none !important; }
 .app-glyph { display: none; }
-.brand-img { height: 30px; width: auto; display: inline-block; vertical-align: middle; }
-.brand-img-dark { display: none; }
-:root[data-theme="dark"] .brand-img-light { display: none; }
-:root[data-theme="dark"] .brand-img-dark { display: inline-block; }
-@media (max-width: 640px) { .pub-badge { display: none; } .brand-img { height: 26px; } }
+@media (max-width: 640px) { .pub-badge { display: none; } }
 </style>
 """
 
