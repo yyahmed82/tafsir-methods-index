@@ -7,8 +7,8 @@ Indexing the *method* of classical Quran commentators — verified by code, deci
 
 **Live reader:** https://mirqah.app · **Committee console:** https://console.mirqah.app · **Repo:** https://github.com/yyahmed82/tafsir-methods-index
 
-**Status (6 Oct 2026):** Surah An-Nur prepared for 4 tafsirs (296 windows, text fidelity 76,773 / 76,773); committee runs and blind review in progress in the console; **published v1** = the units a specialist approved after comparing with the source (counts, not accuracy — [`docs/EVALUATION.md`](docs/EVALUATION.md)). Judges: the console's read-only link is `https://console.mirqah.app/judges`.
-**الحالة (٦ أكتوبر ٢٠٢٦):** سورة النور محضَّرة لأربعة تفاسير (٢٩٦ نافذة، سلامة نص ٧٦٬٧٧٣ / ٧٦٬٧٧٣)؛ تشغيل اللجنة والمراجعة المعمّاة جاريان في اللوحة؛ **المنشور v1** = ما اعتمده متخصص بعد مقارنة المصدر (أعداد لا دقة — [`docs/EVALUATION.md`](docs/EVALUATION.md)). للمحكّمين رابط قراءة فقط: `https://console.mirqah.app/judges`.
+**Status (6 Oct 2026):** Surah An-Nur prepared for 4 tafsirs (296 windows, text fidelity 76,773 / 76,773); committee runs and blind review in progress in the console; **published v1** = the units a specialist approved after comparing with the source (counts, not accuracy — [`docs/EVALUATION.md`](docs/EVALUATION.md)). Why An-Nur and these four tafsirs: [`docs/WHY_NUR_AND_TAFSIRS.md`](docs/WHY_NUR_AND_TAFSIRS.md). Judges: the console's read-only link is `https://console.mirqah.app/judges`.
+**الحالة (٦ أكتوبر ٢٠٢٦):** سورة النور محضَّرة لأربعة تفاسير (٢٩٦ نافذة، سلامة نص ٧٦٬٧٧٣ / ٧٦٬٧٧٣)؛ تشغيل اللجنة والمراجعة المعمّاة جاريان في اللوحة؛ **المنشور v1** = ما اعتمده متخصص بعد مقارنة المصدر (أعداد لا دقة — [`docs/EVALUATION.md`](docs/EVALUATION.md)). لماذا النور وهذه التفاسير الأربعة: [`docs/WHY_NUR_AND_TAFSIRS.md`](docs/WHY_NUR_AND_TAFSIRS.md). للمحكّمين رابط قراءة فقط: `https://console.mirqah.app/judges`.
 
 Team **مِرْقاة (840)** — Track 4 (knowledge and verification tools), Islamic AI Challenge 2026. [English](#english) · [العربية](#العربية)
 
@@ -23,7 +23,7 @@ Team **مِرْقاة (840)** — Track 4 (knowledge and verification tools), Is
 Installs the committee console, the public reader and a local model engine (Ollama) on Ubuntu/Debian, WSL2 or macOS. No keys, no external services; nothing leaves the machine.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/build/committee-console/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/main/install.sh | bash
 ```
 
 | Tier | RAM | Disk | Models | What you get |
@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/buil
 | `none` | 4 GB | 3 GB | — | demo mode only (a simulated year of committee work) |
 
 1. The installer picks the tier from your memory and disk (force one with `--tier lite`), asks for your e-mail (used only to sign in locally) and runs eight steps with a progress bar.
-2. Open **http://localhost:8800** (console). Mail is in mock mode, so the one-time sign-in code appears on screen. The reader is at http://localhost:8080.
+2. For a local install only, open **http://localhost:8800** (console). Mail is in mock mode, so the one-time sign-in code appears on screen. The local reader is at http://localhost:8080. The live product is https://mirqah.app and https://console.mirqah.app.
 3. Check a machine without installing anything: `bash install.sh --check`. Services: `mirqah-local status | stop | start | update | uninstall`.
 
 Options, SSH tunnels, troubleshooting and what goes where: [`docs/INSTALL.md`](docs/INSTALL.md).
@@ -49,12 +49,12 @@ pip install -r requirements.txt -r console/requirements.txt
 python3 -m pytest -q                      # unit tests (a few skip without quran.db)
 python3 src/v2_selftest.py                # must print SELFTEST PASS
 python3 -m console create-user --email you@example.com --name "Your name" --role super_admin,specialist
-python3 -m console --port 8800            # http://127.0.0.1:8800
+python3 -m console --port 8800            # local: http://localhost:8800
 ```
 
 1. Sign in with the e-mail you registered; the one-time code is shown on screen and saved in `console/var/outbox/` (mock mail).
 2. No model engine? Seed demo mode with `python3 -m console demo-seed --months 12` and use the **Live | Demo** switch in the top bar. `python3 -m console llm-probe` tells you whether the console can reach both models.
-3. Public site preview: `python3 -m http.server 8080 --directory site`, then open `http://localhost:8080/?data=http://localhost:8800/public/v1/published.json`. The site is static: the whole surah from the pinned text, and it marks only the snapshot the console published (`/public/v1/published.json`), fetched live on every load, so a new publication shows on the next reload without a rebuild. See [`site/README.md`](site/README.md).
+3. Local public-site preview: `python3 -m http.server 8080 --directory site`, then open `http://localhost:8080/?data=http://localhost:8800/public/v1/published.json`. The live reader is https://mirqah.app. The site is static: the whole surah from the pinned text, and it marks only the snapshot the console published (`/public/v1/published.json`), fetched live on every load, so a new publication shows on the next reload without a rebuild. See [`site/README.md`](site/README.md).
 
 #### Option C — production server
 
@@ -157,7 +157,7 @@ Branch → pull request → CI (`v2_selftest`, `pytest`, deterministic build) �
 يثبّت لوحة اللجنة والقارئ العام ومحرّك نماذج محلياً (Ollama) على Ubuntu/Debian أو WSL2 أو macOS. بلا مفاتيح ولا خدمات خارجية؛ لا يخرج شيء من الجهاز.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/build/committee-console/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/main/install.sh | bash
 ```
 
 | المستوى | الذاكرة | القرص | النماذج | ما تحصل عليه |
@@ -167,7 +167,7 @@ curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/buil
 | `none` | 4 GB | 3 GB | — | وضع المحاكاة فقط (سنة عمل مولَّدة للجنة) |
 
 ١. يختار المثبّت المستوى حسب الذاكرة والقرص (أو افرضه بـ `--tier lite`)، ويسألك عن بريدك (للدخول محلياً فقط)، ثم ينفّذ ثماني خطوات مع شريط تقدّم.
-٢. افتح **http://localhost:8800** (اللوحة). البريد في وضع المحاكاة، فيظهر رمز الدخول على الشاشة. القارئ على http://localhost:8080.
+٢. للتثبيت المحلي فقط افتح **http://localhost:8800** (اللوحة). البريد في وضع المحاكاة، فيظهر رمز الدخول على الشاشة. القارئ المحلي على http://localhost:8080. المنتج الحي: https://mirqah.app وhttps://console.mirqah.app.
 ٣. لفحص الجهاز دون تثبيت: `bash install.sh --check`. إدارة الخدمات: `mirqah-local status | stop | start | update | uninstall`.
 
 الخيارات، والتشغيل عبر SSH، وحلّ المشكلات، وأماكن الملفات: [`docs/INSTALL.md`](docs/INSTALL.md).
@@ -183,12 +183,12 @@ pip install -r requirements.txt -r console/requirements.txt
 python3 -m pytest -q                      # اختبارات الوحدات (بعضها يُتخطّى بغياب quran.db)
 python3 src/v2_selftest.py                # يجب أن يطبع SELFTEST PASS
 python3 -m console create-user --email you@example.com --name "اسمك" --role super_admin,specialist
-python3 -m console --port 8800            # http://127.0.0.1:8800
+python3 -m console --port 8800            # محلياً: http://localhost:8800
 ```
 
 ١. ادخل بالبريد الذي سجّلته؛ يظهر رمز الدخول على الشاشة ويُحفظ في `console/var/outbox/` (بريد محاكى).
 ٢. لا محرّك نماذج عندك؟ أنشئ بيانات المحاكاة بـ `python3 -m console demo-seed --months 12` ثم استعمل مفتاح **حيّ | محاكاة** في الشريط العلوي. والأمر `python3 -m console llm-probe` يخبرك هل تصل اللوحة إلى النموذجين.
-٣. معاينة الموقع العام: `python3 -m http.server 8080 --directory site` ثم افتح `http://localhost:8080/?data=http://localhost:8800/public/v1/published.json`. الموقع ثابت: السورة كاملة من النص المثبّت، ولا يعلّم إلا ما نشرته اللوحة (`/public/v1/published.json`) ويجلبه حيّاً عند كل فتح، فيظهر الإصدار الجديد عند إعادة التحميل دون بناء. التفاصيل في [`site/README.md`](site/README.md).
+٣. معاينة الموقع العام محلياً: `python3 -m http.server 8080 --directory site` ثم افتح `http://localhost:8080/?data=http://localhost:8800/public/v1/published.json`. القارئ الحي: https://mirqah.app. الموقع ثابت: السورة كاملة من النص المثبّت، ولا يعلّم إلا ما نشرته اللوحة (`/public/v1/published.json`) ويجلبه حيّاً عند كل فتح، فيظهر الإصدار الجديد عند إعادة التحميل دون بناء. التفاصيل في [`site/README.md`](site/README.md).
 
 #### الخيار ج — خادم إنتاج
 

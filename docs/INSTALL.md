@@ -1,22 +1,23 @@
 # التثبيت المحلي — Local install
 
-مِرْقاة كاملة على جهاز واحد للتجربة والاختبار: **لوحة اللجنة** (FastAPI + SQLite) و**القارئ العام** (`web/`)،
+مِرْقاة كاملة على جهاز واحد للتجربة والاختبار: **لوحة اللجنة** (FastAPI + SQLite) و**القارئ العام** (`site/`)،
 ومعهما **محرّك ذكاء محلي** (Ollama) يُختار حجمه حسب ذاكرة الجهاز. لا مفاتيح، ولا خدمات خارجية، ولا شيء يخرج من الجهاز.
+المنتج الحي للمحكّمين: https://mirqah.app وhttps://console.mirqah.app — هذا الملف للتثبيت المحلي فقط.
 
-The whole of Mirqah on one machine for trying and testing: the committee console, the public reader and a local
+The whole of Mirqah on one machine for trying and testing: the committee console, the public reader (`site/`) and a local
 AI engine sized to your RAM. No keys, no external services; nothing leaves the machine.
-For the production server (Cloudflare Tunnel, CI-gated deploys) see [`deploy/README.md`](../deploy/README.md).
+Live product: https://mirqah.app and https://console.mirqah.app. For the production server (Cloudflare Tunnel, CI-gated deploys) see [`deploy/README.md`](../deploy/README.md).
 
 ## ١. أمر واحد / One command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/build/committee-console/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/main/install.sh | bash
 ```
 
 Or from a clone (installs that clone in place):
 
 ```bash
-git clone -b build/committee-console https://github.com/yyahmed82/tafsir-methods-index.git mirqah
+git clone -b main https://github.com/yyahmed82/tafsir-methods-index.git mirqah
 cd mirqah && ./install.sh
 ```
 
@@ -62,8 +63,8 @@ whole workflow. Small models fail more steps (bad JSON, timeouts): the console r
 
 | What | Where |
 |---|---|
-| Committee console | http://localhost:8800 — sign in with your e-mail; mail is in **mock mode**, so the one-time code appears on the screen |
-| Public reader | http://localhost:8080/fahras.html |
+| Committee console (local) | http://localhost:8800 — sign in with your e-mail; mail is in **mock mode**, so the one-time code appears on the screen |
+| Public reader (local) | http://localhost:8080/ (serves `site/`; live: https://mirqah.app) |
 | Demo data | Top bar → **Live \| Demo** → Demo: a generated year of committee work (not results) |
 | Run the committee | Tasks → new task on the sample ayah 24:35 (needs tier `lite` or `full`) |
 
@@ -87,7 +88,7 @@ Everything listens on `127.0.0.1` by default. Install on the server, then open a
 ssh -N -L 8800:127.0.0.1:8800 -L 8080:127.0.0.1:8080 you@server
 ```
 
-and use http://localhost:8800 and http://localhost:8080/fahras.html on the laptop.
+and use http://localhost:8800 and http://localhost:8080/ on the laptop.
 To expose it on a private network instead, install with `--bind 0.0.0.0` (the console still needs a sign-in;
 turn off "show the code on screen" in Settings → Security before anyone else can reach it).
 
@@ -97,7 +98,7 @@ turn off "show the code on screen" in Settings → Security before anyone else c
 |---|---|---|
 | `--tier auto\|full\|lite\|none` | `auto` | AI engine size |
 | `--dir PATH` | `~/mirqah` | Install folder (ignored when run from inside a clone) |
-| `--branch NAME` | `build/committee-console` | Branch to clone |
+| `--branch NAME` | `main` | Branch to clone |
 | `--port N` / `--reader-port N` | `8800` / `8080` | Console and reader ports |
 | `--bind ADDR` | `127.0.0.1` | Listen address |
 | `--email ADDR` `--name "NAME"` | `admin@mirqah.local` | The local super admin (also a specialist, so you can try reviews) |
