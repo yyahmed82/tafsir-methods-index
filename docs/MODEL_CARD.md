@@ -1,6 +1,6 @@
 # Model card — بطاقة النماذج · مِرْقاة / Mirqah
 
-Status as of 6 October 2026 (commit on `build/committee-console`). [English](#english) · [العربية](#العربية)
+Status as of 6 October 2026 (on `main`). [English](#english) · [العربية](#العربية)
 
 Every figure here is read from the code paths quoted; nothing is an accuracy claim. See [`EVALUATION.md`](EVALUATION.md) for what is measured and [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md) for the full list of AI tools used on the project.
 

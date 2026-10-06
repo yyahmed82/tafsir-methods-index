@@ -1,22 +1,23 @@
 # التثبيت المحلي — Local install
 
-مِرْقاة كاملة على جهاز واحد للتجربة والاختبار: **لوحة اللجنة** (FastAPI + SQLite) و**القارئ العام** (`web/`)،
+مِرْقاة كاملة على جهاز واحد للتجربة والاختبار: **لوحة اللجنة** (FastAPI + SQLite) وقارئ محلي يخدمه المثبّت اليوم من `web/fahras.html` (تجربة الآيات الثلاث)،
 ومعهما **محرّك ذكاء محلي** (Ollama) يُختار حجمه حسب ذاكرة الجهاز. لا مفاتيح، ولا خدمات خارجية، ولا شيء يخرج من الجهاز.
+قارئ سورة النور العام: https://mirqah.app (إصلاح المثبّت المحلي لخدمة `site/` معلّق). اللوحة: https://console.mirqah.app — هذا الملف للتثبيت المحلي فقط.
 
-The whole of Mirqah on one machine for trying and testing: the committee console, the public reader and a local
+The whole of Mirqah on one machine for trying and testing: the committee console, a local reader that today serves `web/fahras.html` (three-ayah pilot), and a local
 AI engine sized to your RAM. No keys, no external services; nothing leaves the machine.
-For the production server (Cloudflare Tunnel, CI-gated deploys) see [`deploy/README.md`](../deploy/README.md).
+The public An-Nur reader is https://mirqah.app (installer fix to serve `site/` pending). Console: https://console.mirqah.app. For the production server (Cloudflare Tunnel, CI-gated deploys) see [`deploy/README.md`](../deploy/README.md).
 
 ## ١. أمر واحد / One command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/build/committee-console/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/main/install.sh | bash
 ```
 
 Or from a clone (installs that clone in place):
 
 ```bash
-git clone -b build/committee-console https://github.com/yyahmed82/tafsir-methods-index.git mirqah
+git clone -b main https://github.com/yyahmed82/tafsir-methods-index.git mirqah
 cd mirqah && ./install.sh
 ```
 
@@ -50,7 +51,7 @@ The tier is picked from your memory and free disk; force one with `--tier`.
 
 | Tier | RAM | Classifier | Verifier | Download | Good for |
 |---|---|---|---|---|---|
-| `full` | 16 GB | `qwen2.5:14b` | `gemma3:12b` | ~17 GB | The same engine the team runs; results comparable to ours |
+| `full` | 16 GB | `qwen2.5:14b` | `gemma3:12b` | ~17 GB | Same model tags the team runs (نفس وسوم النماذج) — not a claim that tagging results match |
 | `lite` | 8 GB | `qwen2.5:3b` | `gemma3:1b` | ~2.7 GB | Laptops; the full workflow runs, tagging quality is lower |
 | `none` | 4 GB | — | — | 0 | Small VMs; the console runs on the simulated year (demo mode) |
 
@@ -62,8 +63,8 @@ whole workflow. Small models fail more steps (bad JSON, timeouts): the console r
 
 | What | Where |
 |---|---|
-| Committee console | http://localhost:8800 — sign in with your e-mail; mail is in **mock mode**, so the one-time code appears on the screen |
-| Public reader | http://localhost:8080/fahras.html |
+| Committee console (local) | http://localhost:8800 — sign in with your e-mail; mail is in **mock mode**, so the one-time code appears on the screen |
+| Local reader (today) | http://localhost:8080/fahras.html (`web/` pilot; public An-Nur reader: https://mirqah.app — installer code fix pending) |
 | Demo data | Top bar → **Live \| Demo** → Demo: a generated year of committee work (not results) |
 | Run the committee | Tasks → new task on the sample ayah 24:35 (needs tier `lite` or `full`) |
 
@@ -97,7 +98,7 @@ turn off "show the code on screen" in Settings → Security before anyone else c
 |---|---|---|
 | `--tier auto\|full\|lite\|none` | `auto` | AI engine size |
 | `--dir PATH` | `~/mirqah` | Install folder (ignored when run from inside a clone) |
-| `--branch NAME` | `build/committee-console` | Branch to clone |
+| `--branch NAME` | `main` | Branch to clone |
 | `--port N` / `--reader-port N` | `8800` / `8080` | Console and reader ports |
 | `--bind ADDR` | `127.0.0.1` | Listen address |
 | `--email ADDR` `--name "NAME"` | `admin@mirqah.local` | The local super admin (also a specialist, so you can try reviews) |
