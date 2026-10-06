@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# mirqah — operate the Mirqah committee console on this server.
+#
+#   sudo mirqah status                  console, tunnel, live release, CI state
+#   sudo mirqah logs [N]                last N log lines (console, deploys, tunnel)
+#   sudo mirqah restart                 restart the console
+#   sudo mirqah set-env KEY             store a secret in /etc/mirqah/mirqah.env (hidden prompt)
+#   sudo mirqah guest on|off            judges' read-only button on the sign-in page
+#   sudo mirqah create-user --email E --name N --role super_admin|committee_operator|specialist|viewer
+#   sudo mirqah list-users | settings-show [section] | settings-set SECTION KEY=VALUE ...
+#   sudo mirqah mail-test --to E        send a test e-mail with the current SMTP settings
+set -euo pipefail
+
+PREFIX=${MIRQAH_PREFIX:-/opt/mirqah}
+ETC=${MIRQAH_ETC:-/etc/mirqah}
+APP_USER=${MIRQAH_USER:-mirqah}
+SYSTEMCTL=${MIRQAH_SYSTEMCTL:-systemctl}
+SERVICE=mirqah-console
+HEALTH_URL=${MIRQAH_HEALTH_URL:-http://127.0.0.1:8800/api/public}
+
+if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
+
+console() {
+  [ -d "$PREFIX/current" ] || { echo "no release is live yet: run  sudo mirqah-deploy run --wait 900" >&2; exit 1; }
+  exec python3 "$PREFIX/bin/envfile.py" exec "$ETC/mirqah.env" --user "$APP_USER" \
+    --cwd "$PREFIX/current" -- "$PREFIX/venv/bin/python" -m console "$@"
+}
+
+wait_healthy() {
+  local i
+  for ((i = 1; i <= 25; i++)); do
+    if curl -fsS --max-time 3 "$HEALTH_URL" >/dev/null 2>&1; then echo "console is up"; return 0; fi
+    sleep 1
+  done
+  echo "console did not come up — see: sudo mirqah logs" >&2
+  return 1
+}
+
+cmd=${1:-help}
+[ $# -gt 0 ] && shift
+case "$cmd" in
+  status)
+    for u in "$SERVICE" cloudflared mirqah-deploy.timer mirqah-backup.timer; do
+      printf '%-22s %s\n' "$u" "$("$SYSTEMCTL" is-active "$u" 2>/dev/null || true)"
+    done
+    echo
+    "$PREFIX/bin/mirqah-deploy" status
+    ;;
+  logs)
+    journalctl -u "$SERVICE" -u mirqah-deploy -u cloudflared -n "${1:-80}" --no-pager
+    ;;
+  restart)
+    "$SYSTEMCTL" restart "$SERVICE"
+    wait_healthy
+    ;;
+  set-env)
+    key=${1:?usage: sudo mirqah set-env KEY}
+    if { true </dev/tty; } 2>/dev/null; then
+      read -rsp "$key (hidden): " val </dev/tty
+      echo
+    else
+      IFS= read -r val
+    fi
+    [ -n "$val" ] || { echo "empty value, nothing saved" >&2; exit 1; }
+    printf '%s\n' "$val" | python3 "$PREFIX/bin/envfile.py" set "$ETC/mirqah.env" "$key"
+    unset val
+    echo "$key saved in $ETC/mirqah.env"
+    if [ -d "$PREFIX/current" ]; then
+      "$SYSTEMCTL" restart "$SERVICE"
+      wait_healthy
+    fi
+    ;;
+  guest)
+    case "${1:-}" in
+      on) console settings-set security guest_access=true ;;
+      off) console settings-set security guest_access=false ;;
+      *) echo "usage: sudo mirqah guest on|off" >&2; exit 2 ;;
+    esac
+    ;;
+  help | -h | --help)
+    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    ;;
+  *)
+    console "$cmd" "$@"
+    ;;
+esac

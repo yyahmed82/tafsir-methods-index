@@ -21,6 +21,7 @@ if str(ROOT / "src") not in sys.path:
 
 import classify_api  # noqa: E402
 import grounding_contract  # noqa: E402
+import v2_profiles  # noqa: E402
 from v2_verify import configure, verify_window  # noqa: E402
 
 TAFSIR_BASES = {
@@ -57,8 +58,8 @@ def resolve_base(tafsir: str | None, base: str | Path | None = None) -> Path:
     raise SystemExit(f"unknown tafsir {tafsir!r}; choose: {', '.join(sorted(TAFSIR_BASES))}")
 
 
-def packet_path_for(base: Path, window: str) -> Path:
-    path = base / "packets" / f"{window}.json"
+def packet_path_for(base: Path, window: str, variant: str | None = None) -> Path:
+    path = v2_profiles.variant_dir(base, "packets", variant) / f"{window}.json"
     if not path.is_file():
         raise SystemExit(f"packet not found: {_format_path(path)}")
     return path
@@ -96,8 +97,9 @@ def load_manual_reply(path: Path) -> dict:
     return classify_api.extract_json_object(raw)
 
 
-def run_verifier(base: Path, annotator: str, window_id: str, moves_payload: dict) -> dict:
-    configure(base)
+def run_verifier(base: Path, annotator: str, window_id: str, moves_payload: dict,
+                 variant: str | None = None) -> dict:
+    configure(base, variant=variant)
     result = verify_window(annotator, window_id, moves_payload)
     verified_dir = base / "verified" / annotator
     verified_dir.mkdir(parents=True, exist_ok=True)
@@ -114,11 +116,12 @@ def run_verifier(base: Path, annotator: str, window_id: str, moves_payload: dict
 
 
 def _run_verifier_or_fail(
-    base: Path, annotator: str, window_id: str, moves_payload: dict
+    base: Path, annotator: str, window_id: str, moves_payload: dict,
+    variant: str | None = None,
 ) -> int:
     """Run verifier; on any exception print structured RUN_FAILURE and return 1."""
     try:
-        run_verifier(base, annotator, window_id, moves_payload)
+        run_verifier(base, annotator, window_id, moves_payload, variant=variant)
         return 0
     except Exception as e:
         rec = classify_api.make_failure_record(window_id, "RUN_FAILURE", str(e))
@@ -151,6 +154,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="validate packet and print what would be sent; no network",
     )
     p.add_argument("--model", default=None, help="override LLM_MODEL")
+    p.add_argument(
+        "--variant",
+        default=None,
+        choices=v2_profiles.VARIANTS,
+        help="profile = arm B: methodology profile packets (packets_profile/), "
+        "annotator <slug>__profile",
+    )
     p.add_argument("--base-url", default=None, help="override LLM_BASE_URL")
     args = p.parse_args(argv)
     if not args.tafsir and not args.base:
@@ -159,9 +169,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    classify_api.reset_usage()
+    try:
+        return _main(argv)
+    finally:
+        line = classify_api.usage_line()
+        if line:
+            print(line, file=sys.stderr)  # stdout stays the step's own output
+
+
+def _main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     base = resolve_base(args.tafsir, base=args.base)
-    pkt_path = packet_path_for(base, args.window)
+    variant = args.variant
+    if variant:
+        # Deterministic: same windows + markers + profile + examples → same packet.
+        v2_profiles.ensure_variant_packet(base, args.window, args.tafsir, variant)
+    pkt_path = packet_path_for(base, args.window, variant)
     packet = classify_api.load_packet(pkt_path)
     validate_packet(packet)
     window_id = str(packet.get("window_id") or args.window)
@@ -173,6 +197,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"window: {window_id}")
         print(f"spans: {len(packet.get('spans') or [])}")
         print(f"base: {_format_path(base)}")
+        if variant:
+            print(f"variant: {variant}")
         print("--- would send (system) ---")
         print(messages[0]["content"][:500])
         print("--- would send (user, first 1500 chars) ---")
@@ -211,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(json.dumps(rec, ensure_ascii=False))
             return 1
-        annotator = f"manual_{date.today().isoformat()}"
+        annotator = v2_profiles.variant_annotator(f"manual_{date.today().isoformat()}", variant)
         cleaned = classify_api.sanitize_moves_payload(payload, window_id)
         cleaned[grounding_contract.INPUT_ASSURANCE_FIELD] = (
             grounding_contract.INPUT_MANUAL_UNVERIFIED
@@ -223,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
             "manual reply = unverified input, never nominated, specialist review only"
         )
         print(f"wrote moves: {_format_path(path)}")
-        return _run_verifier_or_fail(base, annotator, window_id, cleaned)
+        return _run_verifier_or_fail(base, annotator, window_id, cleaned, variant)
 
     if args.api:
         model, base_url = classify_api.resolve_env(model=args.model, base_url=args.base_url)
@@ -233,7 +259,8 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("set LLM_BASE_URL or pass --base-url")
         if args.dry_run:
             result = classify_api.classify(
-                pkt_path, model, base_url or "(unset)", moves_dir, dry_run=True
+                pkt_path, model, base_url or "(unset)", moves_dir, dry_run=True,
+                annotator=v2_profiles.variant_annotator(classify_api.model_slug(model), variant),
             )
             print(f"packet: {_format_path(pkt_path)}")
             print(f"model: {result['model']} → annotator={result['annotator']}")
@@ -243,7 +270,10 @@ def main(argv: list[str] | None = None) -> int:
             print("dry-run: no network call")
             return 0
         try:
-            result = classify_api.classify(pkt_path, model, base_url, moves_dir)
+            result = classify_api.classify(
+                pkt_path, model, base_url, moves_dir,
+                annotator=v2_profiles.variant_annotator(classify_api.model_slug(model), variant),
+            )
         except classify_api.ClassifyError as e:
             rec = getattr(e, "record", None) or classify_api.make_failure_record(
                 window_id, "RUN_FAILURE", str(e)
@@ -255,7 +285,9 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         path = result["path"]
         print(f"wrote moves: {_format_path(path)}")
-        return _run_verifier_or_fail(base, result["annotator"], window_id, result["payload"])
+        return _run_verifier_or_fail(
+            base, result["annotator"], window_id, result["payload"], variant
+        )
 
     # No mode: default to dry-run-style packet check
     print(f"packet ok: {_format_path(pkt_path)} ({len(packet.get('spans') or [])} spans)")

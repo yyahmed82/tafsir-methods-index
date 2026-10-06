@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# mirqah-backup — nightly copy of the console database (users, roles, settings,
+# review decisions, reports, audit). Runs from mirqah-backup.timer at 03:15.
+#
+#   sudo mirqah-backup            make a backup now
+#   sudo mirqah-backup list       list backups
+#
+# Restore (on the server):
+#   sudo systemctl stop mirqah-console
+#   sudo sh -c 'gunzip -c /var/backups/mirqah/console-YYYYMMDD-HHMM.db.gz > /var/lib/mirqah/console.db'
+#   sudo chown mirqah:mirqah /var/lib/mirqah/console.db && sudo systemctl start mirqah-console
+#
+# Off-site copy (optional): install rclone, configure a remote (e.g. Cloudflare R2), then
+# add  RCLONE_REMOTE="r2:mirqah-backups"  to /etc/mirqah/deploy.env.
+set -euo pipefail
+
+VAR=${MIRQAH_VAR_DIR:-/var/lib/mirqah}
+DEST=${MIRQAH_BACKUPS:-/var/backups/mirqah}
+ETC=${MIRQAH_ETC:-/etc/mirqah}
+KEEP_DAYS=${KEEP_DAYS:-14}
+
+if [ -z "${MIRQAH_BACKUPS:-}" ] && [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
+
+if [ "${1:-}" = "list" ]; then
+  ls -lh "$DEST" 2>/dev/null || echo "no backups yet"
+  exit 0
+fi
+
+[ -f "$VAR/console.db" ] || { echo "no database at $VAR/console.db yet"; exit 0; }
+umask 077
+mkdir -p "$DEST"
+out="$DEST/console-$(date +%Y%m%d-%H%M).db"
+python3 - "$VAR/console.db" "$out" <<'PY'
+import sqlite3, sys
+src = sqlite3.connect(sys.argv[1], timeout=30)
+dst = sqlite3.connect(sys.argv[2])
+with dst:
+    src.backup(dst)
+dst.close()
+src.close()
+PY
+gzip -f "$out"
+if [ -f "$VAR/secret.key" ]; then cp -f "$VAR/secret.key" "$DEST/secret.key"; fi
+echo "backup: $out.gz ($(du -h "$out.gz" | cut -f1))"
+
+remote=""
+if [ -f "$ETC/deploy.env" ]; then
+  remote=$(python3 "$(dirname "$(readlink -f "$0")")/envfile.py" get "$ETC/deploy.env" RCLONE_REMOTE 2>/dev/null || true)
+fi
+if [ -n "$remote" ] && command -v rclone >/dev/null 2>&1; then
+  rclone copy "$out.gz" "$remote" && echo "copied to $remote"
+fi
+
+find "$DEST" -name 'console-*.db.gz' -mtime +"$KEEP_DAYS" -delete

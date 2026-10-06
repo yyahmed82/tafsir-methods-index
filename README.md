@@ -4,24 +4,39 @@
 
 **الفريق 840 · المسار ٠٤ — أدوات المعرفة والتحقق**
 
+**القارئ:** https://mirqah.app · **لوحة اللجنة:** https://console.mirqah.app · للمحكّمين قراءة فقط: https://console.mirqah.app/judges
+
 ## جرّبه الآن
+
+| لوحة اللجنة (`console.mirqah.app`) | القارئ العام (`mirqah.app`) |
+|---|---|
+| [![لوحة اللجنة](docs/img/console-dashboard.jpg)](https://console.mirqah.app) | [![القارئ العام](docs/img/mirqah-app.jpg)](https://mirqah.app) |
 
 - [القارئ](https://mirqah.app/reader): اختر التفسير، وتصفّح مواضع المنهج وشواهدها.
 - [الواجهة الكلاسيكية](https://mirqah.app/fahras.html): النص الأصل بجانب العرض الملوّن.
-- [لوحة اللجنة](https://console.mirqah.app): متابعة الاقتراح والتدقيق والإحالة؛ دخول الحكّام للقراءة فقط.
+- [لوحة اللجنة](https://console.mirqah.app): متابعة الاقتراح والتدقيق والإحالة؛ [دخول الحكّام للقراءة فقط](https://console.mirqah.app/judges).
 
 ## النطاق
 
-سورة النور: **٦٤ آية × ٤ تفاسير** (الطبري، ابن كثير، البغوي، السعدي) في **٢٩٦ نافذة**. طابق التحقق الحرفي النصَّ المصدر في **76,773 من 76,773 حرفاً**. هذا فحص لسلامة نقل النص وتقسيمه، وليس حكماً على صحة الوسوم.
+سورة النور: **٦٤ آية × ٤ تفاسير** (الطبري، ابن كثير، البغوي، السعدي) في **٢٩٦ نافذة** تحت `data/nur/`. طابق التحقق الحرفي النصَّ المصدر في **76,773 من 76,773 حرفاً**. هذا فحص لسلامة نقل النص وتقسيمه، وليس حكماً على صحة الوسوم.
+
+**الحالة (٦ أكتوبر ٢٠٢٦):** تشغيل اللجنة والمراجعة المعمّاة جاريان في اللوحة؛ **المنشور v1** = ما اعتمده متخصص بعد مقارنة المصدر (أعداد لا دقة — [`docs/EVALUATION.md`](docs/EVALUATION.md)).
 
 ## كيف يعمل
 
 1. يُثبَّت نص المصدر ببصمة `SHA-256`، ثم تقسّمه الشفرة إلى أجزاء ذات معرّفات.
 2. يقترح المصنّف `qwen2.5:14b` الحدود والوسوم والشواهد بمعرّفات الأجزاء فقط؛ يعيد المدقّق الأعمى `gemma3:12b` النظر من عائلة نماذج أخرى. يعمل النموذجان محلياً عبر Ollama.
 3. يتحقق رئيس اللجنة، وهو شفرة بقواعد ثابتة، من عتبة الترشيح **85**، واختلاف عائلتي النموذجين، وتطابق بصمتي الحزمة. يخرج **مرشّحاً للمراجعة** أو **إحالة برمز سبب واحد**.
-4. تعيد الشفرة بناء النص من الأجزاء المثبّتة وتفحصه حرفاً بحرف. المتخصص البشري وحده يقرّر الاعتماد بعد مراجعة الشاهد والمصدر.
+4. تعيد الشفرة بناء النص من الأجزاء المثبّتة وتفحصه حرفاً بحرف. المتخصص البشري في اللوحة وحده يقرّر الاعتماد / يحتاج تعديلاً / رفض بعد مقارنة الشاهد بالمصدر؛ والمشرف العام ينشر لقطة مرقّمة؛ ولا يعرض القارئ العام سوى تلك اللقطة.
 
-**وكيلان من عائلتين يقترحان، وأخصائيون آليون يمنعون فقط.** لم ندرّب النموذج ولم نعدّل أوزانه؛ نعلّمه بالسياق.
+**وكيلان من عائلتين يقترحان، وأخصائيون آليون يحجبون فقط** (`method/profiles/` و`src/specialist.py`). لم نعدّل أوزان النموذج؛ نوجّهه بالسياق. مراجعة A/B معمّاة: يرى المتخصص المسارين دون معرفة أيهما أيّ مسار.
+
+```
+المصدر المثبَّت ─► أجزاء (كود) ─► مصنِّف بمعرّفات الأجزاء فقط
+     ─► مدقِّق مستقل (عائلة أخرى) ─► الفاحص الحتمي
+     ─► رئيس اللجنة (كود، عتبة 85، رمز سبب واحد)
+     ─► المتخصص في اللوحة ─► المشرف العام ينشر ─► mirqah.app يقرأ اللقطة فقط
+```
 
 ## النتائج
 
@@ -32,7 +47,7 @@
 | مرشّح للمراجعة | يُحدَّث من المهمة ٥ |
 | إحالة إلى المتخصص | يُحدَّث من المهمة ٥ |
 
-**أعداد توجيه وليست دقة.** لا اعتماد متخصص بعد؛ لا يصبح أي مرشّح معتمداً إلا بقرار بشري موثّق.
+**أعداد توجيه وليست دقة.** لا يصبح أي مرشّح معتمداً إلا بقرار بشري موثّق بعد مقارنة المصدر.
 
 ## نسخة البداية (قبل ٤ أكتوبر ٢٠٢٦)
 
@@ -50,11 +65,12 @@
 - رئيس اللجنة، [PR #10 في المستودع السابق](https://github.com/drkhaledalrefay-coder/fahras-manahij-al-tafsir/pull/10) (دُمج ٤ أكتوبر ١٠:٠٦ بتوقيت الرياض).
 - مهارة الفهرسة، PR #1.
 - هوية «مِرْقاة» وروابط المصدر وإمكانية الوصول، PR #2.
+- لوحة اللجنة والمهمة ٥ والقارئ العام، PR #3 (دُمج في main).
 - الشعار، PR #4.
 - ترخيص MIT ومرجع «آيات»، PR #10.
 - `CODEOWNERS` لمراجعة المالك.
 
-قيد الدمج: لوحة اللجنة والمهمة ٥، PR #3؛ عرض رمز الامتناع، PR #5؛ تطبيق تجربة الاستخدام و«اعرض الأصل بجانبه»، PR #14. يمكن التحقق من الفرق عبر [مقارنة نسخة البداية مع main](https://github.com/yyahmed82/tafsir-methods-index/compare/ec616f4...main).
+قيد الدمج: عرض رمز الامتناع، PR #5؛ تطبيق تجربة الاستخدام و«اعرض الأصل بجانبه»، PR #14. يمكن التحقق من الفرق عبر [مقارنة نسخة البداية مع main](https://github.com/yyahmed82/tafsir-methods-index/compare/ec616f4...main).
 
 ## الأدوات والنماذج
 
@@ -81,7 +97,7 @@
 
 ## التثبيت المحلي في أمر واحد
 
-يثبّت لوحة اللجنة والقارئ ومحرّك ذكاء محلياً (Ollama) على Ubuntu/Debian أو WSL2 أو macOS، ويختار حجم النماذج حسب ذاكرة الجهاز. التفاصيل في [`docs/INSTALL.md`](docs/INSTALL.md) بعد دمج لوحة اللجنة.
+يثبّت لوحة اللجنة والقارئ ومحرّك ذكاء محلياً (Ollama) على Ubuntu/Debian أو WSL2 أو macOS، ويختار حجم النماذج حسب ذاكرة الجهاز. التفاصيل في [`docs/INSTALL.md`](docs/INSTALL.md). النشر على خادم: [`deploy/README.md`](deploy/README.md).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/main/install.sh | bash
@@ -93,32 +109,48 @@ curl -fsSL https://raw.githubusercontent.com/yyahmed82/tafsir-methods-index/main
 | `lite` | 8 GB | `qwen2.5:3b` + `gemma3:1b` |
 | `none` | 4 GB | بلا نموذج، وضع المحاكاة فقط |
 
-## التشغيل محلياً
+بعد التثبيت: اللوحة على http://localhost:8800 والقارئ على http://localhost:8080. فحص دون تثبيت: `bash install.sh --check`.
+
+## التشغيل محلياً (للمطوّرين)
 
 يتطلب Python 3.11 أو أحدث. من جذر المستودع:
 
 ```bash
-pip install -r requirements.txt
-python src/build_fahras.py
+pip install -r requirements.txt -r console/requirements.txt
 python src/v2_selftest.py
-python -m unittest discover -s tests -p "test_*.py"
-python -m http.server 8791 --directory web
+python -m pytest -q
+python -m console --port 8800
 ```
 
-افتح `web/fahras.html` عبر الخادم المحلي. تفاصيل إعادة البناء في [دليل التشغيل](docs/RUN.md)، وتشغيل التصنيف في [دليل الذكاء الاصطناعي](docs/AI_RUN.md). لا يتضمن المستودع قاعدة المصدر `quran.db`؛ يشرح توثيق المصدر طريقة الحصول عليها.
+معاينة الموقع العام: `python -m http.server 8080 --directory site`. تفاصيل إعادة البناء في [دليل التشغيل](docs/RUN.md)، وتشغيل التصنيف في [دليل الذكاء الاصطناعي](docs/AI_RUN.md). لا يتضمن المستودع قاعدة المصدر `quran.db`.
+
+## الوثائق
+
+| الوثيقة | ماذا تجيب |
+|---|---|
+| [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) | النماذج، ما تستلمه وما تُرجعه، درجة الفاحص وعتبة الرئيس |
+| [`docs/DATA_CARD.md`](docs/DATA_CARD.md) | مصدر النص، التثبيت والتقطيع، الأعداد، الترخيص |
+| [`docs/EVALUATION.md`](docs/EVALUATION.md) | سلامة النص، أعداد التوجيه، نتائج المراجعة — بلا ادعاء دقة |
+| [`docs/AI_DISCLOSURE.md`](docs/AI_DISCLOSURE.md) | كل نموذج وأداة وما فعله كلٌّ منها |
+| [`SECURITY.md`](SECURITY.md) | المصادقة، البيانات المحفوظة، الأسرار، الإبلاغ |
+| [`docs/INSTALL.md`](docs/INSTALL.md) · [`docs/WORKFLOW.md`](docs/WORKFLOW.md) · [`deploy/README.md`](deploy/README.md) | التثبيت، سير المراجعة، النشر |
 
 ## للمساهمين
 
 اعمل على فرع مستقل ← افتح طلب دمج (PR) ← اجتز CI ← انتظر مراجعة المالك. لا تعدّل `main` ولا تمسّ ملفات `data/` المصدرية أو المشتقة يدوياً. ابدأ بـ[دليل المساهمة](CONTRIBUTING.md)، و[قواعد الوكلاء](AGENTS.md)، و[مهارات الفريق](docs/team/SKILLS.md).
 
-وثائق إضافية: [تعليمات Claude](CLAUDE.md) · [المهام التالية](docs/HANDOFF.md) · [تدقيق المشروع](docs/AUDIT_2026-10-02.md) · [قائمة التسليم](docs/SUBMISSION_CHECKLIST.md) · [سكربت العرض](docs/DEMO_SCRIPT.md) · [الإفصاح عن الذكاء الاصطناعي](docs/AI_DISCLOSURE.md) · [صيغة البيانات](docs/DATA_FORMAT.md).
+مسارات أساسية: `console/` لوحة اللجنة · `site/` القارئ العام · `src/` خط المعالجة · `deploy/` أدوات الخادم.
+
+وثائق إضافية: [تعليمات Claude](CLAUDE.md) · [المهام التالية](docs/HANDOFF.md) · [تدقيق المشروع](docs/AUDIT_2026-10-02.md) · [قائمة التسليم](docs/SUBMISSION_CHECKLIST.md) · [سكربت العرض](docs/DEMO_SCRIPT.md) · [صيغة البيانات](docs/DATA_FORMAT.md).
 
 ## English summary
 
 **Mirqah — Tafsir Methods Index** makes a commentator’s method visible at its location in the source text, with a traceable witness for each proposed tag.
+**Live:** https://mirqah.app · **Committee console:** https://console.mirqah.app · Judges (read-only): https://console.mirqah.app/judges
 Team 840 · Track 4, Knowledge and Verification Tools.
 The al-Nur scope covers 64 verses, four tafsirs, and 296 windows; the source text matched in 76,773 of 76,773 characters.
-Two different local Ollama model families propose and check span ID based annotations; deterministic code checks the source and routes candidates or referrals.
-Task 5 covers al-Nur 24:11, with 11 windows and 77 steps. Its routing counts await the task record and are not accuracy measures.
-No specialist approvals have been recorded. Only a human specialist can approve an annotation.
-Code is MIT licensed; tafsir text and derived data follow [ATTRIBUTION.md](ATTRIBUTION.md).
+Two different local Ollama model families propose and check span ID based annotations; deterministic code checks the source and routes candidates or referrals; a human specialist decides; a super admin publishes; the public reader shows only that snapshot.
+Task 5 covers al-Nur 24:11, with 11 windows and 77 steps. Routing counts are not accuracy measures.
+One-command install is in the Arabic section above (raw GitHub URL on `main`).
+Starting version: [`ec616f4`](https://github.com/yyahmed82/tafsir-methods-index/tree/ec616f4) (merged 4 Oct 2026, 00:27 Riyadh). Challenge work: [compare ec616f4...main](https://github.com/yyahmed82/tafsir-methods-index/compare/ec616f4...main). Scope evolved from al-Anfal (registration) to An-Nur × 4 tafsirs.
+Code is MIT licensed; tafsir text and derived data follow [ATTRIBUTION.md](ATTRIBUTION.md). See also [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md), [`docs/DATA_CARD.md`](docs/DATA_CARD.md), [`docs/EVALUATION.md`](docs/EVALUATION.md), [`SECURITY.md`](SECURITY.md).

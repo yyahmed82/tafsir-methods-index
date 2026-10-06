@@ -27,6 +27,7 @@ DEFAULT_V2_BASE = (ROOT / "data" / "v2").resolve()
 
 WINDOWS_DIR = ROOT / "data" / "v2" / "windows"
 MARKERS_DIR = ROOT / "data" / "v2" / "markers"
+VARIANT: str | None = None  # None = baseline (arm A)
 PACKETS_DIR = ROOT / "data" / "v2" / "packets"
 MOVES_DIR = ROOT / "data" / "v2" / "moves"
 VERIFIED_DIR = ROOT / "data" / "v2" / "verified"
@@ -85,14 +86,22 @@ SOFT_RULE_FLAGS = frozenset(
 
 
 
-def configure(base: str | Path = DEFAULT_BASE) -> Path:
-    """Point windows/markers/packets/moves/verified at <base>; set summary path."""
+def configure(base: str | Path = DEFAULT_BASE, variant: str | None = None) -> Path:
+    """Point windows/markers/packets/moves/verified at <base>; set summary path.
+
+    variant="profile" (arm B) reads markers_profile/ and packets_profile/; windows,
+    moves and verified stay shared (variant annotators carry a __profile suffix).
+    """
     global WINDOWS_DIR, MARKERS_DIR, PACKETS_DIR, MOVES_DIR, VERIFIED_DIR, SUMMARY_PATH
-    global MOVES_HINT, VERIFY_CMD_HINT
+    global MOVES_HINT, VERIFY_CMD_HINT, VARIANT
+    import v2_profiles  # local import: v2_profiles imports v2_packets
+
+    VARIANT = v2_profiles.check_variant(variant)
+
     base_path = _resolve_base(base)
     WINDOWS_DIR = base_path / "windows"
-    MARKERS_DIR = base_path / "markers"
-    PACKETS_DIR = base_path / "packets"
+    MARKERS_DIR = v2_profiles.variant_dir(base_path, "markers", variant)
+    PACKETS_DIR = v2_profiles.variant_dir(base_path, "packets", variant)
     MOVES_DIR = base_path / "moves"
     VERIFIED_DIR = base_path / "verified"
     try:
@@ -923,8 +932,12 @@ def verify_all() -> list[dict]:
         print("no moves directory yet — summary only")
         return summaries
 
+    import v2_profiles
+
     for ann_dir in sorted(p for p in MOVES_DIR.iterdir() if p.is_dir()):
         annotator = ann_dir.name
+        if v2_profiles.split_annotator(annotator)[1] != VARIANT:
+            continue  # each arm is verified against its own markers and packets
         for path in sorted(ann_dir.glob("*.json")):
             window_id = path.stem
             moves_payload = _read_json(path)
@@ -961,10 +974,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_BASE,
         help="Base dir with windows/markers/moves (default: data/v2)",
     )
+    p.add_argument("--variant", default=None, choices=("profile",),
+                   help="verify arm B (annotators *__profile) against markers_profile/")
     return p.parse_args(argv)
 
 
 if __name__ == "__main__":
     args = _parse_args()
-    configure(args.base)
+    configure(args.base, variant=args.variant)
     verify_all()

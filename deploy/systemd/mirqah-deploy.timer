@@ -1,0 +1,11 @@
+[Unit]
+Description=Check GitHub for a new green commit every 2 minutes
+
+[Timer]
+OnActiveSec=30s
+OnBootSec=1min
+OnUnitInactiveSec=2min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

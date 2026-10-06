@@ -1,0 +1,14 @@
+# Cloudflare Pages headers for the public site (same policy as netlify.toml).
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=31536000
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self' https://console.mirqah.app; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+/*.html
+  Cache-Control: public, max-age=300
+
+/*.json
+  Cache-Control: public, max-age=300

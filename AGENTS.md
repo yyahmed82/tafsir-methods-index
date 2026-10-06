@@ -29,6 +29,7 @@ Read this before any change. **Next tasks, in order: [`docs/HANDOFF.md`](docs/HA
 | `data/**/verified/` | deterministic verifier output | only via `src/v2_verify.py` |
 | Data bases | `data/v2` (Ibn Kathir pilot), `data/multi/<tafsir>` (3 verses), `data/anfal/<tafsir>` (al-Anfal, not yet classified) | — |
 | `method/` | taxonomy, classifier prompt, research, agent briefs | docs only |
+| `method/profiles/*.json` | per-mufassir methodology profiles read by arm B (`src/v2_profiles.py`) | yes, with team review + `tests/test_profiles.py` |
 | `schema/` | approved-record JSON schema | no, without team decision |
 | `tests/`, `deck/qa/` | unit tests, Playwright QA | yes |
 
