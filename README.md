@@ -49,7 +49,7 @@ python3 -m console --port 8800            # http://127.0.0.1:8800
 
 1. Sign in with the e-mail you registered; the one-time code is shown on screen and saved in `console/var/outbox/` (mock mail).
 2. No model engine? Seed demo mode with `python3 -m console demo-seed --months 12` and use the **Live | Demo** switch in the top bar. `python3 -m console llm-probe` tells you whether the console can reach both models.
-3. Public site preview: `python3 -m http.server 8080 --directory site`, then open `http://localhost:8080/?data=http://localhost:8800/public/v1/published.json`. The site is static and reads only the snapshot the console published (`/public/v1/published.json`); until something is published it shows a "not published yet" card. See [`site/README.md`](site/README.md).
+3. Public site preview: `python3 -m http.server 8080 --directory site`, then open `http://localhost:8080/?data=http://localhost:8800/public/v1/published.json`. The site is static: the whole surah from the pinned text, and it marks only the snapshot the console published (`/public/v1/published.json`), fetched live on every load, so a new publication shows on the next reload without a rebuild. See [`site/README.md`](site/README.md).
 
 #### Option C — production server
 
@@ -88,7 +88,7 @@ pinned source ─► spans (code) ─► classifier model proposes by span ids o
 |---|---|
 | `src/` | pipeline: fetch, layers, spans, windows, markers, packets, classify, verify, committee chair, specialists, builders |
 | `console/` | committee console (FastAPI + SQLite): tasks, review, roles, reports, settings, publishing |
-| `site/` | public static site served at mirqah.app (reads the published snapshot only) |
+| `site/` | public static site served at mirqah.app (the whole surah; marks the live published snapshot only) |
 | `web/` | earlier pilot pages, generated — kept for the existing tests |
 | `data/` | pinned source text and derived data (`nur/`, `v2/`, `multi/`, `anfal/`); never edited by hand |
 | `deploy/` | server tools (`mirqah`, `mirqah-deploy`, `mirqah-backup`), systemd units, bootstrap |
@@ -155,7 +155,7 @@ python3 -m console --port 8800            # http://127.0.0.1:8800
 
 ١. ادخل بالبريد الذي سجّلته؛ يظهر رمز الدخول على الشاشة ويُحفظ في `console/var/outbox/` (بريد محاكى).
 ٢. لا محرّك نماذج عندك؟ أنشئ بيانات المحاكاة بـ `python3 -m console demo-seed --months 12` ثم استعمل مفتاح **حيّ | محاكاة** في الشريط العلوي. والأمر `python3 -m console llm-probe` يخبرك هل تصل اللوحة إلى النموذجين.
-٣. معاينة الموقع العام: `python3 -m http.server 8080 --directory site` ثم افتح `http://localhost:8080/?data=http://localhost:8800/public/v1/published.json`. الموقع ثابت ولا يقرأ إلا الإصدار الذي نشرته اللوحة (`/public/v1/published.json`)؛ وقبل أي نشر تظهر بطاقة «لم يُنشر بعد». التفاصيل في [`site/README.md`](site/README.md).
+٣. معاينة الموقع العام: `python3 -m http.server 8080 --directory site` ثم افتح `http://localhost:8080/?data=http://localhost:8800/public/v1/published.json`. الموقع ثابت: السورة كاملة من النص المثبّت، ولا يعلّم إلا ما نشرته اللوحة (`/public/v1/published.json`) ويجلبه حيّاً عند كل فتح، فيظهر الإصدار الجديد عند إعادة التحميل دون بناء. التفاصيل في [`site/README.md`](site/README.md).
 
 #### الخيار ج — خادم إنتاج
 
@@ -194,7 +194,7 @@ Cloudflare (Pages + Tunnel) أمام خادم Ubuntu صغير، ونشر بال�
 |---|---|
 | `src/` | خط المعالجة: الجلب، الطبقات، الأجزاء، النوافذ، العلامات، الحزم، التصنيف، التحقق، رئيس اللجنة، المتخصصون، البناء |
 | `console/` | لوحة اللجنة (FastAPI + SQLite): المهام، المراجعة، الأدوار، التقارير، الإعدادات، النشر |
-| `site/` | الموقع العام الثابت على mirqah.app (يقرأ الإصدار المنشور فقط) |
+| `site/` | الموقع العام الثابت على mirqah.app (السورة كاملة؛ يعلّم الإصدار المنشور الحي فقط) |
 | `web/` | صفحات التجربة الأولى، مولَّدة — محفوظة للاختبارات القائمة |
 | `data/` | النص المثبَّت والبيانات المشتقة (`nur/` و`v2/` و`multi/` و`anfal/`)؛ لا تُحرَّر يدوياً أبداً |
 | `deploy/` | أدوات الخادم (`mirqah` و`mirqah-deploy` و`mirqah-backup`) ووحدات systemd والتهيئة الأولى |

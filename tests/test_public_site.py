@@ -1,8 +1,9 @@
 """The public site (site/): the reader built from the published snapshot, nothing else.
 
-Built by src/build_site.py from src/fahras_v2_template.html. It shows only units a
-specialist approved and a super admin published, inside the pinned source text; no
-review mode, no export, no working states, no model or vendor names.
+Built by src/build_site.py from src/fahras_v2_template.html. It shows the whole surah
+(every ayah of every tafsir, the pinned source text letter for letter) and marks only
+units a specialist approved and a super admin published; no review mode, no export, no
+working states, no model or vendor names. The page fetches the live snapshot on load.
 """
 from __future__ import annotations
 
@@ -33,23 +34,29 @@ def built(tmp_path_factory) -> tuple[str, dict]:
     return html, json.loads(m.group(1).replace("\\u003c", "<"))
 
 
-def test_only_published_units_and_only_their_ayat(built):
+def test_whole_surah_with_only_the_published_units_marked(built):
     html, data = built
     snap = json.loads(FIXTURE.read_text(encoding="utf-8"))
     want = {(u["tafsir"], u["id"]) for u in snap["units"]}
     got = set()
     for tid, t in data["tafsirs"].items():
+        assert len(t["windows"]) == 64 and set(t["windows"]) == set(data["window_order"])
         for wid, block in t["verified"].items():
-            assert list(block) == ["approved"]
-            for mv in block["approved"]["moves"]:
+            assert block == {} or list(block) == ["approved"]
+            for mv in (block.get("approved") or {}).get("moves") or []:
                 assert mv["review_status"] == "approved"
                 got.add((tid, mv["id"]))
     assert got == want
-    assert data["tafsir_order"] == ["ibn_kathir", "al_saadi"]
-    assert data["window_order"] == ["24_11"]
-    assert data["window_labels"]["24_11"] == "النور ١١"
+    assert data["tafsir_order"] == ["al_tabari", "ibn_kathir", "al_baghawi", "al_saadi"]
+    assert data["window_order"] == [f"24_{n}" for n in range(1, 65)]
+    assert data["window_labels"]["24_11"] == "النور ١١" and data["window_labels"]["24_64"] == "النور ٦٤"
     assert "جَاءُوا بِالْإِفْكِ" in data["window_verses"]["24_11"]
+    assert set(data["window_verses"]) == set(data["window_order"])   # the verse of every ayah
+    assert data["default_tafsir"] == "ibn_kathir" and data["default_window"] == "24_11"
+    assert data["surah"] == {"number": 24, "name_ar": "النور", "ayat": 64}
     assert data["published"]["version"] == 1 and data["published"]["units"] == len(want)
+    assert data["coverage"]["ayahs"] == 1 and data["coverage"]["tafsirs"] == 2
+    assert data["live_snapshot_url"].startswith("https://console.mirqah.app/public/v1/")
 
 
 def test_text_is_the_pinned_source_letter_for_letter(built):
@@ -59,15 +66,18 @@ def test_text_is_the_pinned_source_letter_for_letter(built):
             raw = (ROOT / w["source_file"]).read_bytes()
             assert hashlib.sha256(raw).hexdigest() == w["source_sha256"]
             full = raw.decode("utf-8")
-            assert full[w["window_start"]:w["window_end"]] == w["window_text"] == t["raw"][wid]["text"]
-            for sp in w["spans"]:
-                assert full[sp["start"]:sp["end"]] == sp["text"]
+            assert full[w["window_start"]:w["window_end"]] == w["window_text"]
+            assert t["raw"][wid]["source_sha256"] == w["source_sha256"] and "text" not in t["raw"][wid]
+            base = w["window_start"]
+            for sp in w["spans"]:   # offsets only: the span's text is the window's text
+                assert set(sp) == {"id", "start", "end"} and base <= sp["start"] < sp["end"] <= w["window_end"]
+            for ap in w["apparatus"]:
+                assert "text" not in ap and "start" in ap and "end" in ap
             by_id = {sp["id"]: sp for sp in w["spans"]}
-            for mv in t["verified"][wid]["approved"]["moves"]:
+            for mv in (t["verified"][wid].get("approved") or {}).get("moves") or []:
                 # a move's text is its spans joined (the editor's apparatus between them is
                 # not the mufassir's text); every span reads back from the source
-                assert "".join(by_id[i]["text"] for i in mv["span_ids"]) == mv["text"]
-                assert all(full[by_id[i]["start"]:by_id[i]["end"]] == by_id[i]["text"] for i in mv["span_ids"])
+                assert "".join(w["window_text"][by_id[i]["start"] - base:by_id[i]["end"] - base] for i in mv["span_ids"]) == mv["text"]
                 assert w["window_start"] <= mv["start"] < mv["end"] <= w["window_end"]
 
 
@@ -82,7 +92,9 @@ def test_a_unit_whose_source_changed_is_left_out(tmp_path):
     build_site.build(str(p), out)
     html = out.read_text(encoding="utf-8")
     data = json.loads(re.search(r'id="methods-data">(.*?)</script>', html, re.S).group(1).replace("\\u003c", "<"))
-    assert "al_saadi" not in data["tafsirs"] and "ibn_kathir" in data["tafsirs"]
+    saadi = data["tafsirs"]["al_saadi"]
+    assert len(saadi["windows"]) == 64 and not any(saadi["verified"].values())   # the text stays, no unit
+    assert any(data["tafsirs"]["ibn_kathir"]["verified"].values())
     assert any("source changed" in s for s in data["skipped"])
 
 
@@ -93,7 +105,8 @@ def test_review_mode_and_old_pages_are_gone(built):
     assert 'href="fahras.html"' not in html and "mirqah-wordmark.svg" in html
     assert 'id="btn-export-log" hidden style="display:none!important"' in html
     assert 'id="pub-line"' in html and '"pub-badge"' in html
-    assert "availableWindows()" in html
+    assert "availableWindows()" in html and "function goTo(" in html and "fahras:render" in html
+    assert "nav-strip" in html and "live_snapshot_url" in html
     low = html.lower()
     for word in VENDOR_WORDS:
         assert word not in low, word
