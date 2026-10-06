@@ -58,7 +58,9 @@ def ar(n: int | str) -> str:
 
 def load_snapshot(src: str) -> dict:
     if src.startswith("http://") or src.startswith("https://"):
-        req = urllib.request.Request(src, headers={"Accept": "application/json"})
+        # Cloudflare's bot check answers 403 to Python's default User-Agent
+        req = urllib.request.Request(src, headers={"Accept": "application/json",
+                                                   "User-Agent": "Mozilla/5.0 (mirqah-site-builder)"})
         try:
             with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310 (our own console)
                 return json.loads(r.read().decode("utf-8"))
@@ -66,6 +68,10 @@ def load_snapshot(src: str) -> dict:
             if e.code == 404:
                 raise SystemExit("nothing is published yet: publish a version from the console"
                                  " (النشر → انشر الإصدار) and run this again") from e
+            if e.code == 403:
+                raise SystemExit(f"{src}: 403 from the edge. Download it with a browser or"
+                                 " `curl -fsSL <url> -o published.json` and run with"
+                                 " --snapshot published.json") from e
             raise
     return _read_json(Path(src))
 
