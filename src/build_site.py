@@ -347,7 +347,41 @@ EXTRA_CSS = """
 .nav-note { font-size: .8rem; color: var(--muted); margin: 4px 2px 0; }
 .nav-live { font-size: .74rem; color: var(--muted); }
 .nav-live.is-on { color: var(--ok); }
-@media (max-width: 640px) { .pub-badge { display: none; } .nav-taf { padding: 5px 10px; font-size: .8rem; } .nav-ayah { min-width: 34px; height: 34px; font-size: .86rem; } }
+/* previous/next for an Arabic reader: the previous ayah is to the right (arrow pointing right), the next to the left;
+   the chevrons are bidi-mirrored glyphs, so they are drawn in an LTR box to keep their direction */
+#btn-prev-verse, #btn-next-verse, .nav-jump .ib-btn { direction: ltr; unicode-bidi: isolate; font-size: 1.15rem; line-height: 1; }
+.nav-btns, .nav-jump { direction: rtl; }
+/* the ayah picker in the header: a grid of the surah's ayat instead of a 64-line native list */
+.sel-box.has-picker { position: relative; }
+.sel-box.has-picker select#verse-sel { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.ayah-pick { border: none; background: transparent; color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; padding: 0; display: inline-flex; align-items: center; gap: 6px; }
+.ayah-pick .caret { font-size: .7rem; color: var(--muted); }
+.ayah-pop { position: absolute; top: calc(100% + 8px); inset-inline-end: 0; z-index: 60; width: 332px; max-width: calc(100vw - 24px); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 14px; box-shadow: 0 14px 40px rgba(20, 24, 60, .18); padding: 12px; }
+.ayah-pop[hidden] { display: none; }
+.ayah-pop .ap-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ayah-pop .ap-head b { font-size: .84rem; color: var(--ink); }
+.ayah-pop input { margin-inline-start: auto; width: 96px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: var(--bg, var(--surface-2)); color: var(--ink); font: inherit; font-size: .86rem; text-align: center; outline: none; }
+.ayah-pop input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.ayah-pop .ap-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+.ap-cell { height: 36px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--sub, var(--ink)); font: inherit; font-size: .9rem; font-weight: 600;
+  cursor: pointer; position: relative; transition: all .12s ease; font-variant-numeric: tabular-nums; }
+.ap-cell:hover { background: var(--surface-2, var(--accent-bg)); border-color: var(--accent); }
+.ap-cell.has-ok { border-color: var(--ok); color: var(--ok); }
+.ap-cell.has-ok::after { content: ""; position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); width: 5px; height: 5px; border-radius: 50%; background: var(--ok); }
+.ap-cell.has-any:not(.has-ok) { border-style: dashed; }
+.ap-cell.is-cur { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ap-cell.is-cur::after { background: #fff; }
+.ap-cell.is-match { box-shadow: 0 0 0 2px var(--accent); }
+.ayah-pop .ap-foot { display: flex; align-items: center; gap: 12px; margin-top: 10px; font-size: .74rem; color: var(--muted); flex-wrap: wrap; }
+.ayah-pop .ap-foot i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--ok); vertical-align: -1px; margin-inline-end: 4px; }
+.ayah-pop .ap-foot i.d { border-style: dashed; border-color: var(--muted); }
+@media (max-width: 640px) {
+  .pub-badge { display: none; } .nav-taf { padding: 5px 10px; font-size: .8rem; } .nav-ayah { min-width: 34px; height: 34px; font-size: .86rem; }
+  .ayah-pop { position: fixed; top: auto; bottom: 0; inset-inline: 0; width: auto; max-width: none; border-radius: 16px 16px 0 0; padding: 14px 14px calc(14px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 40px rgba(20, 24, 60, .25); }
+  .ayah-pop .ap-grid { gap: 8px; } .ap-cell { height: 40px; }
+  .nav-btns { display: none; }   /* the strip below carries previous/next on a phone */
+}
 </style>
 """
 
@@ -413,8 +447,8 @@ EXTRA_JS = """
     r2.appendChild(only);
     var jump = document.createElement("span"); jump.className = "nav-jump";
     var live = document.createElement("span"); live.className = "nav-live"; live.id = "nav-live"; jump.appendChild(live);
-    var prev = document.createElement("button"); prev.type = "button"; prev.className = "ib-btn"; prev.title = "الآية السابقة"; prev.textContent = "›";
-    var next = document.createElement("button"); next.type = "button"; next.className = "ib-btn"; next.title = "الآية التالية"; next.textContent = "‹";
+    var prev = document.createElement("button"); prev.type = "button"; prev.className = "ib-btn"; prev.title = "الآية السابقة"; prev.setAttribute("aria-label", "الآية السابقة"); prev.textContent = "\u203a";
+    var next = document.createElement("button"); next.type = "button"; next.className = "ib-btn"; next.title = "الآية التالية"; next.setAttribute("aria-label", "الآية التالية"); next.textContent = "\u2039";
     prev.addEventListener("click", function () { step(-1); }); next.addEventListener("click", function () { step(1); });
     jump.appendChild(prev); jump.appendChild(next); r2.appendChild(jump);
     var r3 = document.createElement("div"); r3.className = "nav-ayat"; r3.id = "nav-ayat";
@@ -468,6 +502,60 @@ EXTRA_JS = """
     if (cur && cur.scrollIntoView) { try { cur.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" }); } catch (e) { /* ignore */ } }
     var chips = document.getElementById("reader-chips-bar");
     if (chips) chips.classList.toggle("is-empty", !(st.reviewMoves || []).length);
+  }
+
+  // ---- the header's ayah picker: the ayat as a grid, a number to type, instead of a 64-line list
+  var pop = null, pick = null;
+  function buildPicker() {
+    var sel = document.getElementById("verse-sel"); var box = sel && sel.parentNode; if (!sel || !box || pick) return;
+    box.classList.add("has-picker");
+    var lbl = box.querySelector("label"); if (lbl) lbl.setAttribute("for", "ayah-pick");
+    pick = document.createElement("button"); pick.type = "button"; pick.className = "ayah-pick"; pick.id = "ayah-pick";
+    pick.setAttribute("aria-haspopup", "dialog"); pick.setAttribute("aria-expanded", "false"); pick.title = "اختر الآية";
+    pop = document.createElement("div"); pop.className = "ayah-pop"; pop.id = "ayah-pop"; pop.hidden = true; pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "اختيار الآية");
+    var head = document.createElement("div"); head.className = "ap-head";
+    var hb = document.createElement("b"); hb.id = "ap-title"; head.appendChild(hb);
+    var inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "numeric"; inp.id = "ap-num"; inp.placeholder = "رقم الآية"; inp.setAttribute("aria-label", "رقم الآية"); inp.autocomplete = "off";
+    head.appendChild(inp);
+    var grid = document.createElement("div"); grid.className = "ap-grid"; grid.id = "ap-grid";
+    var foot = document.createElement("div"); foot.className = "ap-foot";
+    var f1 = document.createElement("span"); f1.appendChild(document.createElement("i")); f1.appendChild(document.createTextNode("مواضع معتمدة في هذا التفسير"));
+    var f2 = document.createElement("span"); var di = document.createElement("i"); di.className = "d"; f2.appendChild(di); f2.appendChild(document.createTextNode("في تفسير آخر"));
+    foot.appendChild(f1); foot.appendChild(f2);
+    pop.appendChild(head); pop.appendChild(grid); pop.appendChild(foot);
+    box.appendChild(pick); box.appendChild(pop);
+    pick.addEventListener("click", function (e) { e.stopPropagation(); if (pop.hidden) openPicker(); else closePicker(); });
+    pop.addEventListener("click", function (e) { e.stopPropagation(); });
+    document.addEventListener("click", function () { closePicker(); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !pop.hidden) { closePicker(); pick.focus(); } });
+    function numOf(v) { var t = String(v || "").replace(/[٠-٩]/g, function (d) { return "٠١٢٣٤٥٦٧٨٩".indexOf(d); }).replace(/\\D/g, ""); return t ? parseInt(t, 10) : 0; }
+    inp.addEventListener("input", function () {
+      var n = numOf(inp.value); var cells = grid.querySelectorAll(".ap-cell");
+      cells.forEach(function (c) { c.classList.toggle("is-match", n > 0 && +c.getAttribute("data-n") === n); });
+    });
+    inp.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { var n = numOf(inp.value); var a = api(); var k = (D().surah.number) + "_" + n; if (a && n && (D().window_order || []).indexOf(k) >= 0) { a.goTo(null, k); closePicker(); pick.focus(); } e.preventDefault(); }
+    });
+  }
+  function openPicker() { if (!pop) return; paintPicker(); pop.hidden = false; pick.setAttribute("aria-expanded", "true"); var inp = document.getElementById("ap-num"); if (inp) { inp.value = ""; if (window.matchMedia && !window.matchMedia("(max-width: 640px)").matches) inp.focus(); } var c = pop.querySelector(".ap-cell.is-cur"); if (c && c.scrollIntoView) { try { c.scrollIntoView({ block: "nearest" }); } catch (e) { /* ignore */ } } }
+  function closePicker() { if (!pop || pop.hidden) return; pop.hidden = true; pick.setAttribute("aria-expanded", "false"); }
+  function paintPicker() {
+    var a = api(); var d = D(); if (!a || !d || !pick) return;
+    var st = a.state; var ap = approvedMap(); var mine = ap[st.tafsirId] || {};
+    var n = String(st.windowId).split("_")[1] || ""; var total = (d.surah && d.surah.ayat) || (d.window_order || []).length;
+    pick.textContent = ""; pick.appendChild(document.createTextNode("الآية " + AR(n) + " من " + AR(total) + " "));
+    var car = document.createElement("span"); car.className = "caret"; car.textContent = "▼"; pick.appendChild(car);
+    var title = document.getElementById("ap-title"); if (title) title.textContent = "سورة " + ((d.surah && d.surah.name_ar) || "") + " · " + ((d.tafsir_labels && d.tafsir_labels[st.tafsirId]) || "");
+    var grid = document.getElementById("ap-grid"); if (!grid) return; grid.textContent = "";
+    (d.window_order || []).forEach(function (k) {
+      var any = Object.keys(ap).some(function (t) { return ap[t][k]; });
+      var nn = String(k).split("_")[1] || k;
+      var b = document.createElement("button"); b.type = "button"; b.className = "ap-cell"; b.textContent = AR(nn); b.setAttribute("data-n", nn);
+      if (mine[k]) { b.classList.add("has-ok"); b.title = AR(mine[k]) + " موضع معتمد"; } else if (any) { b.classList.add("has-any"); b.title = "مواضع معتمدة في تفسير آخر"; } else b.title = "الآية " + AR(nn);
+      if (k === st.windowId) { b.classList.add("is-cur"); b.setAttribute("aria-current", "true"); }
+      b.addEventListener("click", function () { a.goTo(null, k); closePicker(); pick.focus(); });
+      grid.appendChild(b);
+    });
   }
 
   // ---- the live snapshot: what the console published since this page was built
@@ -555,9 +643,13 @@ EXTRA_JS = """
     try {
       var d = D(); if (!d) return;
       paintVersion(d.published || {}, false);
+      var hp = document.getElementById("btn-prev-verse"), hn = document.getElementById("btn-next-verse");
+      if (hp) { hp.textContent = "\u203a"; hp.title = "الآية السابقة"; hp.setAttribute("aria-label", "الآية السابقة"); }
+      if (hn) { hn.textContent = "\u2039"; hn.title = "الآية التالية"; hn.setAttribute("aria-label", "الآية التالية"); }
       buildStrip();
-      paintStrip();
-      document.addEventListener("fahras:render", paintStrip);
+      buildPicker();
+      paintStrip(); paintPicker();
+      document.addEventListener("fahras:render", function () { paintStrip(); paintPicker(); });
       var art = document.getElementById("reading-article");
       if (art && window.MutationObserver) { new MutationObserver(function () { if (!busy) wrapGlyphs(art); }).observe(art, { childList: true, subtree: true }); wrapGlyphs(art); }
       window.addEventListener("keydown", function (e) {
