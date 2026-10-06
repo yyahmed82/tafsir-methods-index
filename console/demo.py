@@ -638,6 +638,22 @@ def seed(months: int = 12, now: float | None = None, rng_seed: int = 2026) -> di
             sim.log(sim.at(day, rng.uniform(8, 9.5)), op, "auth.login", None, None, sim.ip(op))
         if i % 45 == 20:
             sim.log(sim.at(day, 12), ADMIN, "llm.test", None, {"ok": True})
+    # The mission-control cards and the agents' weekly stats read the last seven days. The
+    # random schedule and the calendar can leave that week without a finished classifier
+    # step (weekend, an early hour on the last day): one periodic committee check is then
+    # guaranteed on the last working day before today, in the morning.
+    week_ago = now - 7 * 86400
+    if not any(s[3] in ("classifier", "verifier") and s[7] == "done" and (s[9] or 0) >= week_ago
+               for s in sim.steps):
+        done_units = sorted(p for p in sim.units if sim.units[p]["committee_at"]) or sample_pairs
+        for day in reversed(days[:-1]):
+            if day.weekday() in WORKDAYS and sim.at(day, 9) >= week_ago:
+                pairs = rng.sample(done_units, k=min(3, len(done_units)))
+                sim.run_task("committee", f"تحقق دوري: المصنّف ثم المدقّق ثم الرئيس — آيات "
+                             f"({sim.ayat_label(pairs)}) · {len(pairs)} نافذة", rng.choice(OPERATORS),
+                             sim.at(day, 9), pairs, ("classifier", "verifier", "chair"),
+                             sim.models["classifier"], 0.0, "ayat", sim.ayat_label(pairs))
+                break
     # write everything
     with db.use("demo"):
         with db.connect() as con:
