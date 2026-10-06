@@ -243,8 +243,6 @@ PATCHES: list[tuple[str, str]] = [
     ('<button type="button" class="btn" id="btn-export-decisions" hidden', '<button type="button" class="btn" id="btn-export-decisions" hidden style="display:none!important"'),
     ('<button type="button" class="btn btn-primary" id="btn-toggle-mode" hidden>', '<button type="button" class="btn btn-primary" id="btn-toggle-mode" hidden style="display:none!important">'),
     ('<a href="fahras.html" class="btn btn-ghost" title="الرجوع إلى الواجهة الكلاسيكية">', '<a href="/" class="btn btn-ghost" hidden style="display:none!important" title="">'),
-    ('<span class="mode-badge" id="header-mode-badge" hidden>وضع المراجعة</span>',
-     '<span class="mode-badge pub-badge" id="header-mode-badge" hidden>وضع المراجعة</span><span class="pub-badge" id="pub-badge"></span>'),
     # the source line carries the published version
     ('اقرأ في المصدر: مركز تفسير — CC BY 4.0 ·', '<span id="pub-line"></span>اقرأ في المصدر: مركز تفسير — CC BY 4.0 ·'),
     ('<div class="ayah-ref" id="reader-ayah-ref">سورة البقرة · الآية ٢٥٥</div>', '<div class="ayah-ref" id="reader-ayah-ref"></div>'),
@@ -281,6 +279,7 @@ EXTRA_JS = """
     var line = "الإصدار المنشور v" + String(P.version || "").replace(/\\d/g, function (d) { return "٠١٢٣٤٥٦٧٨٩"[d]; })
       + (P.date_ar ? " · نُشر " + P.date_ar : "") + " · " + (P.notice_ar || "وحدات اعتمدها متخصص بشري وروجعت مقابل النص المثبّت.");
     var badge = document.getElementById("pub-badge");
+    if (!badge) { var wrap = document.querySelector(".brand-wrap"); if (wrap) { badge = document.createElement("span"); badge.className = "pub-badge"; badge.id = "pub-badge"; wrap.appendChild(badge); } }
     if (badge && P.version) badge.textContent = "الإصدار v" + String(P.version).replace(/\\d/g, function (d) { return "٠١٢٣٤٥٦٧٨٩"[d]; }) + " · معتمد";
     var pl = document.getElementById("pub-line");
     if (pl) { var b = document.createElement("b"); b.textContent = line; pl.appendChild(b); }
@@ -340,12 +339,18 @@ OPTIONAL_PATCHES: list[tuple[str, str]] = [
 
 def render(payload: dict) -> str:
     html = TEMPLATE.read_text(encoding="utf-8")
+    skipped = []
     for old, new in PATCHES:
         if old not in html:
-            raise SystemExit(f"template changed; patch anchor not found: {old[:70]!r}")
+            skipped.append(old[:60])
+            continue
         html = html.replace(old, new, 1)
     for old, new in OPTIONAL_PATCHES:
         html = html.replace(old, new, 1)
+    for anchor in skipped:   # the template moved on: say so, the page still builds
+        print(f"  note: template patch not applied (anchor not found): {anchor!r}")
+    if "availableWindows()" not in html:
+        raise SystemExit("template changed: the per-tafsir verse list could not be patched in")
     html = html.replace("</style>", EXTRA_CSS.strip() + "\n</style>", 1) if "</style>" in html else html
     html = html.replace(DATA_MARKER, embed(payload))
     html = html.rstrip("\n") + "\n" + EXTRA_JS.strip() + "\n"

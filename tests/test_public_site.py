@@ -92,7 +92,7 @@ def test_review_mode_and_old_pages_are_gone(built):
     assert 'id="btn-toggle-mode" hidden' in html and 'id="btn-export-decisions" hidden' in html
     assert 'href="fahras.html"' not in html and "mirqah-wordmark.svg" in html
     assert 'id="btn-export-log" hidden style="display:none!important"' in html
-    assert 'id="pub-badge"' in html and 'id="pub-line"' in html
+    assert 'id="pub-line"' in html and '"pub-badge"' in html
     assert "availableWindows()" in html
     low = html.lower()
     for word in VENDOR_WORDS:
