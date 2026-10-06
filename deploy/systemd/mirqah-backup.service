@@ -1,0 +1,7 @@
+[Unit]
+Description=Mirqah console database backup
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mirqah/bin/mirqah-backup
+Nice=10

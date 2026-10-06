@@ -1,0 +1,40 @@
+[Unit]
+Description=Mirqah committee console (FastAPI on 127.0.0.1:8800, published by Cloudflare Tunnel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mirqah
+Group=mirqah
+EnvironmentFile=/etc/mirqah/mirqah.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+WorkingDirectory=/opt/mirqah/current
+ExecStart=/opt/mirqah/venv/bin/python -m console --host 127.0.0.1 --port 8800
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+
+# The release folders are read-only for the console; only its state folder is writable.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/mirqah
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

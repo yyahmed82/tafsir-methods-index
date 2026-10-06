@@ -9,7 +9,9 @@ import copy
 import json
 import os
 import re
+import socket
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -36,6 +38,35 @@ MOVE_FIELDS = (
 )
 
 SPAN_ID_KEYS = ("span_ids", "evidence_span_ids", "author_verdict_span_ids")
+
+# Token usage reported by the model server for this process (OpenAI-compatible
+# "usage"). Printed once per run as a "usage:" line that the console records.
+USAGE: dict[str, int] = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
+                         "max_prompt_tokens": 0}
+
+
+def _record_usage(data: dict) -> None:
+    u = data.get("usage") if isinstance(data, dict) else None
+    USAGE["calls"] += 1
+    if not isinstance(u, dict):
+        return
+    p = int(u.get("prompt_tokens") or 0)
+    USAGE["prompt_tokens"] += p
+    USAGE["completion_tokens"] += int(u.get("completion_tokens") or 0)
+    USAGE["max_prompt_tokens"] = max(USAGE["max_prompt_tokens"], p)
+
+
+def reset_usage() -> None:
+    for k in USAGE:
+        USAGE[k] = 0
+
+
+def usage_line() -> str | None:
+    """'usage: calls=… prompt_tokens=… completion_tokens=… max_prompt=…' or None."""
+    if not USAGE["calls"]:
+        return None
+    return (f"usage: calls={USAGE['calls']} prompt_tokens={USAGE['prompt_tokens']} "
+            f"completion_tokens={USAGE['completion_tokens']} max_prompt={USAGE['max_prompt_tokens']}")
 
 HttpPost = Callable[[str, dict[str, str], bytes], bytes]
 
@@ -139,6 +170,34 @@ def validate_span_ids(packet: dict, payload: dict) -> list[str]:
     return errors
 
 
+PRIMARY_CODES = ("M_QURAN", "M_SUNNAH", "M_SAHABA", "M_TABIIN", "M_LUGHA", "M_QIRAAT",
+                 "M_NUZUL", "M_SIRA", "M_ISRAILIYYAT", "M_RAY")
+
+
+def validate_primary(payload: dict) -> list[str]:
+    """Each move's primary is ONE code from the list, or null.
+
+    Small models sometimes copy the whole list from the answer template
+    ("M_QURAN|M_SUNNAH|…") instead of choosing. That reply is asked again once;
+    if the second reply still has it, the verifier flags ``unknown_primary`` and
+    the move goes to a specialist.
+    """
+    errors: list[str] = []
+    moves = payload.get("moves")
+    if not isinstance(moves, list):
+        return errors
+    for i, move in enumerate(moves):
+        if not isinstance(move, dict):
+            continue
+        p = move.get("primary")
+        if p is None or p in PRIMARY_CODES or (isinstance(p, str) and p.strip().lower() == "null"):
+            continue
+        shown = str(p)[:80]
+        hint = " (you copied the list of choices)" if "|" in str(p) else ""
+        errors.append(f"move[{i}].primary is {shown!r}{hint}")
+    return errors
+
+
 def sanitize_moves_payload(payload: dict, window_id: str) -> dict:
     """Keep moves schema fields only — never store model text as source."""
     cleaned_moves: list[dict] = []
@@ -160,6 +219,8 @@ def sanitize_moves_payload(payload: dict, window_id: str) -> dict:
                 out[key] = [str(x) for x in (val or [])]
             elif key in ("secondary", "content_tags", "alternatives"):
                 out[key] = list(val or [])
+            elif key == "primary" and isinstance(val, str) and val.strip().lower() in ("null", ""):
+                out[key] = None
             else:
                 out[key] = val
         # Defaults so file matches existing moves shape
@@ -185,6 +246,15 @@ def build_user_prompt(packet: dict, error_feedback: str | None = None) -> str:
     h = grounding_contract.packet_sha256(packet)
     lines.append(f"packet_sha256: {h}")
     lines.append("")
+    if packet.get("profile_card_ar"):
+        lines.append("## بطاقة منهج المفسر (مستخلصة من دراسات علمية — مسودة يراجعها المختص)")
+        lines.append(str(packet["profile_card_ar"]))
+        lines.append("")
+    if packet.get("teaching_examples"):
+        import gold_bank  # local import keeps the baseline prompt path unchanged
+
+        lines.extend(gold_bank.examples_prompt_ar(packet["teaching_examples"]))
+        lines.append("")
     lines.append("## التعريفات")
     lines.append(json.dumps(packet.get("definitions") or [], ensure_ascii=False, indent=2))
     lines.append("")
@@ -227,6 +297,11 @@ def build_user_prompt(packet: dict, error_feedback: str | None = None) -> str:
         "يجب أن يسنده معرّف شاهد في evidence_span_ids."
     )
     lines.append("")
+    if packet.get("profile_signals_ar"):
+        lines.append("## معنى إشارات الملف [profile:…]")
+        for code, label in sorted(packet["profile_signals_ar"].items()):
+            lines.append(f"- {code}: {label}")
+        lines.append("")
     lines.append("## الأجزاء المرقّمة (spans)")
     for span in packet.get("spans") or []:
         sid = span.get("id")
@@ -238,6 +313,9 @@ def build_user_prompt(packet: dict, error_feedback: str | None = None) -> str:
                 str(m.get("family") or m.get("marker") or "?") for m in markers
             )
             marker_note = f" [markers:{families}]"
+        signals = span.get("profile_signals") or []
+        if signals:
+            marker_note += f" [profile:{','.join(str(x) for x in signals)}]"
         lines.append(f"{sid}:{marker_note} {text}")
     if packet.get("editor_footnote_evidence"):
         lines.append("")
@@ -269,11 +347,166 @@ def build_messages(packet: dict, error_feedback: str | None = None) -> list[dict
     ]
 
 
-def _default_http_post(url: str, headers: dict[str, str], body: bytes) -> bytes:
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+class RepetitionError(ClassifyError):
+    """The model's reply started repeating itself (a decoding loop); it was stopped early.
+
+    With temperature 0 the same prompt loops the same way every time, so a plain
+    re-run cannot succeed: classify() asks again once with feedback and a little
+    sampling temperature (LLM_RETRY_TEMPERATURE)."""
+
+
+def retry_temperature() -> float:
+    """Sampling temperature for the one re-ask after a looping reply (0–1, default 0.3)."""
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        value = float(os.environ.get("LLM_RETRY_TEMPERATURE") or 0.3)
+    except ValueError:
+        value = 0.3
+    return min(max(value, 0.0), 1.0)
+
+
+def max_reply_chars() -> int:
+    """Longest reply accepted before stopping it (LLM_MAX_REPLY_CHARS, default 80 000)."""
+    try:
+        value = int(os.environ.get("LLM_MAX_REPLY_CHARS") or 80000)
+    except ValueError:
+        value = 80000
+    return max(value, 2000)
+
+
+def repeating_tail(text: str, min_span: int = 800, max_period: int = 400) -> int | None:
+    """Period of an exact repetition covering the last ``min_span`` characters, else None.
+
+    A whitespace flood counts as period 1. Real classifier JSON never repeats the
+    same 800 characters back to back (span ids and rationales differ), so this only
+    fires on a decoding loop.
+    """
+    if len(text) < min_span:
+        return None
+    if not text[-min_span:].strip():
+        return 1
+    for period in range(1, max_period + 1):
+        need = -(-min_span // period)  # repeats needed to cover min_span
+        if need < 3:
+            need = 3
+        if need * period > len(text):
+            continue
+        unit = text[-period:]
+        reps = 1
+        while reps < need and text[-(reps + 1) * period:-reps * period] == unit:
+            reps += 1
+        if reps >= need:
+            return period
+    return None
+
+
+def _tail_note(text: str, n: int = 160) -> str:
+    tail = " ".join(text[-n:].split())
+    return f" — reply tail: «{tail}»" if tail else " — no reply text"
+
+
+def _stream_post(url: str, headers: dict[str, str], body: bytes) -> bytes:
+    """POST with stream=true; stop as soon as the reply loops; return a non-streamed body.
+
+    Closing the connection makes the model server stop generating, so a loop costs
+    seconds instead of the whole step timeout, and the error shows what it wrote.
+    A server that ignores ``stream`` (plain JSON reply) is handled too.
+    """
+    payload = json.loads(body.decode("utf-8"))
+    payload["stream"] = True
+    payload["stream_options"] = {"include_usage": True}
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
+                                 headers=headers, method="POST")
+    timeout = request_timeout_s()
+    deadline = time.monotonic() + timeout
+    limit = max_reply_chars()
+    parts: list[str] = []
+    tail = ""
+    size = chunks = 0
+    finish: str | None = None
+    usage: dict | None = None
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if "event-stream" not in (resp.headers.get("Content-Type") or ""):
+                return resp.read()
+            for raw in resp:
+                if time.monotonic() > deadline:
+                    raise ClassifyError(f"timed out: no complete model reply within {timeout:.0f} s"
+                                        + _tail_note("".join(parts)))
+                line = raw.decode("utf-8", errors="replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                except ValueError:
+                    continue
+                if isinstance(chunk.get("usage"), dict):
+                    usage = chunk["usage"]
+                for choice in chunk.get("choices") or []:
+                    piece = (choice.get("delta") or {}).get("content") or ""
+                    if piece:
+                        parts.append(piece)
+                        size += len(piece)
+                        chunks += 1
+                        tail = (tail + piece)[-4000:]
+                    if choice.get("finish_reason"):
+                        finish = choice["finish_reason"]
+                if chunks and chunks % 32 == 0:
+                    period = repeating_tail(tail)
+                    if period == 1 and "".join(parts).rstrip().endswith("}"):
+                        finish = "stop"  # a complete object followed by a whitespace flood
+                        break
+                    if period:
+                        raise RepetitionError(
+                            f"reply started repeating itself after {size} characters"
+                            f" (period {period}); stopped early" + _tail_note(tail))
+                    if size > limit:
+                        raise RepetitionError(f"reply passed {limit} characters; stopped"
+                                              + _tail_note(tail))
+    except (TimeoutError, socket.timeout) as e:
+        raise ClassifyError(f"timed out: no model reply within {timeout:.0f} s"
+                            + _tail_note("".join(parts))) from e
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", errors="replace")[:500]
+        raise ClassifyError(f"HTTP {e.code}: {detail}") from e
+    except urllib.error.URLError as e:
+        raise ClassifyError(f"network error: {e.reason}") from e
+    content = "".join(parts)
+    period = repeating_tail(content[-4000:])
+    if period and finish == "length":
+        raise RepetitionError(f"reply was cut while repeating itself (period {period})"
+                              + _tail_note(content))
+    if usage is None and chunks:
+        usage = {"completion_tokens": chunks}  # ~1 token per streamed chunk
+    return json.dumps({"choices": [{"message": {"role": "assistant", "content": content},
+                                    "finish_reason": finish}],
+                       "usage": usage}, ensure_ascii=False).encode("utf-8")
+
+
+def request_timeout_s() -> float:
+    """Seconds to wait for one model reply: LLM_TIMEOUT_S (10–3600), default 120.
+
+    A local model may first have to load into memory (another model is swapped
+    out), so the console sets this from its own step timeout."""
+    try:
+        value = float(os.environ.get("LLM_TIMEOUT_S") or 120)
+    except ValueError:
+        value = 120.0
+    return min(max(value, 10.0), 3600.0)
+
+
+def _default_http_post(url: str, headers: dict[str, str], body: bytes) -> bytes:
+    if os.environ.get("LLM_STREAM", "1") != "0":  # streamed by default: loops stop early
+        return _stream_post(url, headers, body)
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    timeout = request_timeout_s()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read()
+    except TimeoutError as e:
+        raise ClassifyError(f"timed out: no model reply within {timeout:.0f} s") from e
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", errors="replace")[:500]
         raise ClassifyError(f"HTTP {e.code}: {detail}") from e
@@ -295,6 +528,7 @@ def call_chat(
     model: str,
     messages: list[dict[str, str]],
     http_post: HttpPost | None = None,
+    temperature: float = 0.0,
 ) -> str:
     if not api_key:
         raise ClassifyError("LLM_API_KEY is not set")
@@ -304,7 +538,7 @@ def call_chat(
     payload = {
         "model": model,
         "messages": messages,
-        "temperature": 0,
+        "temperature": temperature,
         "response_format": {"type": "json_object"},
     }
     body = json.dumps(payload).encode("utf-8")
@@ -316,6 +550,7 @@ def call_chat(
     post = http_post or _default_http_post
     raw = post(url, headers, body)
     data = json.loads(raw.decode("utf-8"))
+    _record_usage(data)
     try:
         return data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as e:
@@ -342,6 +577,7 @@ def classify(
     http_post: HttpPost | None = None,
     dry_run: bool = False,
     raise_on_failure: bool = True,
+    annotator: str | None = None,
 ) -> dict[str, Any]:
     """Send packet to an OpenAI-compatible endpoint; write moves/<slug>/<window>.json.
 
@@ -366,7 +602,7 @@ def classify(
     result: dict[str, Any] = {
         "window_id": window_id,
         "model": model,
-        "annotator": model_slug(model),
+        "annotator": annotator or model_slug(model),
         "dry_run": dry_run,
         "messages": messages,
         "path": None,
@@ -376,6 +612,8 @@ def classify(
         return result
 
     # 1st attempt: network call
+    content: str | None = None
+    loop_error: str | None = None
     try:
         content = call_chat(
             base_url=base_url,
@@ -384,6 +622,8 @@ def classify(
             messages=messages,
             http_post=http_post,
         )
+    except RepetitionError as e:
+        loop_error = str(e)
     except ClassifyError as e:
         rec = make_failure_record(window_id, "RUN_FAILURE", str(e))
         if raise_on_failure:
@@ -402,13 +642,24 @@ def classify(
     # 1st attempt: parse & validate
     first_error: str | None = None
     payload: dict | None = None
-    try:
-        payload = extract_json_object(content)
-        errors = validate_span_ids(packet, payload)
-        if errors:
-            first_error = "Invalid span ids:\n- " + "\n- ".join(errors)
-    except ClassifyError as e:
-        first_error = f"Invalid JSON reply: {e}"
+    if loop_error is not None:
+        first_error = ("Your previous reply started repeating itself and was stopped"
+                       f" ({loop_error[:240]}). Reply again with ONE compact JSON object:"
+                       " short rationale_ar, each span id at most once, no repeated items.")
+    else:
+        try:
+            payload = extract_json_object(content or "")
+            errors = validate_span_ids(packet, payload)
+            if errors:
+                first_error = "Invalid span ids:\n- " + "\n- ".join(errors)
+            else:
+                bad_primary = validate_primary(payload)
+                if bad_primary:
+                    first_error = ("Invalid primary method:\n- " + "\n- ".join(bad_primary[:8])
+                                   + "\nFor each move choose exactly ONE code from the list"
+                                   " (for example \"M_LUGHA\"), or null when no method applies.")
+        except ClassifyError as e:
+            first_error = f"Invalid JSON reply: {e}"
 
     if first_error is not None:
         retry_messages = build_messages(packet, error_feedback=first_error)
@@ -419,7 +670,16 @@ def classify(
                 model=model,
                 messages=retry_messages,
                 http_post=http_post,
+                temperature=retry_temperature() if loop_error is not None else 0.0,
             )
+        except RepetitionError as e:
+            err_msg = f"reply repeated itself on both attempts: {e}"
+            rec = make_failure_record(window_id, "MODEL_OUTPUT_INVALID", err_msg)
+            if raise_on_failure:
+                raise ClassifyError(
+                    err_msg, record=rec, reason_code="MODEL_OUTPUT_INVALID", window_id=window_id
+                ) from e
+            return rec
         except ClassifyError as e:
             rec = make_failure_record(window_id, "RUN_FAILURE", str(e))
             if raise_on_failure:
@@ -465,7 +725,7 @@ def classify(
     cleaned = sanitize_moves_payload(payload, window_id)
     cleaned[grounding_contract.PACKET_SHA_FIELD] = h
     cleaned[grounding_contract.INPUT_ASSURANCE_FIELD] = grounding_contract.INPUT_API_PACKET
-    path = write_moves(out_dir, model_slug(model), window_id, cleaned)
+    path = write_moves(out_dir, result["annotator"], window_id, cleaned)
     result["path"] = path
     result["payload"] = cleaned
     result["messages"] = messages

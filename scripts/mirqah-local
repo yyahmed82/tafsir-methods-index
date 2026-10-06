@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# مِرْقاة · Mirqah — control a local install (made by install.sh)
+#
+#   mirqah-local start | stop | restart | status | logs [console|reader|ollama] | open | update | uninstall [--yes]
+#
+# State, logs and pids live in <repo>/.mirqah-local/ (gitignored).
+set -euo pipefail
+
+src=${BASH_SOURCE[0]}
+while [ -L "$src" ]; do
+  d=$(cd -P "$(dirname "$src")" && pwd); src=$(readlink "$src"); [[ $src != /* ]] && src=$d/$src
+done
+ROOT=$(cd -P "$(dirname "$src")/.." && pwd)
+STATE="$ROOT/.mirqah-local"
+VPY="$ROOT/.venv/bin/python"
+PORT=8800; READER_PORT=8080; BIND=127.0.0.1; TIER=none; MODELS=""; OLLAMA_URL=http://127.0.0.1:11434; OLLAMA_BIN=""
+# shellcheck disable=SC1091
+[ -f "$STATE/env" ] && . "$STATE/env"
+mkdir -p "$STATE"
+
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  R=$'\e[0m'; B=$'\e[1m'; GRN=$'\e[38;5;42m'; RED=$'\e[38;5;203m'; YEL=$'\e[38;5;221m'; MUT=$'\e[38;5;245m'; GOLD=$'\e[38;5;179m'
+else R=; B=; GRN=; RED=; YEL=; MUT=; GOLD=; fi
+QUIET=0; [ "${2:-}" = "--quiet" ] && QUIET=1
+say() { [ $QUIET = 1 ] || printf '%s\n' "$*"; }
+
+alive() { [ -f "$STATE/$1.pid" ] && kill -0 "$(cat "$STATE/$1.pid")" 2>/dev/null; }
+up() { curl -fsS -m 2 -o /dev/null "$1" 2>/dev/null; }
+wait_up() { for _ in $(seq 1 60); do up "$1" && return 0; sleep 0.5; done; return 1; }
+
+ollama_bin() {
+  if [ -n "$OLLAMA_BIN" ] && [ -x "$OLLAMA_BIN" ]; then echo "$OLLAMA_BIN"
+  elif command -v ollama >/dev/null 2>&1; then command -v ollama
+  elif [ -x /Applications/Ollama.app/Contents/Resources/ollama ]; then echo /Applications/Ollama.app/Contents/Resources/ollama
+  fi
+}
+
+start_ollama() {
+  [ "$TIER" = none ] && return 0
+  up "$OLLAMA_URL/api/version" && return 0
+  local bin; bin=$(ollama_bin)
+  [ -n "$bin" ] || { say "${YEL}! Ollama not found — run install.sh again${R}"; return 0; }
+  local launched=0
+  if [ "$(uname -s)" = Darwin ] && [[ $bin == *Ollama.app* ]]; then
+    open -ga Ollama 2>/dev/null && launched=1
+  elif command -v systemctl >/dev/null 2>&1 && systemctl is-enabled ollama >/dev/null 2>&1; then
+    sudo -n systemctl start ollama 2>/dev/null && launched=1
+  fi
+  if [ $launched = 1 ] && wait_up "$OLLAMA_URL/api/version"; then return 0; fi
+  if ! up "$OLLAMA_URL/api/version"; then
+    nohup "$bin" serve >>"$STATE/ollama.log" 2>&1 &
+    echo $! >"$STATE/ollama.pid"
+    wait_up "$OLLAMA_URL/api/version" || say "${YEL}! Ollama did not answer — mirqah-local logs ollama${R}"
+  fi
+}
+
+start() {
+  [ -x "$VPY" ] || { echo "No .venv in $ROOT — run install.sh first." >&2; exit 1; }
+  start_ollama
+  if alive console; then say "  console already running"; else
+    ( cd "$ROOT" || exit 1; nohup "$VPY" -m console --host "$BIND" --port "$PORT" >>"$STATE/console.log" 2>&1 & echo $! >"$STATE/console.pid" )
+  fi
+  if alive reader; then say "  reader already running"; else
+    ( cd "$ROOT" || exit 1; nohup "$VPY" -m http.server "$READER_PORT" --bind "$BIND" --directory "$ROOT/web" >>"$STATE/reader.log" 2>&1 & echo $! >"$STATE/reader.pid" )
+  fi
+  wait_up "http://127.0.0.1:$PORT/api/public" || { echo "console did not start — see: mirqah-local logs console" >&2; tail -n 20 "$STATE/console.log" >&2; exit 1; }
+  wait_up "http://127.0.0.1:$READER_PORT/fahras.html" || { echo "reader did not start — see: mirqah-local logs reader" >&2; exit 1; }
+  [ $QUIET = 1 ] || status
+}
+
+stop_one() {
+  if alive "$1"; then
+    local pid; pid=$(cat "$STATE/$1.pid")
+    kill "$pid" 2>/dev/null || true
+    for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
+    kill -9 "$pid" 2>/dev/null || true
+    say "  stopped $1"
+  fi
+  rm -f "$STATE/$1.pid"
+}
+stop() { stop_one console; stop_one reader; stop_one ollama; }
+
+line() { # line name ok url detail
+  local dot="${RED}○${R}"; [ "$2" = 1 ] && dot="${GRN}●${R}"
+  printf '  %s %-10s %-34s %s%s%s\n' "$dot" "$1" "$3" "$MUT" "$4" "$R"
+}
+status() {
+  local c=0 r=0 o=0
+  up "http://127.0.0.1:$PORT/api/public" && c=1
+  up "http://127.0.0.1:$READER_PORT/fahras.html" && r=1
+  up "$OLLAMA_URL/api/version" && o=1
+  printf '\n  %sمِرْقاة%s %s· %s%s\n' "$GOLD$B" "$R" "$MUT" "$ROOT" "$R"
+  line console "$c" "http://localhost:$PORT" "committee console"
+  line reader  "$r" "http://localhost:$READER_PORT/fahras.html" "public reader"
+  if [ "$TIER" = none ]; then line ai 0 "—" "tier none (demo mode only)"
+  else line ai "$o" "$OLLAMA_URL" "tier $TIER: $MODELS"; fi
+  echo
+}
+
+case "${1:-status}" in
+  start) start ;;
+  stop) stop ;;
+  restart) stop_one console; stop_one reader; start ;;   # the AI engine keeps running
+  status) status ;;
+  logs)
+    f="$STATE/${2:-console}.log"
+    [ -f "$f" ] || { echo "no log yet: $f"; exit 1; }
+    tail -n 100 -f "$f" ;;
+  open)
+    url="http://localhost:$PORT"
+    if command -v open >/dev/null 2>&1; then open "$url"
+    elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$url" >/dev/null 2>&1
+    else echo "$url"; fi ;;
+  update)
+    branch=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)
+    if [ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]; then
+      echo "  local changes in $ROOT — commit or stash them first" >&2; exit 1
+    fi
+    echo "  fetching the latest $branch …"
+    git -C "$ROOT" fetch -q --depth 1 origin "$branch" && git -C "$ROOT" checkout -q -B "$branch" FETCH_HEAD
+    stop
+    exec "$ROOT/install.sh" --dir "$ROOT" --branch "$branch" --yes --tier "$TIER" \
+      --port "$PORT" --reader-port "$READER_PORT" --bind "$BIND" --email "$ADMIN_EMAIL" ;;
+  uninstall)
+    [ -f "$ROOT/console/app.py" ] && [ -d "$STATE" ] || { echo "refusing: $ROOT does not look like a Mirqah install" >&2; exit 1; }
+    if [ "${2:-}" = "--yes" ]; then answer=yes; else
+      printf '  This stops Mirqah and deletes %s%s%s (your local console data included).\n  Type "yes" to continue: ' "$B" "$ROOT" "$R"
+      if { : </dev/tty; } 2>/dev/null; then read -r answer </dev/tty || answer=""; else read -r answer || answer=""; fi
+    fi
+    [ "$answer" = yes ] || { echo "  cancelled"; exit 0; }
+    stop
+    link="$HOME/.local/bin/mirqah-local"
+    [ -L "$link" ] && [ "$(readlink "$link")" = "$ROOT/scripts/mirqah-local" ] && rm -f "$link"
+    cd /
+    rm -rf "$ROOT"
+    echo "  removed $ROOT"
+    if [ -n "$MODELS" ]; then
+      echo "  Ollama and its models were kept (other apps may use them). To free the space:"
+      echo "    ollama rm $MODELS"
+    fi ;;
+  -h|--help|help)
+    sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) echo "usage: mirqah-local start|stop|restart|status|logs [console|reader|ollama]|open|update|uninstall" >&2; exit 2 ;;
+esac

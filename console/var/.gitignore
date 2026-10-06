@@ -1,0 +1,3 @@
+# local console state (database, outbox, secret key) — never commit
+*
+!.gitignore

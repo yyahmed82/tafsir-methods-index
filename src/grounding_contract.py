@@ -71,4 +71,6 @@ COMMITTEE_REASON_CODES: dict[str, str] = {
     "agent_disagree": "اختلاف الوكلاء (primary مختلف)",
     "unclear_bounds": "حدود غير واضحة (non_contiguous_span_ids أو mixed_or_overlap_spans أو تقطيع بلا تقاطع)",
     "weak_evidence": "دليل ضعيف (يقين weak، أو score.total < 85 عند المصنّف، أو أعلام قاعدة الدليل)",
+    "specialist_block": "منع الأخصائي الآلي (الذراع B): لم يؤكد أخصائي المنهج الحركة؛ يمنع ولا يعتمد",
+    "specialist_missing": "لا حكم حالياً من أخصائي المنهج (الذراع B): الخطوة فشلت أو غابت أو قديمة؛ لا ترشيح آلي",
 }
