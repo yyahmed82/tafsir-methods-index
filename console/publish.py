@@ -89,7 +89,8 @@ def candidate() -> dict[str, Any]:
         if not isinstance(start, int) or not isinstance(end, int) or not 0 <= start < end:
             failed.append({"id": uid, "reason": "bad_bounds"})
             continue
-        if mv.get("text") is not None and text[start:end] != mv.get("text"):
+        if not pipeline.span_text_ok(text, pipeline.load_window(d["tafsir"], d["window"]),
+                                     mv.get("span_ids") or [], mv.get("text")):
             failed.append({"id": uid, "reason": "text_mismatch"})
             continue
         units.append({
@@ -101,7 +102,7 @@ def candidate() -> dict[str, Any]:
             "span_ids": mv.get("span_ids") or [],
             "evidence_span_ids": mv.get("evidence_span_ids") or [],
             "references": mv.get("references") or {},
-            "start": start, "end": end, "text": text[start:end],
+            "start": start, "end": end, "text": mv.get("text"), "slice": text[start:end],
             "source_file": rel, "source_sha256": sha,
             "approved_at": d["created_at"], "decision_id": d["id"],
             "_annotator": d["annotator"],  # console-only, stripped from the public file

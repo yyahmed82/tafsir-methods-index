@@ -62,8 +62,12 @@ def test_text_is_the_pinned_source_letter_for_letter(built):
             assert full[w["window_start"]:w["window_end"]] == w["window_text"] == t["raw"][wid]["text"]
             for sp in w["spans"]:
                 assert full[sp["start"]:sp["end"]] == sp["text"]
+            by_id = {sp["id"]: sp for sp in w["spans"]}
             for mv in t["verified"][wid]["approved"]["moves"]:
-                assert full[mv["start"]:mv["end"]] == mv["text"]
+                # a move's text is its spans joined (the editor's apparatus between them is
+                # not the mufassir's text); every span reads back from the source
+                assert "".join(by_id[i]["text"] for i in mv["span_ids"]) == mv["text"]
+                assert all(full[by_id[i]["start"]:by_id[i]["end"]] == by_id[i]["text"] for i in mv["span_ids"])
                 assert w["window_start"] <= mv["start"] < mv["end"] <= w["window_end"]
 
 

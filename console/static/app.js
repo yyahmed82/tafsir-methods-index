@@ -1338,15 +1338,17 @@
   const METHOD_KEYS = ['M_QURAN', 'M_SUNNAH', 'M_SAHABA', 'M_TABIIN', 'M_LUGHA', 'M_QIRAAT', 'M_NUZUL', 'M_SIRA', 'M_ISRAILIYYAT', 'M_RAY'];
   const mClass = (code) => METHOD_KEYS.includes(code) ? 'm-' + code.slice(2).toLowerCase() : 'm-none';
   const decCls = (dec) => dec === 'approve' ? 'ok' : dec === 'reject' ? 'bad' : dec === 'needs_edit' ? 'warn' : '';
-  // escape + the editor's apparatus (¬…¥) dimmed; the open/closed state survives across chunks
+  // escape; the source's own line breaks (<br>) become line breaks; the editor's apparatus
+  // (¬…¥) is dimmed and its two marker glyphs are hidden — nothing is added to the text and
+  // nothing is taken away: what the reader copies is still the pinned source, letter for letter
   function textFormatter() {
     let inApp = false;
     return (chunk) => {
       let out = '';
-      for (const part of chunk.split(/([¬¥\n])/)) {
-        if (part === '¬') { if (!inApp) { out += '<span class="app">¬'; inApp = true; } else out += '¬'; }
-        else if (part === '¥') { if (inApp) { out += '¥</span>'; inApp = false; } else out += '¥'; }
-        else if (part === '\n') out += '<br>';
+      for (const part of chunk.split(/(<br>|[¬¥\n])/)) {
+        if (part === '¬') { if (!inApp) { out += '<span class="app"><span class="app-glyph">¬</span>'; inApp = true; } else out += '<span class="app-glyph">¬</span>'; }
+        else if (part === '¥') { if (inApp) { out += '<span class="app-glyph">¥</span></span>'; inApp = false; } else out += '<span class="app-glyph">¥</span>'; }
+        else if (part === '\n' || part === '<br>') out += '<br>';
         else out += esc(part);
       }
       return inApp ? out + '</span>' : out;
@@ -1362,7 +1364,7 @@
       if (m.s < pos) continue;
       out += fmt(text.slice(pos, m.s));
       const dec = m.decision && (m.decision.decision || m.decision);
-      out += `<mark class="u ${mClass(m.primary)} ${dec ? 'd-' + dec : 'd-open'}" data-key="${esc(m.key)}" data-act="goto-move" title="${esc(m.key)}${m.title ? ' · ' + esc(m.title) : ''}"><i class="dot"></i>${fmt(text.slice(m.s, m.e))}</mark>`;
+      out += `<mark class="u ${mClass(m.primary)} ${dec ? 'd-' + dec : 'd-open'}" data-key="${esc(m.key)}" data-act="goto-move" title="${esc(m.key)}${m.title ? ' · ' + esc(m.title) : ''}">${fmt(text.slice(m.s, m.e))}</mark>`;
       pos = m.e;
     }
     return out + fmt(text.slice(pos));

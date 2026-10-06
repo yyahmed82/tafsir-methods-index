@@ -151,6 +151,29 @@ def load_window(tafsir: str, window: str) -> dict | None:
     return _read_json(p) if p.is_file() else None
 
 
+def span_text_ok(source: str, window: dict | None, span_ids: list, expected: str | None) -> bool:
+    """A move's text is the join of its spans' texts, each of which must read back
+    letter for letter from the pinned source at the span's offsets. The contiguous
+    slice start:end is wider when the editor's apparatus sits between two spans, so
+    the slice is never the thing compared."""
+    by_id = {s.get("id"): s for s in (window or {}).get("spans") or []}
+    parts = []
+    for sid in span_ids or []:
+        sp = by_id.get(sid)
+        if sp is None:
+            return False
+        try:
+            a, b = int(sp["start"]), int(sp["end"])
+        except (KeyError, TypeError, ValueError):
+            return False
+        if not 0 <= a < b <= len(source) or source[a:b] != sp.get("text"):
+            return False
+        parts.append(sp["text"])
+    if not parts:
+        return False
+    return expected is None or "".join(parts) == expected
+
+
 def window_parts(tafsir: str, ayah_number: int) -> list[str]:
     """Window ids of one ayah in reading order (24_11, or 24_11_p01, 24_11_p02 …)."""
     return [w["window"] for w in windows(tafsir) if w["ayah_number"] == int(ayah_number)]

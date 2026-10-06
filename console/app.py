@@ -908,7 +908,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         for key, mv, _c in _units(v, com):
             ms, me = mv.get("start"), mv.get("end")
             good = isinstance(ms, int) and isinstance(me, int) and 0 <= ms < me <= len(text)
-            same = good and (mv.get("text") is None or text[ms:me] == mv.get("text"))
+            same = good and pipeline.span_text_ok(text, w, mv.get("span_ids") or [], mv.get("text"))
             moves.append({"key": key, "ok": bool(same)})
         sha_ok = sha == w.get("source_sha256") == v.get("source_sha256")
         ok = sha_ok and first_diff is None and all(m["ok"] for m in moves)

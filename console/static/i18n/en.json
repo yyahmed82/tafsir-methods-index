@@ -457,7 +457,7 @@
  "review.in_context_note": "The whole pinned window with every move in place; click a mark to jump to its decision card.",
  "review.invalid_output": "Invalid model output",
  "review.legend": "Methods legend",
- "review.legend_note": "Click a method to hide or show its marks. Ring on the dot: green approved, amber needs edit, red rejected; dashed underline: waiting.",
+ "review.legend_note": "Click a method to hide or show its marks. Underline: dashed waiting, green approved, amber needs edit, red rejected. The text is the pinned source letter for letter; the editor’s notes are dimmed.",
  "review.mine_empty": "Nothing waits for you. The chair assigns new windows as soon as it decides them.",
  "review.mine_open": "{n} window(s) wait for your decision",
  "review.needs_edit": "Needs edit",

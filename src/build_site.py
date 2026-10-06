@@ -143,7 +143,10 @@ def collect(snapshot: dict) -> dict:
             moves = []
             for u in sorted(us, key=lambda u: int(u["start"])):
                 a, b = int(u["start"]), int(u["end"])
-                if not (w["window_start"] <= a < b <= w["window_end"]) or text[a - w["window_start"]:b - w["window_start"]] != u["text"]:
+                by_id = {sp["id"]: sp for sp in w["spans"]}
+                joined = "".join(by_id[i]["text"] for i in u.get("span_ids") or [] if i in by_id)
+                if not (w["window_start"] <= a < b <= w["window_end"]) or not joined or joined != u["text"] \
+                        or any(i not in by_id for i in u.get("span_ids") or []):
                     skipped.append(f"{u['id']} (text differs from the pinned source)")
                     continue
                 moves.append({
@@ -260,6 +263,9 @@ EXTRA_CSS = """
 #pub-line b { color: var(--accent); }
 .site-empty { max-width: 640px; margin: 10vh auto; padding: 28px 24px; border: 1px solid var(--line); border-radius: 16px; text-align: center; }
 .site-empty h2 { margin: 0 0 8px; }
+/* the text is the source, letter for letter: no added glyphs, the apparatus markers hidden */
+.hl-status { display: none !important; }
+.app-glyph { display: none; }
 .brand-img { height: 30px; width: auto; display: inline-block; vertical-align: middle; }
 .brand-img-dark { display: none; }
 :root[data-theme="dark"] .brand-img-light { display: none; }
@@ -280,6 +286,37 @@ EXTRA_JS = """
     if (badge && P.version) badge.textContent = "الإصدار v" + String(P.version).replace(/\\d/g, function (d) { return "٠١٢٣٤٥٦٧٨٩"[d]; }) + " · معتمد";
     var pl = document.getElementById("pub-line");
     if (pl) { var b = document.createElement("b"); b.textContent = line; pl.appendChild(b); }
+    // hide the ¬ and ¥ marker glyphs of the editor's apparatus (they stay in the DOM text,
+    // so the fidelity check and copy-paste still see the pinned source, letter for letter)
+    var art = document.getElementById("reading-article");
+    var busy = false;
+    function wrapGlyphs() {
+      if (!art || busy) return;
+      busy = true;
+      try {
+        var walker = document.createTreeWalker(art, NodeFilter.SHOW_TEXT, null);
+        var nodes = [];
+        while (walker.nextNode()) {
+          var n = walker.currentNode;
+          if (n.parentNode && n.parentNode.classList && n.parentNode.classList.contains("app-glyph")) continue;
+          if (n.nodeValue.indexOf("\u00ac") >= 0 || n.nodeValue.indexOf("\u00a5") >= 0) nodes.push(n);
+        }
+        nodes.forEach(function (n) {
+          var frag = document.createDocumentFragment();
+          n.nodeValue.split(/([\u00ac\u00a5])/).forEach(function (part) {
+            if (!part) return;
+            if (part === "\u00ac" || part === "\u00a5") {
+              var g = document.createElement("span"); g.className = "app-glyph"; g.textContent = part; frag.appendChild(g);
+            } else frag.appendChild(document.createTextNode(part));
+          });
+          n.parentNode.replaceChild(frag, n);
+        });
+      } finally { busy = false; }
+    }
+    if (art && window.MutationObserver) {
+      new MutationObserver(function () { if (!busy) wrapGlyphs(); }).observe(art, { childList: true, subtree: true });
+      wrapGlyphs();
+    }
     if (!(D.tafsir_order || []).length) {
       var main = document.getElementById("reader-view");
       if (main) {

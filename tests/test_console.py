@@ -540,7 +540,9 @@ def test_publish_candidate_requires_source_comparison(env, tmp_path, monkeypatch
     (base / "windows").mkdir()
     (base / "windows" / "24_35.json").write_text(json.dumps({
         "window_id": "24_35", "ayah": "24:35", "surah": 24, "ayah_number": 35,
-        "window_start": 0, "window_end": len(text), "window_text": text, "spans": []}),
+        "window_start": 0, "window_end": len(text), "window_text": text,
+        "spans": [{"id": m["span_ids"][0], "start": m["start"], "end": m["end"], "text": m["text"]}
+                  for m in moves]}),
         encoding="utf-8")
     cand = publish.candidate()
     assert {u["move"] for u in cand["units"]} == {"m02"}

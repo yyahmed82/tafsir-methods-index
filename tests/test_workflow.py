@@ -320,6 +320,13 @@ def _approved_window(tmp_path: Path, monkeypatch, text: str = "قال ابن ع�
     (base / "verified" / "qwen2_5_14b" / "24_35.json").write_text(json.dumps(
         {"window_id": "24_35", "ayah": "24:35", "source_file": "data/nur/al_saadi/raw/24_35.txt",
          "source_sha256": sha, "moves": moves}, ensure_ascii=False), encoding="utf-8")
+    # the pinned window: publishing re-reads every move through its spans
+    (base / "windows" / "24_35.json").write_text(json.dumps(
+        {"window_id": "24_35", "ayah": "24:35", "surah": 24, "ayah_number": 35,
+         "source_file": "data/nur/al_saadi/raw/24_35.txt", "source_sha256": sha,
+         "window_start": 0, "window_end": len(text), "window_text": text,
+         "spans": [{"id": m["span_ids"][0], "start": m["start"], "end": m["end"], "text": m["text"]}
+                   for m in moves]}, ensure_ascii=False), encoding="utf-8")
     monkeypatch.setattr(config, "REPO_ROOT", root)
     return {"base": base, "raw": raw}
 

@@ -739,7 +739,9 @@ a.chip:hover { filter: brightness(1.08); }
 .ctx-doc mark.ctx-mv:hover, .ctx-doc mark.ctx-mv:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .ctx-doc .ctx-tag { font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-2); background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 5px; padding: 1px 4px; margin-inline-end: 4px; vertical-align: 2px; }
-@media (max-width: 640px) { .move-ctx { font-size: 17px; } /* review: the mufassir's text with the moves placed in it (method colours as on the public reader) */
+@media (max-width: 640px) { .move-ctx { font-size: 17px; } }
+
+/* review: the mufassir's text with the moves placed in it (method colours as on the public reader) */
 :root {
   --m-quran: #3C2BB8; --m-sunnah: #0C5C52; --m-sahaba: #7A4E0D; --m-tabiin: #1A4F86; --m-lugha: #6A3418;
   --m-qiraat: #8C2348; --m-nuzul: #0E4F6E; --m-sira: #5A2E86; --m-israiliyyat: #3E2A78; --m-ray: #1F4D2A; --m-none: #6b7280;
@@ -757,17 +759,16 @@ a.chip:hover { filter: brightness(1.08); }
 .move-text.ctx { max-height: 60vh; overflow: auto; padding: 14px 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; font-size: 17.5px; }
 .move-text.ctx .app { color: var(--text-3); font-size: .82em; font-style: italic; }
 .move-text.ctx.src { max-height: 48vh; }
-mark.u { background: color-mix(in srgb, var(--mc) 14%, transparent); color: inherit; border-bottom: 2px solid var(--mc); padding: 1px 2px; border-radius: 3px;
+mark.u { background: color-mix(in srgb, var(--mc) 14%, transparent); color: inherit; border-bottom: 2px dashed var(--mc); padding: 1px 0; border-radius: 2px;
   cursor: pointer; box-decoration-break: clone; -webkit-box-decoration-break: clone; transition: background .15s; }
 mark.u:hover { background: color-mix(in srgb, var(--mc) 28%, transparent); }
-mark.u .dot { margin-inline-end: 4px; box-shadow: 0 0 0 2px var(--surface-2); width: 10px; height: 10px; }
-mark.u.d-approve { border-bottom-style: solid; } mark.u.d-approve .dot { box-shadow: 0 0 0 2px var(--accent); }
-mark.u.d-needs_edit .dot { box-shadow: 0 0 0 2px var(--warn); }
-mark.u.d-reject { text-decoration: line-through; text-decoration-color: var(--danger); opacity: .75; } mark.u.d-reject .dot { box-shadow: 0 0 0 2px var(--danger); }
-mark.u.d-open { border-bottom-style: dashed; }
-mark.u.off { background: transparent; border-bottom-color: transparent; cursor: text; } mark.u.off .dot { display: none; }
+mark.u.d-approve { border-bottom: 2px solid var(--accent); }
+mark.u.d-needs_edit { border-bottom: 2px solid var(--warn); }
+mark.u.d-reject { border-bottom: 2px solid var(--danger); text-decoration: line-through; text-decoration-color: var(--danger); opacity: .8; }
+mark.u.off { background: transparent; border-bottom-color: transparent; cursor: text; text-decoration: none; opacity: 1; }
 mark.u.flash, article.move.flash { animation: flash 1.6s ease-out; }
 @keyframes flash { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.move-text.ctx .app-glyph { display: none; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px; }
 .legend .lg { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); border-radius: 999px;
   padding: 4px 11px 4px 9px; font: inherit; font-size: 13px; cursor: pointer; transition: background .15s, color .15s; }

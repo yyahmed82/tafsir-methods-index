@@ -457,7 +457,7 @@
  "review.in_context_note": "完整窗口文本，每个动作在其位置；点击标记跳转到其决定卡。",
  "review.invalid_output": "模型输出无效",
  "review.legend": "方法图例",
- "review.legend_note": "点击方法以隐藏或显示其标记。",
+ "review.legend_note": "点击方法以隐藏或显示其标记。下划线：虚线待定，绿色已批准，黄色需修改，红色已拒绝。",
  "review.mine_empty": "没有等待你的内容。委员会主席一做出决定就会分配新窗口。",
  "review.mine_open": "{n} 个窗口等待你的决定",
  "review.needs_edit": "需要修改",
