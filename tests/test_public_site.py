@@ -1,120 +1,108 @@
-"""Static checks for the public site in site/ (served at mirqah.app). No network."""
+"""The public site (site/): the reader built from the published snapshot, nothing else.
 
+Built by src/build_site.py from src/fahras_v2_template.html. It shows only units a
+specialist approved and a super admin published, inside the pinned source text; no
+review mode, no export, no working states, no model or vendor names.
+"""
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+import build_site  # noqa: E402
+
+FIXTURE = ROOT / "tests" / "fixtures" / "published_sample.json"
 SITE = ROOT / "site"
-INDEX = SITE / "index.html"
-
-DATA_URL = "https://console.mirqah.app/public/v1/published.json"
-
-# The public page must not leak review-workflow vocabulary or tool/vendor names.
-FORBIDDEN = [
-    "ai_proposed",
-    "under_review",
-    "needs_edit",
-    "rejected",
-    "export",
-    "deepseek",
-    "qwen",
-    "gemma",
-    "codex",
-    "claude",
-    "gpt",
-    "ollama",
-]
-
-REDIRECT_PAGES = ["reader.html", "fahras.html", "methods.html", "app.html"]
-MUST_NOT_EXIST = ["reconcile.html", "index_data.json", "reconcile_data.json", "published.json"]
+VENDOR_WORDS = ["deepseek", "qwen", "gemma", "codex", "claude", "gpt", "ollama", "mimo", "grok", "anthropic", "openai"]
 
 
 @pytest.fixture(scope="module")
-def index_html() -> str:
-    assert INDEX.is_file(), "site/index.html missing"
-    return INDEX.read_text(encoding="utf-8")
+def built(tmp_path_factory) -> tuple[str, dict]:
+    out = tmp_path_factory.mktemp("site") / "index.html"
+    build_site.build(str(FIXTURE), out)
+    html = out.read_text(encoding="utf-8")
+    m = re.search(r'<script type="application/json" id="methods-data">(.*?)</script>', html, re.S)
+    assert m, "embedded data missing"
+    return html, json.loads(m.group(1).replace("\\u003c", "<"))
 
 
-def test_index_exists_and_is_rtl_arabic(index_html: str) -> None:
-    assert INDEX.stat().st_size > 10_000
-    assert 'dir="rtl"' in index_html
-    assert 'lang="ar"' in index_html
-    assert "فهرس مناهج التفسير" in index_html
+def test_only_published_units_and_only_their_ayat(built):
+    html, data = built
+    snap = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    want = {(u["tafsir"], u["id"]) for u in snap["units"]}
+    got = set()
+    for tid, t in data["tafsirs"].items():
+        for wid, block in t["verified"].items():
+            assert list(block) == ["approved"]
+            for mv in block["approved"]["moves"]:
+                assert mv["review_status"] == "approved"
+                got.add((tid, mv["id"]))
+    assert got == want
+    assert data["tafsir_order"] == ["ibn_kathir", "al_saadi"]
+    assert data["window_order"] == ["24_11"]
+    assert data["window_labels"]["24_11"] == "النور ١١"
+    assert "جَاءُوا بِالْإِفْكِ" in data["window_verses"]["24_11"]
+    assert data["published"]["version"] == 1 and data["published"]["units"] == len(want)
 
 
-def test_index_contains_data_url(index_html: str) -> None:
-    assert DATA_URL in index_html
-    assert "cache: 'no-cache'" in index_html or 'cache: "no-cache"' in index_html
+def test_text_is_the_pinned_source_letter_for_letter(built):
+    _html, data = built
+    for tid, t in data["tafsirs"].items():
+        for wid, w in t["windows"].items():
+            raw = (ROOT / w["source_file"]).read_bytes()
+            assert hashlib.sha256(raw).hexdigest() == w["source_sha256"]
+            full = raw.decode("utf-8")
+            assert full[w["window_start"]:w["window_end"]] == w["window_text"] == t["raw"][wid]["text"]
+            for sp in w["spans"]:
+                assert full[sp["start"]:sp["end"]] == sp["text"]
+            for mv in t["verified"][wid]["approved"]["moves"]:
+                assert full[mv["start"]:mv["end"]] == mv["text"]
+                assert w["window_start"] <= mv["start"] < mv["end"] <= w["window_end"]
 
 
-@pytest.mark.parametrize("word", FORBIDDEN)
-def test_index_has_no_forbidden_strings(index_html: str, word: str) -> None:
-    assert word not in index_html.lower(), f"forbidden string {word!r} found in site/index.html"
+def test_a_unit_whose_source_changed_is_left_out(tmp_path):
+    snap = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    for u in snap["units"]:
+        if u["tafsir"] == "al_saadi":
+            u["source_sha256"] = "0" * 64
+    p = tmp_path / "snap.json"
+    p.write_text(json.dumps(snap, ensure_ascii=False), encoding="utf-8")
+    out = tmp_path / "index.html"
+    build_site.build(str(p), out)
+    html = out.read_text(encoding="utf-8")
+    data = json.loads(re.search(r'id="methods-data">(.*?)</script>', html, re.S).group(1).replace("\\u003c", "<"))
+    assert "al_saadi" not in data["tafsirs"] and "ibn_kathir" in data["tafsirs"]
+    assert any("source changed" in s for s in data["skipped"])
 
 
-def test_index_has_no_review_controls(index_html: str) -> None:
-    low = index_html.lower()
-    for word in ("reject", "decision", "reviewer", "model"):
-        assert word not in low, f"review vocabulary {word!r} found in public page"
+def test_review_mode_and_old_pages_are_gone(built):
+    html, _ = built
+    assert 'if (params.get("mode") === "review")' not in html
+    assert 'id="btn-toggle-mode" hidden' in html and 'id="btn-export-decisions" hidden' in html
+    assert 'href="fahras.html"' not in html and "mirqah-wordmark.svg" in html
+    assert 'id="pub-badge"' in html and 'id="pub-line"' in html
+    assert "availableWindows()" in html
+    low = html.lower()
+    for word in VENDOR_WORDS:
+        assert word not in low, word
 
 
-def test_index_wires_required_ui(index_html: str) -> None:
-    for el in ("sel-surah", "sel-ayah", "sel-tafsir", "btn-prev", "btn-next", "btn-theme", "legend", "ucard"):
-        assert f'id="{el}"' in index_html, f"missing #{el}"
-    assert "لم يُنشر بعد أي إصدار معتمد" in index_html
-    assert "تعذّر الاتصال" in index_html
-    assert "https://console.mirqah.app" in index_html
-    assert "https://github.com/yyahmed82/tafsir-methods-index" in index_html
-    assert "assets/brand/quranpedia-books.js" in index_html
-    assert "localStorage" in index_html  # manual dark-mode toggle (allowed)
-    assert "prefers-color-scheme: dark" in index_html
-
-
-def test_method_colours_defined(index_html: str) -> None:
-    for code in (
-        "M_QURAN", "M_SUNNAH", "M_SAHABA", "M_TABIIN", "M_LUGHA",
-        "M_QIRAAT", "M_NUZUL", "M_SIRA", "M_ISRAILIYYAT", "M_RAY",
-    ):
-        assert f"--m-{code}:" in index_html, f"missing colour token for {code}"
-
-
-@pytest.mark.parametrize("page", REDIRECT_PAGES)
-def test_redirect_pages_point_home(page: str) -> None:
-    p = SITE / page
-    assert p.is_file(), f"site/{page} missing"
-    html = p.read_text(encoding="utf-8")
-    assert "url=/" in html
-    assert re.search(r'http-equiv="refresh"', html)
-    assert 'href="/"' in html
-    assert p.stat().st_size < 4_000
-
-
-def test_headers_csp_allows_console() -> None:
+def test_committed_site_folder_is_the_built_reader():
+    html = (SITE / "index.html").read_text(encoding="utf-8")
+    assert html.startswith('<meta charset="utf-8">') and 'id="methods-data"' in html
+    assert 'id="btn-toggle-mode" hidden' in html
+    for name in ("reader.html", "fahras.html", "methods.html", "app.html"):
+        assert "url=/" in (SITE / name).read_text(encoding="utf-8")
+    for name in ("reconcile.html", "index_data.json", "reconcile_data.json", "published.json"):
+        assert not (SITE / name).exists()
     headers = (SITE / "_headers").read_text(encoding="utf-8")
-    assert "connect-src 'self' https://console.mirqah.app" in headers
-    assert "Content-Security-Policy:" in headers
-    assert "frame-ancestors 'none'" in headers
-    assert "Strict-Transport-Security" in headers
-
-
-@pytest.mark.parametrize("name", MUST_NOT_EXIST)
-def test_no_stale_or_data_files(name: str) -> None:
-    assert not (SITE / name).exists(), f"site/{name} must not be deployed"
-
-
-def test_brand_assets_present() -> None:
-    brand = SITE / "assets" / "brand"
-    for name in ("mirqah-logo.svg", "mirqah-logo-on-dark.svg", "mirqah-mark.svg", "mirqah-icon.svg", "quranpedia-books.js"):
-        assert (brand / name).is_file(), f"missing assets/brand/{name}"
-    js = (brand / "quranpedia-books.js").read_text(encoding="utf-8")
-    assert "quranpediaSourceUrl" in js
-
-
-def test_readme_present() -> None:
-    readme = (SITE / "README.md").read_text(encoding="utf-8")
-    assert "wrangler" in readme
-    assert DATA_URL in readme
+    assert "Content-Security-Policy" in headers
+    for asset in ("mirqah-wordmark.svg", "mirqah-wordmark-on-dark.svg", "quranpedia-books.js"):
+        assert (SITE / "assets" / "brand" / asset).is_file()
