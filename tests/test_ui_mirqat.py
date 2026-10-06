@@ -18,14 +18,15 @@ SOURCE_AREA = "اقرأ في المصدر"
 SOURCE_LABEL = "قرآنبيديا"
 COMPETING_LABEL = ">اقرأ المصدر<"
 HREF_RE = re.compile(
-    r"^https://quranpedia\.app/tafseer/[a-z]+/sura\d+-aya\d+\.html$"
+    r"^https://quranpedia\.net/surah/1/\d+/book/\d+#verse-\d+$"
 )
 VERIFIED_IDS = {
-    "al_tabari": "tabary",
-    "ibn_kathir": "katheer",
-    "al_baghawi": "baghawy",
-    "al_saadi": "saadi",
+    "al_tabari": 4,
+    "ibn_kathir": 136,
+    "al_baghawi": 2,
+    "al_saadi": 3,
 }
+AYAT_BEFORE_24 = 2791  # 24:1 is verse 2792 in the Hafs mushaf
 PERSON_NAME_NEEDLES = (
     "Khaled",
     "Khale",
@@ -69,14 +70,16 @@ def _parse_js_object(src: str, name: str) -> dict:
 
 
 def _source_url(book_ids: dict, tafsir_id: str, surah: int, ayah: int) -> str:
+    from console import pipeline
+
     book = book_ids[tafsir_id]
-    return f"https://quranpedia.app/tafseer/{book}/sura{surah}-aya{ayah}.html"
+    return f"https://quranpedia.net/surah/1/{surah}/book/{book}#verse-{pipeline.verse_number(surah, ayah)}"
 
 
 class TestUiMirqat(unittest.TestCase):
     def test_mapping_only_verified_tafsirs(self) -> None:
         src = MAPPING.read_text(encoding="utf-8")
-        self.assertNotIn("quranpedia.net", src)
+        self.assertNotIn("quranpedia.app", src)
         self.assertNotIn("SURAH_SLUGS", src)
         book_ids = _parse_js_object(src, "BOOK_IDS")
         self.assertEqual(book_ids, VERIFIED_IDS)
@@ -92,22 +95,34 @@ class TestUiMirqat(unittest.TestCase):
         ):
             url = _source_url(book_ids, tid, surah, ayah)
             self.assertRegex(url, HREF_RE)
+        n35 = AYAT_BEFORE_24 + 35
         self.assertEqual(
             _source_url(book_ids, "al_tabari", 24, 35),
-            "https://quranpedia.app/tafseer/tabary/sura24-aya35.html",
+            f"https://quranpedia.net/surah/1/24/book/4#verse-{n35}",
         )
         self.assertEqual(
             _source_url(book_ids, "ibn_kathir", 24, 35),
-            "https://quranpedia.app/tafseer/katheer/sura24-aya35.html",
+            f"https://quranpedia.net/surah/1/24/book/136#verse-{n35}",
         )
         self.assertEqual(
             _source_url(book_ids, "al_baghawi", 24, 35),
-            "https://quranpedia.app/tafseer/baghawy/sura24-aya35.html",
+            f"https://quranpedia.net/surah/1/24/book/2#verse-{n35}",
         )
         self.assertEqual(
             _source_url(book_ids, "al_saadi", 24, 35),
-            "https://quranpedia.app/tafseer/saadi/sura24-aya35.html",
+            f"https://quranpedia.net/surah/1/24/book/3#verse-{n35}",
         )
+        from console import pipeline
+
+        self.assertEqual(pipeline.verse_number(1, 1), 1)
+        self.assertEqual(pipeline.verse_number(24, 1), 2792)
+        self.assertEqual(pipeline.verse_number(114, 6), 6236)
+        self.assertEqual(pipeline.verse_number(24, 65), 0)
+        self.assertEqual(
+            pipeline.source_url("al_baghawi", 24, 11),
+            "https://quranpedia.net/surah/1/24/book/2#verse-2802",
+        )
+        self.assertIsNone(pipeline.source_url("al_qurtubi", 24, 11))
         self.assertNotIn("al_qurtubi", book_ids)
         self.assertNotIn("al_shawkani", book_ids)
 
@@ -133,7 +148,7 @@ class TestUiMirqat(unittest.TestCase):
         allowed_books = set(book_ids.values())
         for path in SOURCE_PAGES + SOURCE_TEMPLATES:
             html = path.read_text(encoding="utf-8")
-            self.assertNotIn("quranpedia.net", html, path.name)
+            self.assertNotIn("quranpedia.app", html, path.name)
             self.assertNotIn(COMPETING_LABEL, html, path.name)
             self.assertIn(SOURCE_AREA, html, path.name)
             self.assertIn(SOURCE_LABEL, html, path.name)
@@ -155,14 +170,14 @@ class TestUiMirqat(unittest.TestCase):
                 rel_tokens = set(rel.group(1).split())
                 self.assertIn("noopener", rel_tokens)
                 self.assertIn("noreferrer", rel_tokens)
-            self.assertNotIn('href="https://quranpedia.app', html, path.name)
+            self.assertNotIn('href="https://quranpedia.', html, path.name)
             if path in SOURCE_PAGES:
                 self.assertIn("quranpediaSourceUrl", html, path.name)
                 self.assertIn('target = "_blank"', html, path.name)
                 self.assertIn('rel = "noopener noreferrer"', html, path.name)
         for book in allowed_books:
             self.assertRegex(
-                f"https://quranpedia.app/tafseer/{book}/sura24-aya35.html",
+                f"https://quranpedia.net/surah/1/24/book/{book}#verse-{AYAT_BEFORE_24 + 35}",
                 HREF_RE,
             )
 

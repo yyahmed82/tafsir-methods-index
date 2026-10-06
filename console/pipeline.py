@@ -127,8 +127,23 @@ def _verse_from(text: str, n: int) -> str | None:
     return head if 8 <= len(head) <= 1500 else None
 
 
-QURANPEDIA_BOOKS = {"al_tabari": "tabary", "ibn_kathir": "katheer", "al_baghawi": "baghawy",
-                    "al_saadi": "saadi"}
+QURANPEDIA_BOOKS = {"al_tabari": 4, "ibn_kathir": 136, "al_baghawi": 2, "al_saadi": 3}
+# quranpedia.net: /surah/1/{surah}/book/{book}#verse-{n}; 1 is the Hafs mushaf and n the
+# ayah's running number in it (24:1 = 2792). Book ids verified in the rendered page (2026-10-06):
+# 4 الطبري, 136 ابن كثير (ط. دار طيبة), 2 البغوي (ط. دار طيبة), 3 السعدي.
+SURAH_AYAT = (7, 286, 200, 176, 120, 165, 206, 75, 129, 109, 123, 111, 43, 52, 99, 128, 111, 110, 98,
+              135, 112, 78, 118, 64, 77, 227, 93, 88, 69, 60, 34, 30, 73, 54, 45, 83, 182, 88, 75, 85,
+              54, 53, 89, 59, 37, 35, 38, 29, 18, 45, 60, 49, 62, 55, 78, 96, 29, 22, 24, 13, 14, 11,
+              11, 18, 12, 12, 30, 52, 52, 44, 28, 28, 20, 56, 40, 31, 50, 40, 46, 42, 29, 19, 36, 25,
+              22, 17, 19, 26, 30, 20, 15, 21, 11, 8, 8, 19, 5, 8, 8, 11, 11, 8, 3, 9, 5, 4, 7, 3, 6, 3,
+              5, 4, 5, 6)
+
+
+def verse_number(surah: int, ayah: int) -> int:
+    """The ayah's running number in the mushaf (1..6236), 0 when out of range."""
+    if not (1 <= surah <= 114) or not (1 <= ayah <= SURAH_AYAT[surah - 1]):
+        return 0
+    return sum(SURAH_AYAT[:surah - 1]) + ayah
 
 
 def source_url(tafsir: str, surah: int | None, ayah: int | None) -> str | None:
@@ -136,7 +151,10 @@ def source_url(tafsir: str, surah: int | None, ayah: int | None) -> str | None:
     book = QURANPEDIA_BOOKS.get(tafsir)
     if not book or not surah or not ayah:
         return None
-    return f"https://quranpedia.app/tafseer/{book}/sura{int(surah)}-aya{int(ayah)}.html"
+    n = verse_number(int(surah), int(ayah))
+    if not n:
+        return None
+    return f"https://quranpedia.net/surah/1/{int(surah)}/book/{book}#verse-{n}"
 
 
 def surah_name(surah: int | None) -> str:
