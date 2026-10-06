@@ -364,7 +364,9 @@
           <input class="input ltr" id="email" type="email" autocomplete="email" inputmode="email" required placeholder="${T('auth.email_ph')}" value="${esc(S.loginEmail)}"></div>
         <button class="btn primary block" type="submit">${ico('mail')} ${T('auth.send_code')}</button>
         <p class="faint" id="login-msg"></p></form>
-`;
+        ${S.pub.guest_access ? `<div class="auth-or"><span>${T('auth.or')}</span></div>
+        <button class="btn outline-accent block" type="button" data-act="guest">${ico('user')} ${T('auth.guest_btn')}</button>
+        <p class="faint mt-s">${T('auth.guest_note')}</p>` : ''}`;
     } else {
       body = `<form id="f-code" class="stack" novalidate>
         <p class="muted">${T('auth.sent_generic')}</p>
