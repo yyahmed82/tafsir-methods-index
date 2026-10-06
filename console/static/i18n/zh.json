@@ -32,6 +32,7 @@
  "auth.err.rate_limited": "请求过多，请稍等几分钟。",
  "auth.guest_btn": "评审与访客入口（只读）",
  "auth.guest_note": "无需注册：可查看仪表板、任务和报告，只读，无法运行或修改任何内容。",
+ "auth.judges_closed": "评委入口目前关闭。",
  "auth.logout": "退出登录",
  "auth.mock_banner": "邮件处于模拟模式：不会发出任何邮件。",
  "auth.mock_code": "测试验证码（模拟模式）",

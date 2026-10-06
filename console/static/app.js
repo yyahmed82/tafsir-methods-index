@@ -349,7 +349,8 @@
     const langs = (S.pub.languages || []).map((l) => `<button class="mi ${l.code === S.lang ? 'on' : ''}" data-act="lang" data-code="${esc(l.code)}">${esc(l.name_native)}</button>`).join('');
     const theme = store.get('mq-theme', 'auto');
     const mock = S.pub.mail_mode === 'mock' ? `<div class="notice warn mt">${ico('info')}<span>${T('auth.mock_banner')}</span></div>` : '';
-    const noUsers = !S.pub.has_users ? `<div class="notice mt">${ico('info')}<span class="ltr-isolate">${T('auth.no_users')}</span></div>` : '';
+    const noUsers = !S.pub.has_users ? `<div class="notice mt">${ico('info')}<span class="ltr-isolate">${T('auth.no_users')}</span></div>` : ''
+      + (/[?&]judges=closed/.test(location.search) ? `<div class="notice warn mt">${ico('lock')}<span>${T('auth.judges_closed')}</span></div>` : '');
     let body;
     if (S.loginStep === 'email') {
       body = `<form id="f-email" class="stack" novalidate>

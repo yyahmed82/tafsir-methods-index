@@ -472,6 +472,23 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         _set_session_cookie(request, response, token, config.GUEST_SESSION_HOURS)
         return {"ok": True, "user": auth.public_user(auth.session_user(token))}
 
+    @app.get("/judges", include_in_schema=False)
+    def judges_entry(request: Request) -> Response:
+        """The judges' door: a link given in the submission, not a button on the sign-in
+        page. Opens the same read-only guest session as /api/auth/guest (only while
+        Settings → Security → guest access is on) and lands on the dashboard."""
+        from fastapi.responses import RedirectResponse
+        ip = _ip(request) or "?"
+        if auth.rate_limited(f"guest-ip:{ip}", 10, 600):
+            raise _err(429, "rate_limited")
+        try:
+            token, _ = auth.guest_session(ip, request.headers.get("user-agent"))
+        except PermissionError:
+            return RedirectResponse("/?judges=closed", status_code=303)
+        resp = RedirectResponse("/#/dashboard", status_code=303)
+        _set_session_cookie(request, resp, token, config.GUEST_SESSION_HOURS)
+        return resp
+
     @app.post("/api/auth/logout")
     def logout(request: Request, response: Response) -> dict:
         tok = request.cookies.get(config.SESSION_COOKIE)

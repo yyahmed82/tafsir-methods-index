@@ -194,8 +194,16 @@ def test_guest_access_is_off_by_default_and_read_only(env):
     assert env.get("/api/public").json()["guest_access"] is False
     r = env.post("/api/auth/guest", headers=H)
     assert r.status_code == 403 and r.json()["detail"]["error"] == "guest_disabled"
+    # the judges' link: closed → back to the sign-in page, nothing opened
+    r = env.get("/judges", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/?judges=closed"
+    assert env.get("/api/me").status_code == 401
     settings.update("security", {"guest_access": True}, None)
     assert env.get("/api/public").json()["guest_access"] is True
+    r = env.get("/judges", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/#/dashboard"
+    assert env.get("/api/me").json()["user"]["is_guest"]
+    env.post("/api/auth/logout", headers=H)
     r = env.post("/api/auth/guest", headers=H)
     assert r.status_code == 200, r.text
     me = env.get("/api/me").json()["user"]

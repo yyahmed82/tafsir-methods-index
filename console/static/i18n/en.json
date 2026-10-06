@@ -32,6 +32,7 @@
  "auth.err.rate_limited": "Too many requests. Wait a few minutes.",
  "auth.guest_btn": "Judges & guests (view only)",
  "auth.guest_note": "No sign-up: dashboard, tasks and reports, read-only. Nothing can be run or changed.",
+ "auth.judges_closed": "The judges’ door is closed right now. A super admin opens it in Settings → Security → judges’ access.",
  "auth.logout": "Sign out",
  "auth.mock_banner": "Mail is in mock mode: nothing leaves this machine.",
  "auth.mock_code": "Test code (mock mode)",
