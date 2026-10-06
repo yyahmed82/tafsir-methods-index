@@ -9,6 +9,7 @@ packet. Nothing here approves anything or writes tafsir text.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -26,8 +27,23 @@ METHODS = gold_bank.METHODS
 METHOD_NAMES_AR = {d["id"]: d["name_ar"] for d in v2_packets.DEFINITIONS_AR}
 
 
-def method_names() -> dict[str, str]:
-    return {m: METHOD_NAMES_AR.get(m, m) for m in METHODS}
+def method_names(lang: str = "ar") -> dict[str, str]:
+    """The label of each method: the registry's Arabic name, overridden by the ``method.<ID>``
+    string of the language (the i18n file, then what a language manager typed under
+    Settings → Languages → edit translations). The IDs themselves never change here."""
+    out = {m: METHOD_NAMES_AR.get(m, m) for m in METHODS}
+    try:
+        f = config.I18N_DIR / f"{lang}.json"
+        strings = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+        strings.update({r["key"]: r["value"] for r in
+                        db.rows("SELECT key, value FROM translations WHERE lang=?", (lang,))})
+        for m in METHODS:
+            v = (strings.get(f"method.{m}") or "").strip()
+            if v:
+                out[m] = v
+    except Exception:  # pragma: no cover - labels are a convenience; the registry stands
+        pass
+    return out
 
 
 def error_types() -> dict[str, str]:

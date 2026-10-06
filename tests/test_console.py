@@ -321,7 +321,15 @@ def test_languages_default_and_overrides(env):
     env.put("/api/translations/en", json={"site.toc": "Go to"}, headers=H)
     strings = env.get("/public/v1/i18n/en.json").json()["strings"]
     assert strings["site.toc"] == "Go to" and strings["site.ayah"] == "Ayah"
-    assert all(k.startswith("site.") for k in strings) and "nav.tasks" not in strings
+    assert all(k.startswith(("site.", "method.")) for k in strings) and "nav.tasks" not in strings
+    # the method labels are strings too: a language manager renames a tag under Settings → Languages,
+    # the review screens, the published snapshot and the public site follow; the IDs stay
+    env.put("/api/translations/ar", json={"method.M_LUGHA": "اللغة والغريب شاهداً"}, headers=H)
+    from console import learning
+    assert learning.method_names()["M_LUGHA"] == "اللغة والغريب شاهداً"
+    assert learning.method_names()["M_SUNNAH"] == "السنة"
+    assert env.get("/public/v1/i18n/ar.json").json()["strings"]["method.M_LUGHA"] == "اللغة والغريب شاهداً"
+    env.put("/api/translations/ar", json={"method.M_LUGHA": None}, headers=H)
 
 
 # ------------------------------------------------------------------ tasks & gates

@@ -344,7 +344,7 @@ class DemoSeedIn(BaseModel):
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 LANG_RE = re.compile(r"^[a-z]{2,3}(-[A-Z]{2})?$")
 ROLE_KEY_RE = re.compile(r"^[a-z][a-z0-9_]{1,39}$")
-I18N_KEY_RE = re.compile(r"^[a-z0-9_.]{1,80}$")
+I18N_KEY_RE = re.compile(r"^[A-Za-z0-9_.]{1,80}$")   # method.M_LUGHA and the like
 
 
 # ------------------------------------------------------------------ i18n
@@ -1182,7 +1182,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
             return _public_json({"error": "lang_not_enabled"}, status=404)
         b = i18n_bundle(code)
         return _public_json({"lang": code, "strings": {k: v for k, v in b["strings"].items()
-                                                         if k.startswith("site.")}})
+                                                         if k.startswith(("site.", "method."))}})
 
     @app.get("/public/v1/manifest.json", include_in_schema=False)
     def public_manifest() -> Response:

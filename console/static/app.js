@@ -16,6 +16,8 @@
     return s;
   };
   const T = (k, v) => esc(t(k, v));
+  // a method's label in the interface language (method.<ID>), else the Arabic name the API sends
+  const mLabel = (names, k) => (k && S.t['method.' + k]) || (names && names[k]) || k;
   const has = (p) => !!(S.me && S.me.permissions.includes(p));
   // read-only views: "view as user" blocks every write; demo mode blocks the committee's writes
   const viewingAs = () => !!(S.me && S.me.view_as);
@@ -1376,7 +1378,7 @@
   }
   function methodLegend(names, counts, hidden) {
     hidden = hidden || new Set();
-    return `<div class="legend" role="group" aria-label="${T('review.legend')}">${METHOD_KEYS.map((k) => `<button type="button" class="lg ${mClass(k)}${hidden.has(k) ? ' off' : ''}" data-act="legend-toggle" data-m="${k}" aria-pressed="${!hidden.has(k)}"><i class="dot"></i>${esc(names[k] || k)}${counts && counts[k] ? ` <b>${fNum(counts[k])}</b>` : ''}</button>`).join('')}</div>`;
+    return `<div class="legend" role="group" aria-label="${T('review.legend')}">${METHOD_KEYS.map((k) => `<button type="button" class="lg ${mClass(k)}${hidden.has(k) ? ' off' : ''}" data-act="legend-toggle" data-m="${k}" aria-pressed="${!hidden.has(k)}"><i class="dot"></i>${esc(mLabel(names, k))}${counts && counts[k] ? ` <b>${fNum(counts[k])}</b>` : ''}</button>`).join('')}</div>`;
   }
   function applyLegend(root) {
     const hidden = S.legendHidden || new Set();
@@ -1452,7 +1454,7 @@
     const counts = {}; let total = 0; let decided = 0;
     const sections = d.windows.map((w) => {
       const arm = w.arms.find((a) => !arms.length || a.arm === S.readerArm) || w.arms[0];
-      const moves = arm ? arm.moves.map((m) => { counts[m.primary] = (counts[m.primary] || 0) + 1; total += 1; if (m.decision) decided += 1; return { ...m, title: `${names[m.primary] || m.primary || '—'}${m.decision ? ' · ' + t('review.decision.' + m.decision) : ''}` }; }) : [];
+      const moves = arm ? arm.moves.map((m) => { counts[m.primary] = (counts[m.primary] || 0) + 1; total += 1; if (m.decision) decided += 1; return { ...m, title: `${mLabel(names, m.primary) || '—'}${m.decision ? ' · ' + t('review.decision.' + m.decision) : ''}` }; }) : [];
       const href = `#/review/${d.tafsir}/${w.window}${arm && arm.arm ? '/' + arm.arm : ''}`;
       return `<section class="card mb reader-win" data-win="${esc(w.window)}" data-arm="${esc((arm && arm.arm) || '')}"><div class="row between wrap"><div class="row"><b>${d.windows.length > 1 ? T('review.part', { n: arNum(w.part), m: arNum(d.windows.length) }) : T('review.text')}</b><span class="mono faint">${esc(w.window)}</span>${arm && arm.committee ? `<span class="chip violet">${T('dash.committee')}</span>` : ''}</div>
           <div class="row">${arm ? `<span class="chip ${arm.decided === arm.total ? 'ok' : ''}">${T('review.progress', { done: fNum(arm.decided), total: fNum(arm.total) })}</span>` : `<span class="chip">${T('review.reader.no_run')}</span>`}<a class="btn sm outline-accent" href="${href}">${ico('review')} ${T('review.reader.open')}</a></div></div>
@@ -1481,7 +1483,7 @@
     const methods = d.methods || [];
     const names = d.method_names || {};
     // a method code shown by its Arabic name; a reply that is not one code (e.g. the copied list) says so
-    const mName = (code) => !code ? '—' : names[code] ? `<span title="${esc(code)}">${esc(names[code])}</span>`
+    const mName = (code) => !code ? '—' : mLabel(names, code) !== code ? `<span title="${esc(code)}">${esc(mLabel(names, code))}</span>`
       : `<span class="chip bad" title="${esc(code)}">${T('review.invalid_output')}</span>`;
     const certName = (c) => !c ? '—' : ['explicit', 'strong', 'weak', 'insufficient'].includes(c) ? `<span title="${esc(c)}">${T('review.cert.' + c)}</span>` : esc(c);
     const lesson = (m, dec) => {
@@ -1491,7 +1493,7 @@
         <div class="lesson-grid"><label class="field"><span class="label">${T('learn.error_type')}</span><select class="input" data-error>
           <option value="">${T('learn.error_none')}</option>${Object.entries(errTypes).map(([k, v]) => `<option value="${esc(k)}"${t0.error_type === k ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
         <label class="field"><span class="label">${T('learn.correct')}</span><select class="input" data-correct>
-          <option value="">${T('learn.correct_none')}</option>${methods.map((x) => `<option value="${esc(x)}"${t0.correct_primary === x ? ' selected' : ''}>${esc(names[x] || x)}</option>`).join('')}</select></label></div>
+          <option value="">${T('learn.correct_none')}</option>${methods.map((x) => `<option value="${esc(x)}"${t0.correct_primary === x ? ' selected' : ''}>${esc(mLabel(names, x))}</option>`).join('')}</select></label></div>
         <label class="check"><input type="checkbox" data-teach${t0.teach ? ' checked' : ''}><span>${T('learn.teach')}</span></label>
         <p class="faint">${T('learn.teach_note')}</p></details>`;
     };
@@ -1511,7 +1513,7 @@
     const lessonChip = (dec) => {
       const t0 = (dec && dec.teach) || {};
       if (!t0.error_type && !t0.teach) return '';
-      return `<span class="chip ${t0.teach ? 'ok' : ''}">${t0.teach ? T('learn.taught') : T('learn.lesson')}${t0.error_type ? ' · ' + esc(errTypes[t0.error_type] || t0.error_type) : ''}${t0.correct_primary ? ' ' + ARROW() + ' ' + esc(names[t0.correct_primary] || t0.correct_primary) : ''}</span>`;
+      return `<span class="chip ${t0.teach ? 'ok' : ''}">${t0.teach ? T('learn.taught') : T('learn.lesson')}${t0.error_type ? ' · ' + esc(errTypes[t0.error_type] || t0.error_type) : ''}${t0.correct_primary ? ' ' + ARROW() + ' ' + esc(mLabel(names, t0.correct_primary)) : ''}</span>`;
     };
     const preview = {};
     (d.chair ? d.chair.moves : []).forEach((c) => { preview[c.move_id] = c; });
@@ -1555,7 +1557,7 @@
           <div><div class="k">${T('review.score')}</div><div class="v">${score ?? '—'}</div></div>
           <div><div class="k">${T('review.flags')}</div><div class="v mono" style="font-size:12px">${esc((m.flags || []).join(', ') || '—')}</div></div></div>`;
       const article = `<article class="move" data-move="${esc(m.key)}"${dec ? ' data-decided="1"' : ''}>
-        <div class="row between"><div class="row"><b class="mono">${esc(m.key)}</b><span class="dot-chip ${mClass(m.primary)}" title="${esc(names[m.primary] || m.primary || '')}"><i class="dot"></i></span><span class="chip ${m.route === 'auto_candidate' ? 'ok' : 'warn'}">${T('route.' + (m.route || 'specialist'))}</span>
+        <div class="row between"><div class="row"><b class="mono">${esc(m.key)}</b><span class="dot-chip ${mClass(m.primary)}" title="${esc(mLabel(names, m.primary) || '')}"><i class="dot"></i></span><span class="chip ${m.route === 'auto_candidate' ? 'ok' : 'warn'}">${T('route.' + (m.route || 'specialist'))}</span>
           ${d.window_text ? `<button type="button" class="btn sm ghost" data-act="goto-mark" data-key="${esc(m.key)}">${ico('eye')} ${T('review.show_in_text')}</button>` : ''}
           ${chairChip}${reasonChip(m.reason_code)}</div>
           <div class="row">${dec ? `<span class="chip ${dec.decision === 'approve' ? 'ok' : dec.decision === 'reject' ? 'bad' : 'warn'}">${T('review.decision.' + dec.decision)} · ${esc(dec.user_name)} · ${esc(fDT(dec.created_at))}</span>` : ''}${lessonChip(dec)}</div></div>
@@ -1583,7 +1585,7 @@
     const ctxKey = `${tafsir}/${win}/${arm || ''}`;
     const chk = S.sourceCheck && S.sourceCheck.key === ctxKey ? S.sourceCheck.r : null;
     // the whole pinned passage with every move placed in it (the fahras view, for the reviewer)
-    const inText = d.moves.map((m) => ({ key: m.key, start: m.start, end: m.end, primary: m.primary, decision: m.decision, title: `${names[m.primary] || m.primary || '—'}${m.decision ? ' · ' + t('review.decision.' + m.decision.decision) : ''}` }));
+    const inText = d.moves.map((m) => ({ key: m.key, start: m.start, end: m.end, primary: m.primary, decision: m.decision, title: `${mLabel(names, m.primary) || '—'}${m.decision ? ' · ' + t('review.decision.' + m.decision.decision) : ''}` }));
     const mCounts = {}; d.moves.forEach((m) => { mCounts[m.primary] = (mCounts[m.primary] || 0) + 1; });
     const context = d.window_text && !d.simulated ? `<section class="card mb ctx-card"><div class="row between wrap"><div class="row"><b>${T('review.in_context')}</b><span class="faint">${T('review.in_context_note')}</span></div>
         <div class="row"><button type="button" class="btn sm" data-act="toggle-context">${T(S.reviewHideText ? 'review.show_text' : 'review.hide_text')}</button></div></div>

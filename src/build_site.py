@@ -94,7 +94,7 @@ def site_strings() -> dict[str, dict[str, str]]:
     out: dict[str, dict[str, str]] = {}
     for p in sorted(I18N_DIR.glob("*.json")):
         d = _read_json(p)
-        out[p.stem] = {k: v for k, v in d.items() if k.startswith("site.")}
+        out[p.stem] = {k: v for k, v in d.items() if k.startswith(("site.", "method."))}
     return out
 DATA_ROOTS = {24: ROOT / "data" / "nur"}
 AR_DIGITS = str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")
@@ -519,7 +519,7 @@ EXTRA_JS = """
   function dateStr(ts) { if (!ts) return ""; var d = new Date(ts * 1000); return arabicDigits() ? num(d.getUTCDate()) + " " + MONTHS_AR[d.getUTCMonth()] + " " + num(d.getUTCFullYear()) : MONTHS_EN[d.getUTCMonth()] + " " + d.getUTCDate() + ", " + d.getUTCFullYear(); }
   function surahName(x) { return (L.dir === "rtl") ? x.ar : x.en; }
   function tafsirName(tid) { var d = D(); var k = "site.tafsir." + tid; var v = T(k); return v === k ? ((d.tafsir_labels || {})[tid] || tid) : v; }
-  function methodName(id) { var k = "site.method." + id; var v = T(k); return v === k ? id : v; }
+  function methodName(id) { var k = "method." + id; var v = T(k); return v === k ? id : v; }
   function ayahLabel(k) { var d = D(); var n = String(k).split("_")[1] || k; var sn = d.surah ? surahName({ ar: d.surah.name_ar, en: d.surah.name_en }) : ""; return sn + " " + num(n); }
 
   // ---- the published version in the header and the source box
@@ -846,7 +846,7 @@ EXTRA_JS = """
       if (txt && txt.nodeValue !== methodName(id) + " ") txt.nodeValue = methodName(id) + " ";
       var sm = c.querySelector("small.cnt"); if (sm) sm.textContent = num(cnt[id]);
     });
-    var AR_NAMES = {}; ["M_QURAN", "M_SUNNAH", "M_SAHABA", "M_TABIIN", "M_LUGHA", "M_QIRAAT", "M_NUZUL", "M_SIRA", "M_ISRAILIYYAT", "M_RAY"].forEach(function (k) { AR_NAMES[(d.i18n.ar || {})["site.method." + k]] = k; });
+    var AR_NAMES = {}; ["M_QURAN", "M_SUNNAH", "M_SAHABA", "M_TABIIN", "M_LUGHA", "M_QIRAAT", "M_NUZUL", "M_SIRA", "M_ISRAILIYYAT", "M_RAY"].forEach(function (k) { AR_NAMES[(d.i18n.ar || {})["method." + k]] = k; });
     document.querySelectorAll("#dist-legend .leg-item").forEach(function (li) {
       var spans = li.querySelectorAll("span");
       var lbl = spans[0], cnt = li.querySelector(".leg-cnt");
