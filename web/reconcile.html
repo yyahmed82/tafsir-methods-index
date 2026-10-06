@@ -1,4 +1,7 @@
+<meta charset="utf-8">
 <title>شاشة المطابقة — نقطة التحكم الثانية</title>
+<link rel="icon" href="assets/brand/mirqah-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/brand/icon-180.png">
 <style>
   :root {
     color-scheme: light;
@@ -9,6 +12,8 @@
     --line: #d9e0dd;
     --primary: #1f5f5b;
     --mirqat-brand: var(--primary);
+    --mq-logo-light: inline-block;
+    --mq-logo-dark: none;
     --mirqat-rule: var(--line);
     --matched: #2f7a4b;
     --matched-bg: #e3f3e8;
@@ -32,6 +37,8 @@
       --line: #31403c;
       --primary: #8fd0c8;
       --mirqat-brand: var(--primary);
+      --mq-logo-light: none;
+      --mq-logo-dark: inline-block;
       --mirqat-rule: var(--line);
       --matched: #8ed0a6;
       --matched-bg: #173226;
@@ -53,6 +60,8 @@
     --line: #31403c;
     --primary: #8fd0c8;
     --mirqat-brand: var(--primary);
+    --mq-logo-light: none;
+    --mq-logo-dark: inline-block;
     --mirqat-rule: var(--line);
     --matched: #8ed0a6;
     --matched-bg: #173226;
@@ -141,6 +150,14 @@
     line-height: 1.2;
     white-space: nowrap;
   }
+  .mq-logo {
+    height: 46px;
+    width: auto;
+    flex: 0 0 auto;
+  }
+  .mq-logo--light { display: var(--mq-logo-light, inline-block); }
+  .mq-logo--dark { display: var(--mq-logo-dark, none); }
+  @media (max-width: 640px) { .mq-logo { height: 38px; } }
 
   .subtitle {
     margin: 0;
@@ -531,8 +548,8 @@
 <div class="app" id="app" dir="rtl" lang="ar">
   <div class="brand-lockup">
     <span class="brand-team">
-    <svg class="mirqat-mark" viewBox="0 0 24 32" width="22" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true" focusable="false"><path d="M7 30L5 3"/><path d="M17 30L19 3"/><path d="M6.2 8.5h11.6"/><path d="M6.5 15h11"/><path d="M6.8 21.5h10.4"/><path d="M7 28h10"/></svg>
-    <span class="mirqat-wordmark">مِرْقاة</span>
+    <img class="mq-logo mq-logo--light" src="assets/brand/mirqah-wordmark.svg" width="62" height="46" alt="مِرْقاة">
+    <img class="mq-logo mq-logo--dark" src="assets/brand/mirqah-wordmark-on-dark.svg" width="62" height="46" alt="مِرْقاة">
     </span>
     <span class="brand-heading">
     <span class="brand-rule" aria-hidden="true"></span>

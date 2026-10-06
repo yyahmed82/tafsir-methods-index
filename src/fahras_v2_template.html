@@ -2,6 +2,8 @@
 <script>try{var __t=localStorage.getItem("tafsir-fahras-v1-theme");document.documentElement.setAttribute("data-theme",(__t==="dark"||__t==="light")?__t:"light");}catch(e){document.documentElement.setAttribute("data-theme","light");}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>فهرس مناهج التفسير</title>
+<link rel="icon" href="assets/brand/mirqah-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/brand/icon-180.png">
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@300;400;500;600;700&display=swap">
 <style>
@@ -17,6 +19,8 @@
   --muted: #7E86A8;
   --accent: #5B3FD9;
   --mirqat-brand: var(--accent);
+  --mq-logo-light: inline-block;
+  --mq-logo-dark: none;
   --mirqat-rule: var(--line);
   --accent-bg: #EEEAFE;
   --accent-hover: #482ec4;
@@ -55,6 +59,8 @@
   --muted: #9AA3C8;
   --accent: #8E78FF;
   --mirqat-brand: var(--accent);
+  --mq-logo-light: none;
+  --mq-logo-dark: inline-block;
   --mirqat-rule: var(--line);
   --accent-bg: #2C275E;
   --accent-hover: #A493FF;
@@ -169,6 +175,14 @@ button.brand-lockup:focus-visible {
   line-height: 1.2;
   white-space: nowrap;
 }
+.mq-logo {
+  height: 46px;
+  width: auto;
+  flex: 0 0 auto;
+}
+.mq-logo--light { display: var(--mq-logo-light, inline-block); }
+.mq-logo--dark { display: var(--mq-logo-dark, none); }
+@media (max-width: 640px) { .mq-logo { height: 38px; } }
 .brand-product,
 .brand-title {
   font-weight: 700;
@@ -1345,8 +1359,8 @@ aside.reader-aside {
     <div class="brand-wrap">
       <button type="button" class="brand-lockup" id="brand-logo" aria-label="العودة إلى وضع القراءة">
         <span class="brand-team">
-        <svg class="mirqat-mark" viewBox="0 0 24 32" width="22" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true" focusable="false"><path d="M7 30L5 3"/><path d="M17 30L19 3"/><path d="M6.2 8.5h11.6"/><path d="M6.5 15h11"/><path d="M6.8 21.5h10.4"/><path d="M7 28h10"/></svg>
-        <span class="mirqat-wordmark">مِرْقاة</span>
+        <img class="mq-logo mq-logo--light" src="assets/brand/mirqah-wordmark.svg" width="62" height="46" alt="مِرْقاة">
+        <img class="mq-logo mq-logo--dark" src="assets/brand/mirqah-wordmark-on-dark.svg" width="62" height="46" alt="مِرْقاة">
         </span>
         <span class="brand-heading">
         <span class="brand-rule" aria-hidden="true"></span>
@@ -1389,7 +1403,8 @@ aside.reader-aside {
 
     <div class="header-actions">
       <button type="button" class="btn" id="btn-export-decisions" hidden title="تصدير قرارات المتخصص بصيغة JSON">صدّر القرارات</button>
-      <button type="button" class="btn btn-primary" id="btn-toggle-mode">وضع المراجعة ←</button>
+      <button type="button" class="btn" id="btn-export-log" hidden title="قرارات حُفظت في هذا المتصفح أثناء تجربة سابقة؛ المراجعة الرسمية في لوحة اللجنة">صدّر قراراتك المحفوظة</button>
+      <button type="button" class="btn btn-primary" id="btn-toggle-mode" hidden>وضع المراجعة ←</button>
       <button type="button" class="ib-btn" id="btn-theme-toggle" aria-pressed="false" aria-label="تبديل المظهر" title="تبديل المظهر الفاتح/الداكن">◐</button>
       <a href="fahras.html" class="btn btn-ghost" title="الرجوع إلى الواجهة الكلاسيكية">الواجهة الكلاسيكية</a>
     </div>
@@ -1621,6 +1636,10 @@ aside.reader-aside {
   var DATA = JSON.parse(document.getElementById("methods-data").textContent);
 
   var STORAGE_KEY = "tafsir-fahras-v1-log";
+  // The public reader is for reading. Specialists decide in the committee console
+  // (console.mirqah.app), where decisions are saved on the server; this page's old
+  // review mode kept decisions in the browser only, so it stays closed.
+  var REVIEW_OPEN = false;
   var THEME_KEY = "tafsir-fahras-v1-theme";
   var TYPE_KEY = "tafsir-fahras-v1-type-scale";
   var TYPE_STEPS = [1.05, 1.15, 1.25, 1.38, 1.5];
@@ -2473,6 +2492,9 @@ aside.reader-aside {
       exportBtn.hidden = true;
       toggleModeBtn.textContent = "وضع المراجعة ←";
       toggleModeBtn.classList.add("btn-primary");
+      toggleModeBtn.hidden = !REVIEW_OPEN;
+      var logBtn = document.getElementById("btn-export-log");
+      if (logBtn) logBtn.hidden = !(state.log && state.log.length);
       try {
         var url2 = new URL(window.location.href);
         url2.searchParams.delete("mode");
@@ -3642,6 +3664,26 @@ aside.reader-aside {
       });
     }
 
+    var logBtn = document.getElementById("btn-export-log");
+    if (logBtn && modal) {
+      logBtn.addEventListener("click", function () {
+        if (!state.log || !state.log.length) { toast("لا توجد قرارات محفوظة في هذا المتصفح"); return; }
+        var payload = {
+          kind: "mirqah-reader-log",
+          note_ar: "قرارات حُفظت في متصفح المراجِع على صفحة القارئ (تجربة سابقة)؛ ليست قرارات معتمدة في اللوحة.",
+          data_version: DATA.data_version || "",
+          exported_at: new Date().toISOString(),
+          decisions: state.log
+        };
+        if (area) area.value = JSON.stringify(payload, null, 2);
+        modal.setAttribute("data-kind", "log");
+        modal.hidden = false;
+      });
+    }
+    if (exportBtn && modal) {
+      exportBtn.addEventListener("click", function () { modal.removeAttribute("data-kind"); });
+    }
+
     if (closeBtn && modal) {
       closeBtn.addEventListener("click", function () { modal.hidden = true; });
     }
@@ -3669,7 +3711,9 @@ aside.reader-aside {
         var url = URL.createObjectURL(blob);
         var a = document.createElement("a");
         a.href = url;
-        a.download = "approved-" + state.tafsirId + "-" + state.windowId + ".json";
+        a.download = (modal && modal.getAttribute("data-kind") === "log")
+          ? "mirqah-reader-decisions.json"
+          : "approved-" + state.tafsirId + "-" + state.windowId + ".json";
         a.click();
         URL.revokeObjectURL(url);
       });
@@ -3743,7 +3787,7 @@ aside.reader-aside {
     // Check URL mode parameter
     try {
       var params = new URLSearchParams(window.location.search);
-      if (params.get("mode") === "review") {
+      if (REVIEW_OPEN && params.get("mode") === "review") {
         state.mode = "review";
       }
       var tParam = params.get("t") || params.get("tafsir");
