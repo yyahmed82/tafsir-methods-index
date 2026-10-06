@@ -1388,7 +1388,9 @@
   }
   const arNum = (n) => String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]);
   const ayahRef = (d) => `${T('review.surah')} ${esc(d.surah_name_ar || '')} · ${T('review.ayah')} ${arNum(d.ayah_number || '')}`;
-  const verseBlock = (d) => d.ayah_text ? `<blockquote class="ayah-text">﴿${esc(d.ayah_text)}﴾</blockquote>` : '';
+  // the verse as the mufassir quotes it; when this tafsir does not quote it cleanly, another
+  // tafsir's quotation is shown and the caption says whose
+  const verseBlock = (d) => d.ayah_text ? `<blockquote class="ayah-text">﴿${esc(d.ayah_text)}﴾${d.ayah_text_from && d.tafsir && d.ayah_text_from !== d.tafsir ? `<div class="ayah-from muted">${T('review.verse_from', { name: d.ayah_text_from_name || d.ayah_text_from })}</div>` : ''}</blockquote>` : '';
 
 
   // ------------------------------------------------------------ قلم التمييز (the highlighter)

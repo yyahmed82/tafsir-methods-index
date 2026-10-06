@@ -444,6 +444,7 @@
  "review.compare_ok_toast": "与原文一致 ✓",
  "review.compare_sha": "源文件指纹与固定值不同；请勿批准并通知操作员。",
  "review.ctx_hint": "前后文以浅色显示，来自同一固定文本",
+ "review.verse_from": "引自{name}的引文，非本注释正文",
  "review.ctx_next_part": "来自下一部分",
  "review.ctx_prev_part": "来自上一部分",
  "review.decided": "已决定",

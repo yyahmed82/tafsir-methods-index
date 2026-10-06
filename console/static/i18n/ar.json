@@ -444,6 +444,7 @@
  "review.compare_ok_toast": "مطابق للأصل ✓",
  "review.compare_sha": "بصمة ملف المصدر تغيّرت عن البصمة المثبّتة؛ لا تعتمد شيئًا وأبلغ المشغّل.",
  "review.ctx_hint": "قبلها وبعدها بلون باهت من النص المثبَّت نفسه",
+ "review.verse_from": "كما يقتبسها {name}، لا من نص هذا التفسير",
  "review.ctx_next_part": "من الجزء التالي",
  "review.ctx_prev_part": "من الجزء السابق",
  "review.decided": "بُتّ فيها",

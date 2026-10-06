@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,3 +75,81 @@ def resolve_base(base: str | Path, root: Path | None = None) -> Path:
     if not p.is_absolute():
         p = (root or ROOT) / p
     return p.resolve()
+
+
+# ---------------------------------------------------------------------------
+# The verse at the head of a commentary window — strict.
+#
+# The reader and the console show the ayah above a window. There is no mushaf text in
+# this repository, so the ayah is taken from the window itself: the quotation the
+# mufassir puts right before the edition's «(n)» marker. The old heuristic cut
+# everything before the marker and only dropped a brace found in the first 80
+# characters, so it also showed the surah heading and the edition's «****»
+# separator (Ibn Kathir 24:1), the mufassir's own introductory sentence (al-Saadi
+# 24:6, 24:36, 24:51) and commentary between two halves of a verse (al-Tabari 24:21)
+# inside the Quranic brackets. This version isolates the quotation or returns None.
+
+_VERSE_MARKER_WINDOW = 3000
+# anything that is never inside a verse quotation in these editions
+_VERSE_FORBIDDEN = re.compile(r"[*¬¥<>{}\[\]\d\r\n:؛«»]")
+# a few formulas of the commentary itself; a verse never contains them
+_VERSE_FORMULAS = ("القول في تأويل", "القولُ في تأويلِ", "قوله تعالى", "قولِه تعالى", "قوله عز وجل",
+                   "يقول تعالى", "قال أبو جعفر", "وهي مدنية", "وهي مكية", "وهي مدينة", "تفسير سورة",
+                   "تفسيرُ سورةِ", "فقال", "ثم قال", "بسم الله", "بِسْمِ اللَّهِ")
+
+
+def _verse_clean(s: str) -> str | None:
+    s = s.strip().strip("{}").strip()
+    s = s.strip(" .،؟!﴾﴿‏‎﻿\t")
+    if not 8 <= len(s) <= 1500:
+        return None
+    if _VERSE_FORBIDDEN.search(s):
+        return None
+    if any(f in s for f in _VERSE_FORMULAS):
+        return None
+    return s
+
+
+def verse_at_head(text: str, n: int) -> str | None:
+    """The ayah ``n`` as the mufassir quotes it before the edition's «(n)» marker, or
+    None when it cannot be isolated with certainty.
+
+    - the editor's apparatus ``¬…¥`` is removed first;
+    - with braces, the quotation is the text after the **last** ``{`` before the marker
+      (the mufassir's introduction stays outside); if that ``{`` is preceded by another
+      brace segment with only connective text between them, the two are one verse
+      quoted in consecutive braces and are joined; a verse quoted in two halves with
+      commentary between them is not isolable and gives None;
+    - without braces (Ibn Kathir's edition), the quotation is the last line before the
+      marker (the heading and the «****» separator sit on earlier lines);
+    - the result must contain no apparatus marker, separator, bracket, digit, line
+      break, colon or commentary formula; otherwise None.
+    """
+    t = re.sub(r"¬[^¥]*¥", "", (text or "")[:_VERSE_MARKER_WINDOW])
+    m = re.search(rf"\({int(n)}\)", t)
+    if not m:
+        return None
+    head = t[:m.start()]
+    if "{" in head:
+        i = head.rfind("{")
+        verse = head[i + 1:]
+        before = head[:i]
+        # consecutive quotations: «{…} {…}» or «{…}، {…}» — join them
+        while before.rstrip().endswith("}"):
+            j = before.rfind("{")
+            if j < 0:
+                break
+            gap = before[before.rfind("}") + 1:]
+            if gap.strip(" ،.‏") != "":
+                break
+            verse = before[j + 1:before.rfind("}")] + " " + verse
+            before = before[:j]
+        if "{" in before:
+            # an earlier quotation with commentary after it: the verse may be quoted in
+            # halves (al-Tabari 24:21) — half a verse is never shown as the ayah
+            return None
+        return _verse_clean(verse)
+    lines = [ln for ln in re.split(r"\r?\n", head) if ln.strip()]
+    if not lines:
+        return None
+    return _verse_clean(lines[-1])

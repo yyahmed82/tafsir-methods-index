@@ -22,6 +22,12 @@ from . import config, db, settings
 if str(config.REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(config.REPO_ROOT / "src"))
 
+try:  # the strict verse extractor is shared with the site builder (src/textcore.py)
+    from textcore import verse_at_head  # type: ignore  # noqa: E402
+except Exception:  # pragma: no cover - no verse header is safer than a wrong one
+    def verse_at_head(text: str, n: int) -> str | None:  # type: ignore[misc]
+        return None
+
 try:  # single source of truth for annotator folder names
     from classify_api import model_slug  # type: ignore  # noqa: E402
 except Exception:  # pragma: no cover - fallback keeps the console usable
@@ -113,18 +119,10 @@ SURAH_NAMES_AR = {2: "البقرة", 8: "الأنفال", 17: "الإسراء", 
 
 
 def _verse_from(text: str, n: int) -> str | None:
-    """The verse quoted at the head of a commentary: the text before «(n)», without
-    the editor's apparatus (¬…¥), the opening formula and the braces."""
-    t = re.sub(r"¬[^¥]*¥", "", (text or "")[:3000])
-    m = re.search(rf"\({n}\)", t)
-    if not m:
-        return None
-    head = t[:m.start()]
-    i = head.find("{")
-    if 0 <= i <= 80:
-        head = head[i + 1:]
-    head = head.strip().strip("{}").strip()
-    return head if 8 <= len(head) <= 1500 else None
+    """The verse quoted at the head of a commentary — the strict shared extractor
+    (src/textcore.verse_at_head): the quotation right before «(n)», never the heading,
+    the edition's separators, the mufassir's introduction or half a verse."""
+    return verse_at_head(text or "", int(n))
 
 
 QURANPEDIA_BOOKS = {"al_tabari": 4, "ibn_kathir": 136, "al_baghawi": 2, "al_saadi": 3}
@@ -198,8 +196,16 @@ def window_parts(tafsir: str, ayah_number: int) -> list[str]:
 
 
 def ayah_text(tafsir: str, ayah_number: int) -> str | None:
-    """The verse as the mufassir quotes it at the head of his commentary ({…} in the
-    first window of the ayah); None when the text does not start with the verse."""
+    """The verse as this mufassir quotes it at the head of the ayah's first window, or
+    None. Never another tafsir's quotation: see ayah_quote() for the labelled fallback."""
+    q = ayah_quote(tafsir, ayah_number)
+    return q["text"] if q and q.get("tafsir") == tafsir else None
+
+
+def ayah_quote(tafsir: str, ayah_number: int) -> dict | None:
+    """{"text", "tafsir"}: the verse quoted at the head of the ayah, from this tafsir
+    when it can be isolated there, else from the first other tafsir that quotes it
+    cleanly — with the tafsir it was taken from, so the interface can say so."""
     key = f"ayah:{data_root()}:{tafsir}:{ayah_number}"
     with _CACHE_LOCK:
         hit = _CACHE.get(key)
@@ -209,8 +215,9 @@ def ayah_text(tafsir: str, ayah_number: int) -> str | None:
     for t in [tafsir] + [x for x in config.TAFSIRS if x != tafsir]:
         parts = window_parts(t, ayah_number)
         w = load_window(t, parts[0]) if parts else None
-        out = _verse_from((w or {}).get("window_text") or "", int(ayah_number))
-        if out:
+        text = _verse_from((w or {}).get("window_text") or "", int(ayah_number))
+        if text:
+            out = {"text": text, "tafsir": t}
             break
     if out:
         with _CACHE_LOCK:

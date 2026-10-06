@@ -824,3 +824,4 @@ mark.u.draft.m-none { --mc: var(--warn); }
 .pen-row .pen-text { flex: 1 1 240px; direction: rtl; }
 .pen-row:last-child { border-bottom: 0; }
 @media (max-width: 760px) { .pen-grid { grid-template-columns: 1fr; } .pen-panel { padding: 12px; } }
+.ayah-text .ayah-from { font-family: var(--font-ui, inherit); font-size: 12px; line-height: 1.6; margin-top: 4px; opacity: .75; }

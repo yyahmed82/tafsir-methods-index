@@ -133,3 +133,17 @@ def test_committed_site_folder_is_the_built_reader():
     assert "Content-Security-Policy" in headers
     for asset in ("mirqah-wordmark.svg", "mirqah-wordmark-on-dark.svg", "quranpedia-books.js"):
         assert (SITE / "assets" / "brand" / asset).is_file()
+
+
+def test_site_verse_headers_are_clean_quotations(built):
+    """The ayah shown above each window on mirqah.app is the verse the mufassir quotes —
+    never the surah heading, the edition's «****» separator or the commentary (6 Oct 2026)."""
+    _, data = built
+    verses = data.get("window_verses") or data.get("verses") or {}
+    assert verses, "no verse headers in the built page"
+    bad = re.compile(r"[*¬¥<>{}\[\]\d\r\n:؛]")
+    for key, v in verses.items():
+        assert not bad.search(v), (key, v[:80])
+        assert "وهي مدنية" not in v and "القول في تأويل" not in v, key
+    if "24_1" in verses:
+        assert verses["24_1"].startswith("سُورَةٌ أَنْزَلْنَاهَا"), verses["24_1"][:60]

@@ -444,6 +444,7 @@
  "review.compare_ok_toast": "اصل کے مطابق ✓",
  "review.compare_sha": "ماخذ فائل کا فنگرپرنٹ بدل گیا ہے؛ کچھ منظور نہ کریں۔",
  "review.ctx_hint": "اس سے پہلے اور بعد کا متن، ہلکے رنگ میں",
+ "review.verse_from": "{name} کے اقتباس کے مطابق، اس تفسیر کے متن سے نہیں",
  "review.ctx_next_part": "اگلے حصے سے",
  "review.ctx_prev_part": "پچھلے حصے سے",
  "review.decided": "فیصلہ شدہ",

@@ -905,10 +905,12 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         n = int(w.get("ayah_number") or (ayah.split(":")[1] if ":" in ayah else 0) or 0)
         surah = int(w.get("surah") or (ayah.split(":")[0] if ":" in ayah else 0) or 0)
         parts = pipeline.window_parts(tafsir, n) if n else []
+        q = pipeline.ayah_quote(tafsir, n) if n else None
         return {"window_text": w.get("window_text"), "window_start": w.get("window_start"),
                 "window_end": w.get("window_end"), "surah": surah,
                 "surah_name_ar": pipeline.surah_name(surah), "ayah_number": n,
-                "ayah_text": pipeline.ayah_text(tafsir, n) if n else None,
+                "ayah_text": (q or {}).get("text"), "ayah_text_from": (q or {}).get("tafsir"),
+                "ayah_text_from_name": config.TAFSIR_NAMES_AR.get((q or {}).get("tafsir") or "", ""),
                 "part": (parts.index(window) + 1) if window in parts else 1,
                 "parts": len(parts) or 1,
                 "source_url": pipeline.source_url(tafsir, surah, n)}
@@ -996,10 +998,13 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                          "window_end": w.get("window_end"), "text": w.get("window_text") or "",
                          "arms": arms})
         surah = int((pipeline.load_window(tafsir, wins[0]["window"]) or {}).get("surah") or 0) if wins else 0
+        q = pipeline.ayah_quote(tafsir, ayah_number)
         return {"tafsir": tafsir, "name_ar": config.TAFSIR_NAMES_AR[tafsir],
                 "surah": surah, "surah_name_ar": pipeline.surah_name(surah),
                 "source_url": pipeline.source_url(tafsir, surah, ayah_number),
-                "ayah_number": ayah_number, "ayah_text": pipeline.ayah_text(tafsir, ayah_number),
+                "ayah_number": ayah_number, "ayah_text": (q or {}).get("text"),
+                "ayah_text_from": (q or {}).get("tafsir"),
+                "ayah_text_from_name": config.TAFSIR_NAMES_AR.get((q or {}).get("tafsir") or "", ""),
                 "windows": wins, "method_names": learning.method_names(),
                 "ayat": sorted({w["ayah_number"] for w in pipeline.windows(tafsir)}),
                 "ayat_with_moves": sorted({u["ayah_number"] for u in units.values()})}

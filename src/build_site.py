@@ -32,7 +32,7 @@ if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
 from build_fahras import check_html, embed  # noqa: E402
-from textcore import read_exact as _read_exact, read_json as _read_json  # noqa: E402
+from textcore import read_exact as _read_exact, read_json as _read_json, verse_at_head  # noqa: E402
 
 TEMPLATE = ROOT / "src" / "fahras_v2_template.html"
 OUT = ROOT / "site" / "index.html"
@@ -128,18 +128,9 @@ def load_snapshot(src: str) -> dict:
 
 
 def verse_from(text: str, n: int) -> str | None:
-    """The verse quoted at the head of a commentary (the console's pipeline._verse_from):
-    the text before «(n)», without the editor's apparatus, the formula and the braces."""
-    t = re.sub(r"¬[^¥]*¥", "", (text or "")[:3000])
-    m = re.search(rf"\({n}\)", t)
-    if not m:
-        return None
-    head = t[:m.start()]
-    i = head.find("{")
-    if 0 <= i <= 80:
-        head = head[i + 1:]
-    head = head.strip().strip("{}").strip()
-    return head if 8 <= len(head) <= 1500 else None
+    """The verse quoted at the head of a commentary — the strict shared extractor
+    (textcore.verse_at_head, also used by the console), or None."""
+    return verse_at_head(text, n)
 
 
 def ayat_of(surah: int) -> list[int]:

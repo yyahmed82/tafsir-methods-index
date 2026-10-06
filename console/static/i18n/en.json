@@ -444,6 +444,7 @@
  "review.compare_ok_toast": "Matches the source ✓",
  "review.compare_sha": "The source file’s fingerprint differs from the pinned one; approve nothing and tell the operator.",
  "review.ctx_hint": "before and after it, dimmed, from the same pinned text",
+ "review.verse_from": "as quoted by {name}, not from this tafsir's text",
  "review.ctx_next_part": "from the next part",
  "review.ctx_prev_part": "from the previous part",
  "review.decided": "decided",
