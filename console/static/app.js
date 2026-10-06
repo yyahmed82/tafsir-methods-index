@@ -820,7 +820,10 @@
     S.publishCtx = d;
     const live = d.live;
     const c = d.counts || { units: 0, windows: 0, by_tafsir: {}, by_method: {} };
-    const excerpt = (u) => esc((u.text || '').length > 150 ? u.text.slice(0, 150) + '…' : (u.text || ''));
+    const excerpt = (u) => {
+      const t0 = String(u.text || '').replace(/<br\s*\/?\s*>/gi, ' ').replace(/\s+/g, ' ').trim();
+      return esc(t0.length > 150 ? t0.slice(0, 150) + '…' : t0);
+    };
     const unitRow = (u, kind) => `<tr><td><span class="chip ${kind === 'added' ? 'ok' : kind === 'removed' ? 'bad' : 'warn'}">${T('publish.kind.' + kind)}</span></td>
       <td>${esc(tafsirName(u.tafsir))}</td><td class="mono">${esc(u.window)}</td><td class="mono">${esc(u.primary || '—')}</td><td class="hide-sm">${esc(u.certainty || '—')}</td>
       <td class="pub-text" dir="rtl">${excerpt(u)}</td></tr>`;
@@ -1338,27 +1341,52 @@
   const METHOD_KEYS = ['M_QURAN', 'M_SUNNAH', 'M_SAHABA', 'M_TABIIN', 'M_LUGHA', 'M_QIRAAT', 'M_NUZUL', 'M_SIRA', 'M_ISRAILIYYAT', 'M_RAY'];
   const mClass = (code) => METHOD_KEYS.includes(code) ? 'm-' + code.slice(2).toLowerCase() : 'm-none';
   const decCls = (dec) => dec === 'approve' ? 'ok' : dec === 'reject' ? 'bad' : dec === 'needs_edit' ? 'warn' : '';
-  // escape; the source's own line breaks (<br>) become line breaks; the editor's apparatus
-  // (¬…¥) is dimmed and its two marker glyphs are hidden — nothing is added to the text and
-  // nothing is taken away: what the reader copies is still the pinned source, letter for letter
+  // Layout tokens in the pinned source (<br>, <br/>, <br /> — any case) become real line breaks
+  // after HTML-escaping. Mark offsets are computed on the raw string first; boundaries that fall
+  // inside a token are snapped so the token is never split across slices (which would show "&lt;br&gt;").
+  const BR_TOKEN = /<br\s*\/?\s*>/gi;
+  const isBrToken = (s) => /^<br\s*\/?\s*>$/i.test(s);
+  function brRanges(text) {
+    const out = [];
+    BR_TOKEN.lastIndex = 0;
+    let m;
+    while ((m = BR_TOKEN.exec(text)) !== null) out.push([m.index, m.index + m[0].length]);
+    return out;
+  }
+  function snapBr(text, pos, role) {
+    for (const [a, b] of brRanges(text)) {
+      if (pos > a && pos < b) return role === 'end' ? b : a;
+    }
+    return pos;
+  }
   function textFormatter() {
     let inApp = false;
     return (chunk) => {
       let out = '';
-      for (const part of chunk.split(/(<br>|[¬¥\n])/)) {
+      for (const part of chunk.split(/(<br\s*\/?\s*>|[¬¥\n])/i)) {
         if (part === '¬') { if (!inApp) { out += '<span class="app"><span class="app-glyph">¬</span>'; inApp = true; } else out += '<span class="app-glyph">¬</span>'; }
         else if (part === '¥') { if (inApp) { out += '<span class="app-glyph">¥</span></span>'; inApp = false; } else out += '<span class="app-glyph">¥</span>'; }
-        else if (part === '\n' || part === '<br>') out += '<br>';
+        else if (part === '\n' || isBrToken(part)) out += '<br data-layout="1">';
         else out += esc(part);
       }
       return inApp ? out + '</span>' : out;
     };
   }
+  const srcDisplay = (s) => textFormatter()(s || '');
+  const srcOneLine = (s) => esc(String(s || '').replace(/<br\s*\/?\s*>/gi, ' ').replace(/\s+/g, ' ').trim());
   // text with every move wrapped: <mark class="u m-…" data-key>; overlaps are skipped (first wins)
   function markedText(text, moves, base) {
     const fmt = textFormatter();
     const sorted = moves.filter((m) => Number.isInteger(m.start) && Number.isInteger(m.end) && m.end > m.start)
-      .map((m) => ({ ...m, s: m.start - base, e: m.end - base })).filter((m) => m.s >= 0 && m.e <= text.length).sort((a, b) => a.s - b.s);
+      .map((m) => ({ ...m, s: m.start - base, e: m.end - base }))
+      .filter((m) => m.s >= 0 && m.e <= text.length)
+      .map((m) => {
+        const s = snapBr(text, m.s, 'start');
+        const e = snapBr(text, m.e, 'end');
+        return { ...m, s, e };
+      })
+      .filter((m) => m.e > m.s)
+      .sort((a, b) => a.s - b.s);
     let out = ''; let pos = 0;
     for (const m of sorted) {
       if (m.s < pos) continue;
@@ -1523,15 +1551,15 @@
     };
     const moveInContext = (m) => {
       const r = moveRange(m);
-      if (!r) return `<div class="move-text">${esc(m.text || '')}</div>`;
+      if (!r) return `<div class="move-text">${srcDisplay(m.text || '')}</div>`;
       const [a, b] = r;
       let before = ctx.text.slice(Math.max(0, a - CTX_CHARS), a);
       let after = ctx.text.slice(b, b + CTX_CHARS);
-      const fromPrev = a < CTX_CHARS && ctx.prev ? `<span class="ctx-part">${T('review.ctx_prev_part')}</span>${esc(ctx.prev.text.slice(-(CTX_CHARS - a)))}<span class="ctx-sep"> ⋯ </span>` : '';
-      const toNext = b + CTX_CHARS > ctx.text.length && ctx.next ? `<span class="ctx-sep"> ⋯ </span><span class="ctx-part">${T('review.ctx_next_part')}</span>${esc(ctx.next.text.slice(0, CTX_CHARS - (ctx.text.length - b)))}` : '';
+      const fromPrev = a < CTX_CHARS && ctx.prev ? `<span class="ctx-part">${T('review.ctx_prev_part')}</span>${srcDisplay(ctx.prev.text.slice(-(CTX_CHARS - a)))}<span class="ctx-sep"> ⋯ </span>` : '';
+      const toNext = b + CTX_CHARS > ctx.text.length && ctx.next ? `<span class="ctx-sep"> ⋯ </span><span class="ctx-part">${T('review.ctx_next_part')}</span>${srcDisplay(ctx.next.text.slice(0, CTX_CHARS - (ctx.text.length - b)))}` : '';
       const cutBefore = a - CTX_CHARS > 0 ? '… ' : '';
       const cutAfter = b + CTX_CHARS < ctx.text.length ? ' …' : '';
-      return `<div class="move-text move-ctx"><span class="ctx-out">${fromPrev}${cutBefore}${esc(before)}</span><mark class="ctx-cur">${esc(ctx.text.slice(a, b))}</mark><span class="ctx-out">${esc(after)}${cutAfter}${toNext}</span></div>`;
+      return `<div class="move-text move-ctx"><span class="ctx-out">${fromPrev}${cutBefore}${srcDisplay(before)}</span><mark class="ctx-cur">${srcDisplay(ctx.text.slice(a, b))}</mark><span class="ctx-out">${srcDisplay(after)}${cutAfter}${toNext}</span></div>`;
     };
     const moves = d.moves.map((m) => {
       const c = m.committee;
@@ -1565,7 +1593,7 @@
       if (!dec || S.reviewShowDecided) return article;
       // decided moves fold to one line so what is still open stands out
       return `<details class="move-fold"><summary><b class="mono">${esc(m.key)}</b><span class="chip ${dec.decision === 'approve' ? 'ok' : dec.decision === 'reject' ? 'bad' : 'warn'}">${T('review.decision.' + dec.decision)}</span>
-        <span class="fold-text">${d.simulated ? '' : esc((m.text || '').slice(0, 120))}</span></summary>${article}</details>`;
+        <span class="fold-text">${d.simulated ? '' : srcOneLine((m.text || '').slice(0, 160))}</span></summary>${article}</details>`;
     }).join('') || `<div class="empty">${T('common.empty')}</div>`;
     const nDone = d.moves.filter((m) => m.decision).length;
     const progress = d.moves.length ? `<div class="review-progress mb"><span>${T('review.progress', { done: fNum(nDone), total: fNum(d.moves.length) })}</span>
@@ -1585,9 +1613,9 @@
         <div class="ctx-body"${S.reviewHideText ? ' hidden' : ''}>${methodLegend(names, mCounts, S.legendHidden)}
           <div class="move-text ctx mt-s" id="ctx-text">${markedText(d.window_text, inText, d.window_start || 0)}</div></div></section>` : '';
     const compareBox = chk ? (chk.ok ? `<div class="notice ok mb"><span>${ico('check')}</span><span>${T('review.compare_ok', { n: fNum(chk.moves_ok), m: fNum(chk.moves.length) })} <span class="mono">${esc((chk.sha256 || '').slice(0, 12))}…</span></span>
-        <button type="button" class="btn sm" data-act="toggle-source">${T(S.showSource ? 'review.hide_source' : 'review.show_source')}</button></div>${S.showSource ? `<section class="card mb"><div class="kicker mb-s">${T('review.source_text')} · <span class="mono">${esc(chk.source_file || '')}</span></div><div class="move-text ctx src">${textFormatter()(chk.source_text || '')}</div></section>` : ''}`
+        <button type="button" class="btn sm" data-act="toggle-source">${T(S.showSource ? 'review.hide_source' : 'review.show_source')}</button></div>${S.showSource ? `<section class="card mb"><div class="kicker mb-s">${T('review.source_text')} · <span class="mono">${esc(chk.source_file || '')}</span></div><div class="move-text ctx src">${srcDisplay(chk.source_text)}</div></section>` : ''}`
       : `<div class="notice bad mb"><span>${ico('warn')}</span><span>${T(chk.reason === 'source_missing' ? 'review.compare_missing' : !chk.sha_ok ? 'review.compare_sha' : !chk.window_ok ? 'review.compare_diff' : 'review.compare_moves', { n: fNum(chk.moves_ok || 0), m: fNum((chk.moves || []).length), pos: fNum(chk.first_diff ?? 0) })}</span></div>
-        ${chk.context ? `<section class="card mb"><div class="grid g2"><div><div class="kicker">${T('review.shown')}</div><div class="move-text ctx">${esc(chk.context.shown)}</div></div><div><div class="kicker">${T('review.source_text')}</div><div class="move-text ctx">${esc(chk.context.source)}</div></div></div></section>` : ''}`) : '';
+        ${chk.context ? `<section class="card mb"><div class="grid g2"><div><div class="kicker">${T('review.shown')}</div><div class="move-text ctx">${srcDisplay(chk.context.shown)}</div></div><div><div class="kicker">${T('review.source_text')}</div><div class="move-text ctx">${srcDisplay(chk.context.source)}</div></div></div></section>` : ''}`) : '';
     setPage(`<div class="page-head"><div><div class="kicker">${T('review.title')} · ${esc(d.name_ar)} · <span class="mono">${esc(d.window)}</span></div>
         <h1>${ayahRef(d)}${d.parts > 1 ? ` <span class="chip">${T('review.part', { n: arNum(d.part), m: arNum(d.parts) })}</span>` : ''}${d.arm ? ` <span class="chip info">${T('review.arm', { a: d.arm })}${d.variant ? ' · ' + T('variant.short.' + d.variant) : ''}</span>` : ''}</h1>
         ${verseBlock(d)}
