@@ -53,7 +53,13 @@ def test_whole_surah_with_only_the_published_units_marked(built):
     assert "جَاءُوا بِالْإِفْكِ" in data["window_verses"]["24_11"]
     assert set(data["window_verses"]) == set(data["window_order"])   # the verse of every ayah
     assert data["default_tafsir"] == "ibn_kathir" and data["default_window"] == "24_11"
-    assert data["surah"] == {"number": 24, "name_ar": "النور", "ayat": 64}
+    assert data["surah"] == {"number": 24, "name_ar": "النور", "name_en": "An-Nur", "ayat": 64}
+    assert len(data["surahs"]) == 114 and sum(x["ayat"] for x in data["surahs"]) == 6236
+    assert [x["n"] for x in data["surahs"] if x["available"]] == [24]
+    # the page's labels in every language the console ships, the console's languages endpoint to follow
+    assert set(data["i18n"]) >= {"ar", "en", "ur", "zh"} and data["i18n"]["en"]["site.ayah"] == "Ayah"
+    assert all(set(data["i18n"][c]) == set(data["i18n"]["en"]) for c in data["i18n"])
+    assert data["live_languages_url"].endswith("/public/v1/languages.json")
     assert data["published"]["version"] == 1 and data["published"]["units"] == len(want)
     assert data["coverage"]["ayahs"] == 1 and data["coverage"]["tafsirs"] == 2
     assert data["live_snapshot_url"].startswith("https://console.mirqah.app/public/v1/")
@@ -107,6 +113,9 @@ def test_review_mode_and_old_pages_are_gone(built):
     assert 'id="pub-line"' in html and '"pub-badge"' in html
     assert "availableWindows()" in html and "function goTo(" in html and "fahras:render" in html
     assert "nav-strip" in html and "live_snapshot_url" in html
+    assert "surah-pop" in html and "lang-pop" in html and "mq-lang" in html
+    assert html.count("<style>") == 1 and html.count("</style>") == 1   # one style block, the brand tokens inside it
+    assert "--gold:" in html and html.index("--gold:") > html.index("--m-ray:")
     low = html.lower()
     for word in VENDOR_WORDS:
         assert word not in low, word

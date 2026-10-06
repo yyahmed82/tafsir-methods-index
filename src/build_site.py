@@ -46,7 +46,56 @@ TAFSIR_META = {
     "al_baghawi": ("تفسير البغوي", "البغوي", "الحسين بن مسعود البغوي"),
     "al_saadi": ("تفسير السعدي", "السعدي", "عبد الرحمن بن ناصر السعدي"),
 }
-SURAH_AR = {2: "البقرة", 8: "الأنفال", 17: "الإسراء", 24: "النور"}
+SURAHS: list[tuple[int, str, str, int]] = [
+    (1, "الفاتحة", "Al-Fatihah", 7), (2, "البقرة", "Al-Baqarah", 286), (3, "آل عمران", "Al 'Imran", 200),
+    (4, "النساء", "An-Nisa'", 176), (5, "المائدة", "Al-Ma'idah", 120), (6, "الأنعام", "Al-An'am", 165),
+    (7, "الأعراف", "Al-A'raf", 206), (8, "الأنفال", "Al-Anfal", 75), (9, "التوبة", "At-Tawbah", 129),
+    (10, "يونس", "Yunus", 109), (11, "هود", "Hud", 123), (12, "يوسف", "Yusuf", 111), (13, "الرعد", "Ar-Ra'd", 43),
+    (14, "إبراهيم", "Ibrahim", 52), (15, "الحجر", "Al-Hijr", 99), (16, "النحل", "An-Nahl", 128),
+    (17, "الإسراء", "Al-Isra'", 111), (18, "الكهف", "Al-Kahf", 110), (19, "مريم", "Maryam", 98), (20, "طه", "Ta-Ha", 135),
+    (21, "الأنبياء", "Al-Anbiya'", 112), (22, "الحج", "Al-Hajj", 78), (23, "المؤمنون", "Al-Mu'minun", 118),
+    (24, "النور", "An-Nur", 64), (25, "الفرقان", "Al-Furqan", 77), (26, "الشعراء", "Ash-Shu'ara'", 227),
+    (27, "النمل", "An-Naml", 93), (28, "القصص", "Al-Qasas", 88), (29, "العنكبوت", "Al-'Ankabut", 69),
+    (30, "الروم", "Ar-Rum", 60), (31, "لقمان", "Luqman", 34), (32, "السجدة", "As-Sajdah", 30), (33, "الأحزاب", "Al-Ahzab", 73),
+    (34, "سبأ", "Saba'", 54), (35, "فاطر", "Fatir", 45), (36, "يس", "Ya-Sin", 83), (37, "الصافات", "As-Saffat", 182),
+    (38, "ص", "Sad", 88), (39, "الزمر", "Az-Zumar", 75), (40, "غافر", "Ghafir", 85), (41, "فصلت", "Fussilat", 54),
+    (42, "الشورى", "Ash-Shura", 53), (43, "الزخرف", "Az-Zukhruf", 89), (44, "الدخان", "Ad-Dukhan", 59),
+    (45, "الجاثية", "Al-Jathiyah", 37), (46, "الأحقاف", "Al-Ahqaf", 35), (47, "محمد", "Muhammad", 38),
+    (48, "الفتح", "Al-Fath", 29), (49, "الحجرات", "Al-Hujurat", 18), (50, "ق", "Qaf", 45), (51, "الذاريات", "Adh-Dhariyat", 60),
+    (52, "الطور", "At-Tur", 49), (53, "النجم", "An-Najm", 62), (54, "القمر", "Al-Qamar", 55), (55, "الرحمن", "Ar-Rahman", 78),
+    (56, "الواقعة", "Al-Waqi'ah", 96), (57, "الحديد", "Al-Hadid", 29), (58, "المجادلة", "Al-Mujadilah", 22),
+    (59, "الحشر", "Al-Hashr", 24), (60, "الممتحنة", "Al-Mumtahanah", 13), (61, "الصف", "As-Saff", 14),
+    (62, "الجمعة", "Al-Jumu'ah", 11), (63, "المنافقون", "Al-Munafiqun", 11), (64, "التغابن", "At-Taghabun", 18),
+    (65, "الطلاق", "At-Talaq", 12), (66, "التحريم", "At-Tahrim", 12), (67, "الملك", "Al-Mulk", 30), (68, "القلم", "Al-Qalam", 52),
+    (69, "الحاقة", "Al-Haqqah", 52), (70, "المعارج", "Al-Ma'arij", 44), (71, "نوح", "Nuh", 28), (72, "الجن", "Al-Jinn", 28),
+    (73, "المزمل", "Al-Muzzammil", 20), (74, "المدثر", "Al-Muddaththir", 56), (75, "القيامة", "Al-Qiyamah", 40),
+    (76, "الإنسان", "Al-Insan", 31), (77, "المرسلات", "Al-Mursalat", 50), (78, "النبأ", "An-Naba'", 40),
+    (79, "النازعات", "An-Nazi'at", 46), (80, "عبس", "'Abasa", 42), (81, "التكوير", "At-Takwir", 29),
+    (82, "الانفطار", "Al-Infitar", 19), (83, "المطففين", "Al-Mutaffifin", 36), (84, "الانشقاق", "Al-Inshiqaq", 25),
+    (85, "البروج", "Al-Buruj", 22), (86, "الطارق", "At-Tariq", 17), (87, "الأعلى", "Al-A'la", 19), (88, "الغاشية", "Al-Ghashiyah", 26),
+    (89, "الفجر", "Al-Fajr", 30), (90, "البلد", "Al-Balad", 20), (91, "الشمس", "Ash-Shams", 15), (92, "الليل", "Al-Layl", 21),
+    (93, "الضحى", "Ad-Duha", 11), (94, "الشرح", "Ash-Sharh", 8), (95, "التين", "At-Tin", 8), (96, "العلق", "Al-'Alaq", 19),
+    (97, "القدر", "Al-Qadr", 5), (98, "البينة", "Al-Bayyinah", 8), (99, "الزلزلة", "Az-Zalzalah", 8), (100, "العاديات", "Al-'Adiyat", 11),
+    (101, "القارعة", "Al-Qari'ah", 11), (102, "التكاثر", "At-Takathur", 8), (103, "العصر", "Al-'Asr", 3), (104, "الهمزة", "Al-Humazah", 9),
+    (105, "الفيل", "Al-Fil", 5), (106, "قريش", "Quraysh", 4), (107, "الماعون", "Al-Ma'un", 7), (108, "الكوثر", "Al-Kawthar", 3),
+    (109, "الكافرون", "Al-Kafirun", 6), (110, "النصر", "An-Nasr", 3), (111, "المسد", "Al-Masad", 5), (112, "الإخلاص", "Al-Ikhlas", 4),
+    (113, "الفلق", "Al-Falaq", 5), (114, "الناس", "An-Nas", 6),
+]
+assert len(SURAHS) == 114 and sum(x[3] for x in SURAHS) == 6236
+SURAH_AR = {n: name for n, name, _e, _c in SURAHS}
+SURAH_EN = {n: en for n, _a, en, _c in SURAHS}
+I18N_DIR = ROOT / "console" / "static" / "i18n"
+SITE_LANGS = [("ar", "العربية", "Arabic", "rtl"), ("en", "English", "English", "ltr")]
+
+
+def site_strings() -> dict[str, dict[str, str]]:
+    """The public page's strings (site.*) of every language file the console ships: the
+    page's fallback when the console cannot be reached."""
+    out: dict[str, dict[str, str]] = {}
+    for p in sorted(I18N_DIR.glob("*.json")):
+        d = _read_json(p)
+        out[p.stem] = {k: v for k, v in d.items() if k.startswith("site.")}
+    return out
 DATA_ROOTS = {24: ROOT / "data" / "nur"}
 AR_DIGITS = str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")
 MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس",
@@ -253,7 +302,12 @@ def collect(snapshot: dict, surah: int = 24) -> dict:
         "tafsir_labels": {t: TAFSIR_META[t][1] for t in tafsir_order},
         "default_tafsir": first, "default_window": first_w,
         "window_order": window_order, "window_labels": labels, "window_verses": verses,
-        "surah": {"number": surah, "name_ar": SURAH_AR.get(surah, ""), "ayat": len(window_order)},
+        "surah": {"number": surah, "name_ar": SURAH_AR.get(surah, ""), "name_en": SURAH_EN.get(surah, ""), "ayat": len(window_order)},
+        "surahs": [{"n": n, "ar": a, "en": e, "ayat": c, "available": n in DATA_ROOTS} for n, a, e, c in SURAHS],
+        "i18n": site_strings(),
+        "languages": [{"code": c, "name_native": nn, "name_en": ne, "dir": d, "is_default": c == "ar"} for c, nn, ne, d in SITE_LANGS],
+        "live_languages_url": DEFAULT_SNAPSHOT.rsplit("/", 1)[0] + "/languages.json",
+        "live_i18n_url": DEFAULT_SNAPSHOT.rsplit("/", 1)[0] + "/i18n/{code}.json",
         "windows": seed["windows"], "markers": seed["markers"], "verified": seed["verified"],
         "layers": seed["layers"], "raw": seed["raw"], "classifier_ran": seed["classifier_ran"],
         "tafsir": {"id": seed["id"], "name": seed["name"]}, "annotators": seed["annotators"],
@@ -307,11 +361,38 @@ PATCHES: list[tuple[str, str]] = [
 
 EXTRA_CSS = """
 <style>
+/* ---- the brand of the logo: the deep green of its ink (#0a4a3e → #12735c) as the accent, its gold
+   (#bc903f → #ecdcb2) for what a specialist approved; the same two in the dark mode, lifted for contrast */
+:root, :root[data-theme="light"] {
+  --base: #F4F7F5; --surface: #FFFFFF; --surface-2: #E8F0EC; --line: #D9E4DE;
+  --ink: #122420; --sub: #3B554C; --muted: #6B847B;
+  --accent: #0F6B55; --accent-bg: #E1F1EA; --accent-hover: #0A4A3E; --on-accent: #FFFFFF;
+  --gold: #A6792C; --gold-bg: #FAF2DF; --gold-line: #DCBD6C;
+  --ok: #946D22; --ok-bg: #FAF2DF; --teal: #0F6B55; --teal-bg: rgba(15, 107, 85, .1);
+  --mirqat-brand: var(--accent); --mirqat-rule: var(--gold-line);
+}
+:root[data-theme="dark"] {
+  --base: #0E1917; --surface: #152420; --surface-2: #1C2F2A; --line: #28403A;
+  --ink: #EEF4F1; --sub: #C3D2CB; --muted: #8DA69C;
+  --accent: #4FD1B0; --accent-bg: #163B32; --accent-hover: #7FE3C9; --on-accent: #0E1917;
+  --gold: #E2CF9C; --gold-bg: rgba(226, 207, 156, .14); --gold-line: #BC903F;
+  --ok: #E2CF9C; --ok-bg: rgba(226, 207, 156, .14); --teal: #4FD1B0; --teal-bg: rgba(79, 209, 176, .14);
+  --mirqat-brand: var(--accent); --mirqat-rule: var(--gold-line);
+}
+body { background: var(--base); color: var(--ink); }
+/* the product name in the calligraphic family next to the wordmark, a gold rule between them */
+.brand-title { font-family: var(--font-quran); font-weight: 700; font-size: 1.45rem; color: var(--accent); letter-spacing: 0; }
+.brand-rule { width: 2px; height: 26px; border-radius: 2px; background: linear-gradient(180deg, var(--gold-line), var(--gold)); }
+@media (max-width: 640px) { .brand-title { font-size: 1.1rem; } }
+/* the accent fills read in both modes */
+.btn-primary, .toc-list li.is-cur::before { color: var(--on-accent); }
+.ib-btn:hover, .ib-btn:focus-visible { border-color: var(--accent); color: var(--accent); }
+.switch-wrap input:checked + .sw-track { background: var(--accent); }
 .pub-badge { display: inline-flex; align-items: center; gap: 6px; margin-inline-start: 10px; padding: 4px 10px; border-radius: 999px;
-  font-size: .78rem; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); white-space: nowrap; }
+  font-size: .78rem; background: var(--gold-bg); color: var(--gold); border: 1px solid var(--gold-line); white-space: nowrap; font-weight: 600; }
 .pub-badge:empty { display: none; }
 #pub-line { display: block; margin-bottom: 6px; color: var(--ink, inherit); }
-#pub-line b { color: var(--accent); }
+#pub-line b { color: var(--gold); }
 /* the text is the source, letter for letter: no added glyphs, the apparatus markers hidden */
 .hl-status { display: none !important; }
 /* working states and model notes have no place on the published page (every unit here is approved) */
@@ -337,8 +418,8 @@ EXTRA_CSS = """
 .nav-ayah.has-ok { border-color: var(--ok); color: var(--ok); }
 .nav-ayah.has-ok::after { content: ""; position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); width: 5px; height: 5px; border-radius: 50%; background: var(--ok); }
 .nav-ayah.has-any:not(.has-ok) { border-style: dashed; }
-.nav-ayah.is-cur { background: var(--accent); border-color: var(--accent); color: #fff; }
-.nav-ayah.is-cur::after { background: #fff; }
+.nav-ayah.is-cur { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.nav-ayah.is-cur::after { background: var(--on-accent); }
 .nav-ayah.is-dim { display: none; }
 .nav-jump { margin-inline-start: auto; display: inline-flex; align-items: center; gap: 6px; }
 .nav-jump .ib-btn { height: 34px; }
@@ -365,8 +446,47 @@ EXTRA_CSS = """
 .ayah-box .of { color: var(--muted); font-size: .8rem; white-space: nowrap; }
 .ayah-box .st { width: 24px; height: 24px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--sub, var(--ink)); font: inherit; font-size: .95rem; line-height: 1; cursor: pointer; display: inline-grid; place-items: center; }
 .ayah-box .st:hover { background: var(--surface-2, var(--accent-bg)); color: var(--accent); border-color: var(--accent); }
+/* the surah navigator: the 114 surahs, the ones with data open */
+.ayah-pick { border: none; background: transparent; color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; padding: 0; display: inline-flex; align-items: center; gap: 6px; }
+.ayah-pick .caret { font-size: .7rem; color: var(--muted); }
+.surah-pop { position: absolute; top: calc(100% + 8px); inset-inline-start: 0; z-index: 60; width: 320px; max-width: calc(100vw - 24px); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 14px; box-shadow: 0 14px 40px rgba(20, 24, 60, .18); padding: 10px; }
+.surah-pop[hidden] { display: none; }
+.surah-pop input { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: var(--bg, var(--surface-2)); color: var(--ink); font: inherit; font-size: .88rem; outline: none; margin-bottom: 8px; }
+.surah-pop input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.surah-list { max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; scrollbar-width: thin; }
+.surah-item { display: grid; grid-template-columns: 2.4em 1fr auto; align-items: center; gap: 8px; width: 100%; text-align: start; border: 1px solid transparent; border-radius: 9px; padding: 7px 9px;
+  background: transparent; color: var(--ink); font: inherit; font-size: .9rem; cursor: pointer; }
+.surah-item .sn { color: var(--muted); font-variant-numeric: tabular-nums; }
+.surah-item .nm { font-weight: 600; }
+.surah-item .ct { font-size: .74rem; color: var(--ok); white-space: nowrap; }
+.surah-item:hover:not(:disabled) { background: var(--surface-2, var(--accent-bg)); border-color: var(--line); }
+.surah-item.is-cur { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+.surah-item.is-cur .sn, .surah-item.is-cur .ct { color: var(--accent); }
+.surah-item.is-off { cursor: default; opacity: .55; }
+.surah-item.is-off .ct { color: var(--muted); }
+/* the language switcher: the languages enabled in the console, the same saved choice */
+.lang-wrap { position: relative; display: inline-flex; }
+.lang-btn { width: auto; min-width: 34px; padding: 0 9px; font-size: .78rem; letter-spacing: .04em; }
+.lang-pop { position: absolute; top: calc(100% + 8px); inset-inline-end: 0; z-index: 60; min-width: 160px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(20, 24, 60, .18); padding: 6px; }
+.lang-pop[hidden] { display: none; }
+.lang-pop .mh { font-size: .74rem; color: var(--muted); padding: 6px 10px 4px; }
+.lang-pop .mi { display: block; width: 100%; text-align: start; border: none; background: transparent; color: var(--ink); font: inherit; font-size: .9rem; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.lang-pop .mi:hover { background: var(--surface-2, var(--accent-bg)); }
+.lang-pop .mi.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+/* a left-to-right interface keeps the mufassirs' texts, the verse and their headings right-to-left */
+html[dir="ltr"] .ayah-card, html[dir="ltr"] .reading-article, html[dir="ltr"] .toc-list, html[dir="ltr"] #ec-rationale, html[dir="ltr"] #ec-method-name,
+html[dir="ltr"] .surah-item .nm[lang="ar"], html[dir="ltr"] #reader-ayah-text { direction: rtl; text-align: right; }
+html[dir="ltr"] body, html[dir="ltr"] .shell { direction: ltr; text-align: left; }
+html[dir="ltr"] .nav-btns, html[dir="ltr"] .nav-jump { direction: ltr; }
+html[dir="ltr"] .ayah-text { direction: rtl; }
+html[dir="ltr"] .reading-article .src-run, html[dir="ltr"] .reading-article .fn { unicode-bidi: isolate; }
+@media (max-width: 1200px) { .nav-btns { display: none; } }
 @media (max-width: 640px) {
-  .pub-badge { display: none; } .nav-taf { padding: 5px 10px; font-size: .8rem; } .nav-ayah { min-width: 34px; height: 34px; font-size: .86rem; }
+  .pub-badge { display: none; }
+  .surah-pop { position: fixed; top: auto; bottom: 0; inset-inline: 0; width: auto; max-width: none; border-radius: 16px 16px 0 0; padding: 14px 14px calc(14px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 40px rgba(20, 24, 60, .25); }
+  .surah-list { max-height: 60vh; } .nav-taf { padding: 5px 10px; font-size: .8rem; } .nav-ayah { min-width: 34px; height: 34px; font-size: .86rem; }
   .nav-btns { display: none; }   /* the strip below carries previous/next on a phone */
   .nav-word { width: 34px; padding: 0; } .nav-word .txt { display: none; }
 }
@@ -379,28 +499,47 @@ EXTRA_JS = """
   // the address as the visitor opened it (before the reader writes t= and w= into it)
   var OPENED_WITH_W = false;
   try { OPENED_WITH_W = new URLSearchParams(window.location.search).has("w"); } catch (e) { /* ignore */ }
-  var AR = function (n) { return String(n == null ? "" : n).replace(/\\d/g, function (d) { return "٠١٢٣٤٥٦٧٨٩"[d]; }); };
-  var MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+  var MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+  var MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   function api() { return window.__fahras_v2 || null; }
   function D() { var a = api(); return a && a.DATA; }
-  function dateAr(ts) { if (!ts) return ""; var d = new Date(ts * 1000); return AR(d.getUTCDate()) + " " + MONTHS[d.getUTCMonth()] + " " + AR(d.getUTCFullYear()); }
+
+  // ---- language: the same choice as the console (localStorage mq-lang), the same enabled list
+  var L = { code: "ar", dir: "rtl", strings: {}, langs: [] };
+  function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+  function T(key, vars) {
+    var d = D(); var s = L.strings[key];
+    if (s == null && d && d.i18n) s = (d.i18n[L.code] || {})[key];
+    if (s == null && d && d.i18n) s = (d.i18n.ar || {})[key];
+    if (s == null) s = key;
+    return String(s).replace(/\\{(\\w+)\\}/g, function (_, k) { return vars && vars[k] != null ? vars[k] : ""; });
+  }
+  function arabicDigits() { return L.code === "ar" || L.code === "ur"; }
+  function num(n) { var t = String(n == null ? "" : n); return arabicDigits() ? t.replace(/\\d/g, function (d) { return "٠١٢٣٤٥٦٧٨٩"[d]; }) : t; }
+  function dateStr(ts) { if (!ts) return ""; var d = new Date(ts * 1000); return arabicDigits() ? num(d.getUTCDate()) + " " + MONTHS_AR[d.getUTCMonth()] + " " + num(d.getUTCFullYear()) : MONTHS_EN[d.getUTCMonth()] + " " + d.getUTCDate() + ", " + d.getUTCFullYear(); }
+  function surahName(x) { return (L.dir === "rtl") ? x.ar : x.en; }
+  function tafsirName(tid) { var d = D(); var k = "site.tafsir." + tid; var v = T(k); return v === k ? ((d.tafsir_labels || {})[tid] || tid) : v; }
+  function methodName(id) { var k = "site.method." + id; var v = T(k); return v === k ? id : v; }
+  function ayahLabel(k) { var d = D(); var n = String(k).split("_")[1] || k; var sn = d.surah ? surahName({ ar: d.surah.name_ar, en: d.surah.name_en }) : ""; return sn + " " + num(n); }
 
   // ---- the published version in the header and the source box
-  function paintVersion(P, live) {
+  var LIVE = false;
+  function paintVersion() {
+    var d = D(); var P = (d && d.published) || {};
     var badge = document.getElementById("pub-badge");
     if (!badge) { var wrap = document.querySelector(".brand-wrap"); if (wrap) { badge = document.createElement("span"); badge.className = "pub-badge"; badge.id = "pub-badge"; wrap.appendChild(badge); } }
-    if (badge) badge.textContent = P.version ? "الإصدار v" + AR(P.version) + " · معتمد" : "";
+    if (badge) badge.textContent = P.version ? T("site.badge", { v: num(P.version) }) : "";
     var pl = document.getElementById("pub-line");
     if (pl) {
       pl.textContent = "";
       var b = document.createElement("b");
       b.textContent = P.version
-        ? "الإصدار المنشور v" + AR(P.version) + (P.date_ar ? " · نُشر " + P.date_ar : "") + " · " + (P.notice_ar || "وحدات اعتمدها متخصص بشري وروجعت مقابل النص المثبّت.")
-        : "لم يُنشر بعد أي إصدار معتمد · النص معروض كاملاً من المصدر المثبّت.";
+        ? T("site.pub_line", { v: num(P.version) }) + (P.published_at ? " · " + T("site.pub_date", { d: dateStr(P.published_at) }) : "") + " · " + (L.code === "ar" && P.notice_ar ? P.notice_ar : T("site.notice"))
+        : T("site.pub_none");
       pl.appendChild(b);
     }
     var lv = document.getElementById("nav-live");
-    if (lv) { lv.textContent = live ? "مُحدَّث من لوحة اللجنة" : "نسخة وقت البناء"; lv.classList.toggle("is-on", !!live); }
+    if (lv) { lv.textContent = LIVE ? T("site.live") : T("site.build"); lv.classList.toggle("is-on", LIVE); }
   }
 
   // ---- the approved units of each tafsir per ayah (for the strip's marks)
@@ -408,9 +547,9 @@ EXTRA_JS = """
     var d = D(); var out = {};
     if (!d) return out;
     Object.keys(d.tafsirs || {}).forEach(function (tid) {
-      var T = d.tafsirs[tid]; out[tid] = {};
-      Object.keys(T.verified || {}).forEach(function (k) {
-        var blk = T.verified[k] || {}; var n = 0;
+      var Tt = d.tafsirs[tid]; out[tid] = {};
+      Object.keys(Tt.verified || {}).forEach(function (k) {
+        var blk = Tt.verified[k] || {}; var n = 0;
         Object.keys(blk).forEach(function (a) { n += ((blk[a] && blk[a].moves) || []).length; });
         if (n) out[tid][k] = n;
       });
@@ -423,15 +562,15 @@ EXTRA_JS = """
   function buildStrip() {
     var d = D(); var col = document.querySelector(".reader-col"); var card = document.querySelector(".ayah-card");
     if (!d || !col || !card || document.getElementById("nav-strip")) return;
-    var box = document.createElement("nav"); box.className = "nav-strip"; box.id = "nav-strip"; box.setAttribute("aria-label", "التنقل بين التفاسير والآيات");
+    var box = document.createElement("nav"); box.className = "nav-strip"; box.id = "nav-strip";
     var r1 = document.createElement("div"); r1.className = "nav-row"; r1.id = "nav-tafsirs";
     var r2 = document.createElement("div"); r2.className = "nav-row";
-    var lbl = document.createElement("span"); lbl.className = "nav-lbl"; lbl.textContent = "سورة " + ((d.surah && d.surah.name_ar) || "") + " · الآيات";
+    var lbl = document.createElement("span"); lbl.className = "nav-lbl"; lbl.id = "nav-surah-lbl";
     r2.appendChild(lbl);
     var only = document.createElement("label"); only.className = "nav-only";
     var cb = document.createElement("input"); cb.type = "checkbox"; cb.id = "nav-only-approved";
     cb.addEventListener("change", function () { onlyApproved = cb.checked; paintStrip(); });
-    only.appendChild(cb); only.appendChild(document.createTextNode("الآيات ذات المواضع المعتمدة فقط"));
+    only.appendChild(cb); var onlyTxt = document.createElement("span"); onlyTxt.id = "nav-only-txt"; only.appendChild(onlyTxt);
     r2.appendChild(only);
     var jump = document.createElement("span"); jump.className = "nav-jump";
     var live = document.createElement("span"); live.className = "nav-live"; live.id = "nav-live"; jump.appendChild(live);
@@ -461,13 +600,15 @@ EXTRA_JS = """
     var st = a.state; var ap = approvedMap();
     var r1 = document.getElementById("nav-tafsirs"); var r3 = document.getElementById("nav-ayat");
     if (!r1 || !r3) return;
+    var sl = document.getElementById("nav-surah-lbl"); if (sl) sl.textContent = T("site.surah_ayat", { s: d.surah ? surahName({ ar: d.surah.name_ar, en: d.surah.name_en }) : "" });
+    var ot = document.getElementById("nav-only-txt"); if (ot) ot.textContent = T("site.only_approved");
     r1.textContent = "";
-    var l = document.createElement("span"); l.className = "nav-lbl"; l.textContent = "التفسير"; r1.appendChild(l);
+    var l = document.createElement("span"); l.className = "nav-lbl"; l.textContent = T("site.tafsir"); r1.appendChild(l);
     (d.tafsir_order || []).forEach(function (tid) {
       var b = document.createElement("button"); b.type = "button"; b.className = "nav-taf" + (tid === st.tafsirId ? " is-cur" : "");
-      b.textContent = (d.tafsir_labels && d.tafsir_labels[tid]) || tid;
+      b.textContent = tafsirName(tid);
       var n = Object.keys(ap[tid] || {}).length;
-      if (n) { var s = document.createElement("small"); s.textContent = AR(n) + " آية"; s.title = "آيات فيها مواضع معتمدة"; b.appendChild(document.createTextNode(" ")); b.appendChild(s); }
+      if (n) { var sm = document.createElement("small"); sm.textContent = T("site.n_ayat", { n: num(n) }); b.appendChild(document.createTextNode(" ")); b.appendChild(sm); }
       b.addEventListener("click", function () { a.goTo(tid, null); });
       r1.appendChild(b);
     });
@@ -478,10 +619,10 @@ EXTRA_JS = """
       var any = Object.keys(ap).some(function (t) { return ap[t][k]; });
       var b = document.createElement("button"); b.type = "button"; b.className = "nav-ayah";
       var n = String(k).split("_")[1] || k;
-      b.textContent = AR(n);
-      if (mine[k]) { b.classList.add("has-ok"); b.title = AR(mine[k]) + " موضع معتمد في " + ((d.tafsir_labels && d.tafsir_labels[st.tafsirId]) || ""); }
-      else if (any) { b.classList.add("has-any"); b.title = "مواضع معتمدة في تفسير آخر"; }
-      else b.title = "الآية " + AR(n);
+      b.textContent = num(n);
+      if (mine[k]) { b.classList.add("has-ok"); b.title = T("site.approved_in", { n: num(mine[k]), t: tafsirName(st.tafsirId) }); }
+      else if (any) { b.classList.add("has-any"); b.title = T("site.approved_other"); }
+      else b.title = T("site.ayah_n", { n: num(n) });
       if (k === st.windowId) { b.classList.add("is-cur"); b.setAttribute("aria-current", "true"); cur = b; }
       if (onlyApproved && !mine[k] && k !== st.windowId) b.classList.add("is-dim");
       b.addEventListener("click", function () { a.goTo(null, k); });
@@ -504,11 +645,11 @@ EXTRA_JS = """
   function buildPicker() {
     var sel = document.getElementById("verse-sel"); var sb = sel && sel.parentNode; if (!sel || !sb || box) return;
     sb.classList.add("has-picker");
-    var lbl = sb.querySelector("label"); if (lbl) lbl.setAttribute("for", "ayah-num");
+    var lbl = sb.querySelector("label"); if (lbl) { lbl.setAttribute("for", "ayah-num"); lbl.id = "ayah-lbl"; }
     box = document.createElement("span"); box.className = "ayah-box";
-    var minus = document.createElement("button"); minus.type = "button"; minus.className = "st"; minus.textContent = "−"; minus.title = "الآية السابقة"; minus.setAttribute("aria-label", "الآية السابقة");
-    var plus = document.createElement("button"); plus.type = "button"; plus.className = "st"; plus.textContent = "+"; plus.title = "الآية التالية"; plus.setAttribute("aria-label", "الآية التالية");
-    inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "numeric"; inp.id = "ayah-num"; inp.autocomplete = "off"; inp.setAttribute("aria-label", "رقم الآية"); inp.title = "اكتب رقم الآية ثم Enter";
+    var minus = document.createElement("button"); minus.type = "button"; minus.className = "st"; minus.id = "ayah-minus"; minus.textContent = "−";
+    var plus = document.createElement("button"); plus.type = "button"; plus.className = "st"; plus.id = "ayah-plus"; plus.textContent = "+";
+    inp = document.createElement("input"); inp.type = "text"; inp.inputMode = "numeric"; inp.id = "ayah-num"; inp.autocomplete = "off";
     var of = document.createElement("span"); of.className = "of"; of.id = "ayah-of";
     // right to left: + (next) sits to the left of the number, − (previous) to its right
     box.appendChild(minus); box.appendChild(inp); box.appendChild(of); box.appendChild(plus);
@@ -531,18 +672,195 @@ EXTRA_JS = """
   function paintPicker() {
     var a = api(); var d = D(); if (!a || !d || !inp) return;
     var n = String(a.state.windowId).split("_")[1] || ""; var total = (d.surah && d.surah.ayat) || (d.window_order || []).length;
-    inp.value = AR(n); inp.setAttribute("aria-valuemax", String(total));
-    var of = document.getElementById("ayah-of"); if (of) of.textContent = "من " + AR(total);
+    inp.value = num(n); inp.setAttribute("aria-label", T("site.ayah")); inp.title = T("site.ayah");
+    var of = document.getElementById("ayah-of"); if (of) of.textContent = T("site.of", { n: num(total) });
+    var mi = document.getElementById("ayah-minus"); if (mi) { mi.title = T("site.prev_ayah"); mi.setAttribute("aria-label", mi.title); }
+    var pl = document.getElementById("ayah-plus"); if (pl) { pl.title = T("site.next_ayah"); pl.setAttribute("aria-label", pl.title); }
   }
-  // previous/next that say what they do, with the arrow (tafsir.app style); icon-only on a phone
+  // previous/next that say what they do, with the arrow (tafsir.app style); icons only on a phone
   function wordButton(btn, prev) {
     if (!btn) return;
-    btn.textContent = ""; btn.classList.add("nav-word"); btn.style.direction = "rtl";
-    var arr = document.createElement("span"); arr.className = "arr"; arr.textContent = prev ? "\u2192" : "\u2190";
-    var txt = document.createElement("span"); txt.className = "txt"; txt.textContent = prev ? "الآية السابقة" : "الآية التالية";
+    btn.textContent = ""; btn.classList.add("nav-word");
+    var rtl = L.dir === "rtl";
+    var arr = document.createElement("span"); arr.className = "arr"; arr.textContent = (prev === rtl) ? "\\u2192" : "\\u2190";
+    var txt = document.createElement("span"); txt.className = "txt"; txt.textContent = prev ? T("site.prev_ayah") : T("site.next_ayah");
     if (prev) { btn.appendChild(arr); btn.appendChild(txt); } else { btn.appendChild(txt); btn.appendChild(arr); }
-    btn.title = prev ? "الآية السابقة" : "الآية التالية"; btn.setAttribute("aria-label", btn.title);
+    btn.title = txt.textContent; btn.setAttribute("aria-label", btn.title);
   }
+  function paintButtons() {
+    wordButton(document.getElementById("btn-prev-verse"), true);
+    wordButton(document.getElementById("btn-next-verse"), false);
+    wordButton(document.getElementById("nav-prev"), true);
+    wordButton(document.getElementById("nav-next"), false);
+  }
+
+  // ---- the surah navigator: the 114 surahs, the ones with data open; a search by number or name
+  var sPick = null, sPop = null;
+  function buildSurah() {
+    var d = D(); var sb = document.getElementById("verse-sel") && document.getElementById("verse-sel").parentNode; if (!d || !sb || sPick) return;
+    var wrap = document.createElement("div"); wrap.className = "sel-box has-picker surah-box";
+    var lbl = document.createElement("label"); lbl.id = "surah-lbl"; lbl.setAttribute("for", "surah-pick"); wrap.appendChild(lbl);
+    sPick = document.createElement("button"); sPick.type = "button"; sPick.className = "ayah-pick"; sPick.id = "surah-pick"; sPick.setAttribute("aria-haspopup", "listbox"); sPick.setAttribute("aria-expanded", "false");
+    wrap.appendChild(sPick);
+    sPop = document.createElement("div"); sPop.className = "surah-pop"; sPop.id = "surah-pop"; sPop.hidden = true; sPop.setAttribute("role", "dialog");
+    var si = document.createElement("input"); si.type = "search"; si.id = "surah-q"; si.autocomplete = "off";
+    var list = document.createElement("div"); list.className = "surah-list"; list.id = "surah-list"; list.setAttribute("role", "listbox");
+    sPop.appendChild(si); sPop.appendChild(list);
+    wrap.appendChild(sPop);
+    sb.parentNode.insertBefore(wrap, sb);
+    sPick.addEventListener("click", function (e) { e.stopPropagation(); if (sPop.hidden) openSurah(); else closeSurah(); });
+    sPop.addEventListener("click", function (e) { e.stopPropagation(); });
+    document.addEventListener("click", closeSurah);
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !sPop.hidden) { closeSurah(); sPick.focus(); } });
+    si.addEventListener("input", function () { paintSurahList(si.value); });
+    si.addEventListener("keydown", function (e) { if (e.key === "Enter") { var first = list.querySelector(".surah-item:not(.is-off)"); if (first) first.click(); e.preventDefault(); } });
+  }
+  function openSurah() { paintSurahList(""); var si = document.getElementById("surah-q"); if (si) si.value = ""; sPop.hidden = false; sPick.setAttribute("aria-expanded", "true"); var c = sPop.querySelector(".is-cur"); if (c && c.scrollIntoView) { try { c.scrollIntoView({ block: "center" }); } catch (e) { /* ignore */ } } if (si && window.matchMedia && !window.matchMedia("(max-width: 640px)").matches) si.focus(); }
+  function closeSurah() { if (!sPop || sPop.hidden) return; sPop.hidden = true; sPick.setAttribute("aria-expanded", "false"); }
+  function paintSurah() {
+    var d = D(); if (!d || !sPick) return;
+    var lbl = document.getElementById("surah-lbl"); if (lbl) lbl.textContent = T("site.surah");
+    sPick.textContent = ""; sPick.appendChild(document.createTextNode(num(d.surah.number) + " · " + surahName({ ar: d.surah.name_ar, en: d.surah.name_en }) + " "));
+    var car = document.createElement("span"); car.className = "caret"; car.textContent = "▼"; sPick.appendChild(car);
+    sPick.title = T("site.surah");
+    var si = document.getElementById("surah-q"); if (si) { si.placeholder = T("site.surah_search"); si.setAttribute("aria-label", si.placeholder); }
+  }
+  function paintSurahList(q) {
+    var d = D(); var list = document.getElementById("surah-list"); if (!d || !list) return;
+    var ql = toLatin(q); var qs = String(q || "").trim().replace(/^سورة\\s+/, "").replace(/^(al|an|ar|as|ash|at|ad|az|adh|ath)[-\\s]/i, "").toLowerCase();
+    list.textContent = "";
+    (d.surahs || []).forEach(function (x) {
+      if (ql && String(x.n).indexOf(ql) !== 0) return;
+      if (!ql && qs && x.ar.indexOf(qs) < 0 && x.en.toLowerCase().replace(/^(al|an|ar|as|ash|at|ad|az|adh|ath)[-\\s]/, "").indexOf(qs) < 0 && x.en.toLowerCase().indexOf(qs) < 0) return;
+      var b = document.createElement("button"); b.type = "button"; b.className = "surah-item" + (x.available ? "" : " is-off") + (x.n === d.surah.number ? " is-cur" : "");
+      b.setAttribute("role", "option"); if (!x.available) b.disabled = true;
+      var nn = document.createElement("span"); nn.className = "sn"; nn.textContent = num(x.n);
+      var nm = document.createElement("span"); nm.className = "nm"; nm.textContent = surahName(x);
+      var ct = document.createElement("span"); ct.className = "ct"; ct.textContent = x.available ? T("site.n_ayat", { n: num(x.ayat) }) : T("site.not_available");
+      b.appendChild(nn); b.appendChild(nm); b.appendChild(ct);
+      if (x.available) b.addEventListener("click", function () { closeSurah(); if (x.n !== d.surah.number) { try { window.location.search = "?s=" + x.n; } catch (e) { /* ignore */ } } });
+      list.appendChild(b);
+    });
+  }
+
+  // ---- the language switcher (globe, as in the console) and the page's labels in the chosen language
+  var gPop = null;
+  function buildLang() {
+    var acts = document.querySelector(".header-actions"); if (!acts || document.getElementById("lang-btn")) return;
+    var wrap = document.createElement("span"); wrap.className = "lang-wrap";
+    var btn = document.createElement("button"); btn.type = "button"; btn.className = "ib-btn lang-btn"; btn.id = "lang-btn"; btn.setAttribute("aria-haspopup", "menu"); btn.setAttribute("aria-expanded", "false");
+    gPop = document.createElement("div"); gPop.className = "lang-pop"; gPop.id = "lang-pop"; gPop.hidden = true; gPop.setAttribute("role", "menu");
+    wrap.appendChild(btn); wrap.appendChild(gPop);
+    acts.insertBefore(wrap, acts.firstChild);
+    btn.addEventListener("click", function (e) { e.stopPropagation(); gPop.hidden = !gPop.hidden; btn.setAttribute("aria-expanded", gPop.hidden ? "false" : "true"); });
+    gPop.addEventListener("click", function (e) { e.stopPropagation(); });
+    document.addEventListener("click", function () { if (gPop) { gPop.hidden = true; btn.setAttribute("aria-expanded", "false"); } });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && gPop && !gPop.hidden) { gPop.hidden = true; btn.setAttribute("aria-expanded", "false"); } });
+  }
+  function paintLang() {
+    var btn = document.getElementById("lang-btn"); if (!btn || !gPop) return;
+    var cur = L.langs.filter(function (l) { return l.code === L.code; })[0];
+    btn.textContent = cur ? cur.code.toUpperCase() : "AR"; btn.title = T("site.lang_switch"); btn.setAttribute("aria-label", btn.title);
+    gPop.textContent = "";
+    var h = document.createElement("div"); h.className = "mh"; h.textContent = T("site.lang_switch"); gPop.appendChild(h);
+    L.langs.forEach(function (l) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "mi" + (l.code === L.code ? " on" : ""); b.setAttribute("role", "menuitem");
+      b.textContent = l.name_native; b.lang = l.code; b.dir = l.dir;
+      b.addEventListener("click", function () { gPop.hidden = true; setLang(l.code, true); });
+      gPop.appendChild(b);
+    });
+    var wrap = btn.parentNode; if (wrap) wrap.style.display = L.langs.length > 1 ? "" : "none";
+  }
+  function setLang(code, persist) {
+    var d = D(); var l = L.langs.filter(function (x) { return x.code === code; })[0];
+    if (!l) return;
+    L.code = l.code; L.dir = l.dir || "ltr";
+    if (persist) store("mq-lang", l.code);
+    L.strings = (d && d.i18n && d.i18n[l.code]) || {};
+    document.documentElement.lang = l.code;
+    document.documentElement.dir = L.dir;
+    var shell = document.querySelector(".shell"); if (shell) shell.setAttribute("dir", L.dir);
+    document.body.classList.toggle("lang-ltr", L.dir === "ltr");
+    var done = function () { paintAll(); };
+    var url = d && d.live_i18n_url;
+    if (url && window.fetch) {
+      fetch(url.replace("{code}", l.code), { headers: { "Accept": "application/json" } }).then(function (r) { return r.ok ? r.json() : null; }).then(function (b) {
+        if (b && b.strings && L.code === l.code) { L.strings = b.strings; paintAll(); }
+      }).catch(function () { /* the embedded strings stay */ });
+    }
+    done();
+  }
+  function loadLanguages() {
+    var d = D(); if (!d) return;
+    L.langs = (d.languages || []).slice();
+    var want = store("mq-lang") || (L.langs.filter(function (x) { return x.is_default; })[0] || L.langs[0] || {}).code;
+    setLang(L.langs.some(function (x) { return x.code === want; }) ? want : "ar", false);
+    var url = d.live_languages_url; if (!url || !window.fetch) return;
+    fetch(url, { headers: { "Accept": "application/json" } }).then(function (r) { return r.ok ? r.json() : null; }).then(function (b) {
+      if (!b || !b.languages || !b.languages.length) return;
+      L.langs = b.languages;
+      var w2 = store("mq-lang") || b["default"] || L.code;
+      if (!L.langs.some(function (x) { return x.code === w2; })) w2 = b["default"] || L.langs[0].code;
+      setLang(w2, false);
+    }).catch(function () { /* the built-in list stays */ });
+  }
+
+  // ---- the template's own labels in the chosen language (the texts of the mufassirs stay as they are)
+  function setText(sel, text) { var el = typeof sel === "string" ? document.querySelector(sel) : sel; if (el && el.textContent !== text) el.textContent = text; }
+  function translateStatic() {
+    var d = D(); var a = api(); if (!d || !a) return;
+    setText('label[for="tafsir-sel"]', T("site.tafsir"));
+    setText("#ayah-lbl", T("site.ayah"));
+    setText(".brand-title", T("site.brand"));
+    var chipsLbl = document.querySelector(".chips-bar .lbl"); if (chipsLbl) setText(chipsLbl, T("site.color_by"));
+    setText("#chip-none", T("site.no_color"));
+    var h4s = document.querySelectorAll(".reader-aside .aside-card h4");
+    if (h4s[1]) setText(h4s[1], T("site.toc"));
+    var tg = document.querySelectorAll(".reader-aside .tg-row > span:first-child");
+    if (tg[0]) setText(tg[0], T("site.footnotes"));
+    if (tg[1]) setText(tg[1], T("site.font_size"));
+    var src = document.getElementById("reader-source-box");
+    if (src) { var tn = src.firstChild; if (tn && tn.nodeType === 3 && tn.nodeValue.trim() !== T("site.read_source")) tn.nodeValue = T("site.read_source") + " "; }
+    setText("#reader-dorar-link", T("site.dorar"));
+    setText("#reader-quranpedia-link", T("site.quranpedia"));
+    setText("#ec-copy-btn", T("site.copy_cite"));
+    setText("#ec-source-link", T("site.read_in_source"));
+    // tafsir names in the header's select
+    var ts = document.getElementById("tafsir-sel");
+    if (ts) Array.prototype.forEach.call(ts.options, function (o) { var nm = tafsirName(o.value); if (o.textContent !== nm) o.textContent = nm; });
+  }
+  function translateDynamic() {
+    var d = D(); var a = api(); if (!d || !a) return;
+    var st = a.state; var tn = tafsirName(st.tafsirId);
+    setText("#reader-ayah-ref", ayahLabel(st.windowId));
+    setText("#dist-title", T("site.methods_in", { t: tn }));
+    // the method chips and the legend
+    var cnt = {}; (st.reviewMoves || []).forEach(function (m) { if (m.primary) cnt[m.primary] = (cnt[m.primary] || 0) + 1; });
+    document.querySelectorAll("#reader-dynamic-chips .chip").forEach(function (c, i) {
+      var ids = Object.keys(cnt); var order = ["M_QURAN", "M_SUNNAH", "M_SAHABA", "M_TABIIN", "M_LUGHA", "M_QIRAAT", "M_NUZUL", "M_SIRA", "M_ISRAILIYYAT", "M_RAY"].filter(function (k) { return cnt[k]; });
+      var id = order[i]; if (!id) return;
+      var txt = Array.prototype.filter.call(c.childNodes, function (n) { return n.nodeType === 3; })[0];
+      if (txt && txt.nodeValue !== methodName(id) + " ") txt.nodeValue = methodName(id) + " ";
+      var sm = c.querySelector("small.cnt"); if (sm) sm.textContent = num(cnt[id]);
+    });
+    var AR_NAMES = {}; ["M_QURAN", "M_SUNNAH", "M_SAHABA", "M_TABIIN", "M_LUGHA", "M_QIRAAT", "M_NUZUL", "M_SIRA", "M_ISRAILIYYAT", "M_RAY"].forEach(function (k) { AR_NAMES[(d.i18n.ar || {})["site.method." + k]] = k; });
+    document.querySelectorAll("#dist-legend .leg-item").forEach(function (li) {
+      var spans = li.querySelectorAll("span");
+      var lbl = spans[0], cnt = li.querySelector(".leg-cnt");
+      if (lbl) { var id = AR_NAMES[lbl.textContent.trim()] || lbl.getAttribute("data-m"); if (id) { lbl.setAttribute("data-m", id); if (lbl.textContent !== methodName(id)) lbl.textContent = methodName(id); } }
+      if (cnt) { var v = toLatin(cnt.textContent); if (v && cnt.textContent !== num(v)) cnt.textContent = num(v); }
+    });
+    var un = document.getElementById("chip-unused-note");
+    if (un && !un.hidden) { var m = toLatin(un.textContent); if (m) setText(un, T("site.unused", { n: num(m) })); }
+    var ban = document.getElementById("reader-info-banner");
+    if (ban && !ban.classList.contains("is-mismatch")) {
+      var sha = (ban.textContent.match(/sha256\\s+([0-9a-f]+)/) || [])[1] || "";
+      var nAp = (st.reviewMoves || []).filter(function (m) { return m.review_status === "approved"; }).length;
+      var want = "ⓘ " + (nAp ? T("site.banner_approved", { n: num(nAp) }) + " " + T("site.banner_approved_tail", { sha: sha }) : T("site.banner_none") + " · " + T("site.banner_none_tail", { sha: sha }));
+      if (ban.textContent !== want) { ban.textContent = ""; ban.appendChild(document.createTextNode("ⓘ ")); var b = document.createElement("b"); b.textContent = nAp ? T("site.banner_approved", { n: num(nAp) }) : T("site.banner_none"); ban.appendChild(b); ban.appendChild(document.createTextNode(nAp ? " " + T("site.banner_approved_tail", { sha: sha }) : " · " + T("site.banner_none_tail", { sha: sha }))); }
+    }
+  }
+  function paintAll() { translateStatic(); paintButtons(); paintStrip(); paintPicker(); paintSurah(); paintLang(); paintVersion(); translateDynamic(); }
 
   // ---- the live snapshot: what the console published since this page was built
   function overlay(snap) {
@@ -552,9 +870,9 @@ EXTRA_JS = """
     Object.keys(d.tafsirs || {}).forEach(function (tid) { fresh[tid] = {}; });
     var n_units = 0;
     units.forEach(function (u) {
-      var T = d.tafsirs && d.tafsirs[u.tafsir]; if (!T) return;
+      var Tt = d.tafsirs && d.tafsirs[u.tafsir]; if (!Tt) return;
       var parts = String(u.ayah || "").split(":"); var key = parts[0] + "_" + parts[1];
-      var w = T.windows && T.windows[key]; if (!w || w.source_sha256 !== u.source_sha256) return;
+      var w = Tt.windows && Tt.windows[key]; if (!w || w.source_sha256 !== u.source_sha256) return;
       var base = w.window_start; var byId = {};
       (w.spans || []).forEach(function (sp) { byId[sp.id] = sp; });
       var ids = u.span_ids || [];
@@ -570,13 +888,13 @@ EXTRA_JS = """
       n_units++;
     });
     Object.keys(fresh).forEach(function (tid) {
-      var T = d.tafsirs[tid]; T.verified = {};
+      var Tt = d.tafsirs[tid]; Tt.verified = {};
       Object.keys(fresh[tid]).forEach(function (k) {
         var mv = fresh[tid][k].sort(function (x, y) { return x.start - y.start; });
-        T.verified[k] = { approved: { annotator: "approved", moves: mv, summary: { move_count: mv.length } } };
+        Tt.verified[k] = { approved: { annotator: "approved", moves: mv, summary: { move_count: mv.length } } };
       });
     });
-    d.published = { version: snap.version, published_at: snap.published_at, date_ar: dateAr(snap.published_at), units: n_units, notice_ar: snap.notice_ar || "" };
+    d.published = { version: snap.version, published_at: snap.published_at, units: n_units, notice_ar: snap.notice_ar || "" };
     return true;
   }
   function loadLive() {
@@ -585,16 +903,16 @@ EXTRA_JS = """
     if (!url || !window.fetch) return;
     fetch(url, { headers: { "Accept": "application/json" }, cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (snap) {
       if (!overlay(snap)) return;
+      LIVE = true;
       var a = api(); var st = a.state;
-      paintVersion(d.published, true);
       var ap = approvedMap();
-      // no address given: open the first ayah with an approved unit
       var mine = ap[st.tafsirId] || {};
+      // no address given: open the first ayah with an approved unit
       if (!OPENED_WITH_W && !mine[st.windowId]) {
         var t0 = (d.tafsir_order || []).filter(function (t) { return Object.keys(ap[t] || {}).length; })[0];
-        if (t0) { var k0 = (d.window_order || []).filter(function (k) { return ap[t0][k]; })[0]; a.goTo(t0, k0); return; }
+        if (t0) { var k0 = (d.window_order || []).filter(function (k) { return ap[t0][k]; })[0]; a.goTo(t0, k0); paintAll(); return; }
       }
-      a.goTo(null, null);
+      a.goTo(null, null); paintAll();
     }).catch(function () { /* the build-time snapshot stays */ });
   }
 
@@ -628,20 +946,20 @@ EXTRA_JS = """
   function start() {
     try {
       var d = D(); if (!d) return;
-      wordButton(document.getElementById("btn-prev-verse"), true);
-      wordButton(document.getElementById("btn-next-verse"), false);
       buildStrip();
-      wordButton(document.getElementById("nav-prev"), true);
-      wordButton(document.getElementById("nav-next"), false);
       buildPicker();
-      paintVersion(d.published || {}, false);
-      paintStrip(); paintPicker();
-      document.addEventListener("fahras:render", function () { paintStrip(); paintPicker(); });
+      buildSurah();
+      buildLang();
+      loadLanguages();          // paints everything in the chosen language
+      document.addEventListener("fahras:render", function () { paintStrip(); paintPicker(); translateDynamic(); });
+      var ban = document.getElementById("reader-info-banner");
+      if (ban && window.MutationObserver) { var bb = false; new MutationObserver(function () { if (bb) return; bb = true; try { translateDynamic(); } finally { bb = false; } }).observe(ban, { childList: true }); }
       var art = document.getElementById("reading-article");
       if (art && window.MutationObserver) { new MutationObserver(function () { if (!busy) wrapGlyphs(art); }).observe(art, { childList: true, subtree: true }); wrapGlyphs(art); }
       window.addEventListener("keydown", function (e) {
         var t = e.target && e.target.tagName; if (t === "INPUT" || t === "SELECT" || t === "TEXTAREA" || e.altKey || e.ctrlKey || e.metaKey) return;
-        if (e.key === "ArrowLeft") { step(1); e.preventDefault(); } else if (e.key === "ArrowRight") { step(-1); e.preventDefault(); }
+        var fwd = (L.dir === "rtl") ? "ArrowLeft" : "ArrowRight", back = (L.dir === "rtl") ? "ArrowRight" : "ArrowLeft";
+        if (e.key === fwd) { step(1); e.preventDefault(); } else if (e.key === back) { step(-1); e.preventDefault(); }
       });
       loadLive();
     } catch (e) { /* ignore */ }
@@ -680,7 +998,11 @@ def render(payload: dict) -> str:
         print(f"  note: template patch not applied (anchor not found): {anchor!r}")
     if "availableWindows()" not in html:
         raise SystemExit("template changed: the per-tafsir verse list could not be patched in")
-    html = html.replace("</style>", EXTRA_CSS.strip() + "\n</style>", 1) if "</style>" in html else html
+    # the extra rules join the template's style block (a nested <style> tag would swallow the first rule)
+    css = EXTRA_CSS.strip()
+    css = css[len("<style>"):] if css.startswith("<style>") else css
+    css = css[:-len("</style>")] if css.endswith("</style>") else css
+    html = html.replace("</style>", css.strip() + "\n</style>", 1) if "</style>" in html else html
     html = html.replace(DATA_MARKER, embed(payload))
     html = html.rstrip("\n") + "\n" + EXTRA_JS.strip() + "\n"
     # no path to the old pages or to the review mode is left behind

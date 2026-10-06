@@ -1164,6 +1164,26 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                                                       "Access-Control-Allow-Origin": "*"})
         return _public_json(raw, meta["sha256"])
 
+    @app.get("/public/v1/languages.json", include_in_schema=False)
+    def public_languages() -> Response:
+        """The languages enabled under Settings → Languages: the public site shows the same
+        switcher and follows the same default."""
+        langs = [{"code": l["code"], "name_native": l["name_native"], "name_en": l["name_en"],
+                  "dir": l["dir"], "is_default": l["is_default"]} for l in languages(enabled_only=True)]
+        return _public_json({"languages": langs, "default": default_lang()})
+
+    @app.get("/public/v1/i18n/{code}.json", include_in_schema=False)
+    def public_i18n(code: str) -> Response:
+        """The public site's strings (site.*) of one enabled language, with the overrides a
+        language manager typed under Settings → Languages → edit translations."""
+        if not LANG_RE.match(code):
+            raise _err(400, "bad_lang")
+        if not db.row("SELECT 1 FROM languages WHERE code=? AND enabled=1", (code,)):
+            return _public_json({"error": "lang_not_enabled"}, status=404)
+        b = i18n_bundle(code)
+        return _public_json({"lang": code, "strings": {k: v for k, v in b["strings"].items()
+                                                         if k.startswith("site.")}})
+
     @app.get("/public/v1/manifest.json", include_in_schema=False)
     def public_manifest() -> Response:
         meta = publish.live()

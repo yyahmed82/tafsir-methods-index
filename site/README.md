@@ -9,7 +9,9 @@ text. The page embeds the snapshot it was built from and **fetches the live one 
 (`https://console.mirqah.app/public/v1/published.json`, 60 s cache), checks every unit against the
 embedded source text, and marks it: publishing a version in the console reaches mirqah.app on the next
 reload, with no rebuild and no upload. Rebuild only when the template, the data or this builder
-change. No review mode, no export, no working states, no model names. `reader.html`, `fahras.html`,
+change. The page also follows the console's **languages** (Settings → Languages): the globe lists the enabled ones,
+the strings come from `/public/v1/i18n/<code>.json` (the `site.*` keys, with the overrides typed in the console), and the
+choice is saved under the same key as the console (`mq-lang`). The mufassirs' texts stay Arabic in every language. No review mode, no export, no working states, no model names. `reader.html`, `fahras.html`,
 `methods.html` and `app.html` redirect to `/`.
 
 Build and deploy (template, data or builder changed):

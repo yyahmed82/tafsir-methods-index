@@ -616,6 +616,8 @@ pre.out { background: var(--surface-2); border: 1px solid var(--border); border-
 .att-toggle .ic { width: 14px; height: 14px; }
 .att-toggle .chev { transition: transform .15s; }
 [dir="rtl"] .att-toggle .chev { transform: scaleX(-1); }
+/* directional icons (play, arrows, chevrons, leave) follow the reading direction */
+[dir="rtl"] svg.ic-dir { transform: scaleX(-1); }
 .att-toggle.on { background: var(--accent-soft); border-color: transparent; color: var(--accent-text); }
 .att-toggle.on .chev, [dir="rtl"] .att-toggle.on .chev { transform: rotate(90deg); }
 .tasks-t tr.grp.open td { background: var(--surface-2); border-bottom-color: transparent; }

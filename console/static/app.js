@@ -119,7 +119,11 @@
     chev: 'M9 6l6 6-6 6',
     pulse: 'M22 12h-4l-3 9L9 3l-3 9H2',
   };
-  const ico = (name, cls = '') => `<svg class="ic ${cls}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[name] || ''}"/></svg>`;
+  // icons that point the way of reading (play, arrows, chevrons, leave) are drawn mirrored in a
+  // right-to-left interface, so «start» points forward in Arabic as it does in English
+  const DIRECTIONAL = new Set(['play', 'arrow', 'chev', 'out']);
+  const ico = (name, cls = '') => `<svg class="ic ${DIRECTIONAL.has(name) ? 'ic-dir ' : ''}${cls}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[name] || ''}"/></svg>`;
+  const ARROW = () => (S.dir === 'rtl' ? '←' : '→');   // a text arrow that follows the reading direction
 
   // Original generic robot drawing, tinted with currentColor.
   const robot = (color, running) => `<svg class="robot c-${color} ${running ? 'running' : ''}" viewBox="0 0 100 100" aria-hidden="true">
@@ -1507,7 +1511,7 @@
     const lessonChip = (dec) => {
       const t0 = (dec && dec.teach) || {};
       if (!t0.error_type && !t0.teach) return '';
-      return `<span class="chip ${t0.teach ? 'ok' : ''}">${t0.teach ? T('learn.taught') : T('learn.lesson')}${t0.error_type ? ' · ' + esc(errTypes[t0.error_type] || t0.error_type) : ''}${t0.correct_primary ? ' → ' + esc(names[t0.correct_primary] || t0.correct_primary) : ''}</span>`;
+      return `<span class="chip ${t0.teach ? 'ok' : ''}">${t0.teach ? T('learn.taught') : T('learn.lesson')}${t0.error_type ? ' · ' + esc(errTypes[t0.error_type] || t0.error_type) : ''}${t0.correct_primary ? ' ' + ARROW() + ' ' + esc(names[t0.correct_primary] || t0.correct_primary) : ''}</span>`;
     };
     const preview = {};
     (d.chair ? d.chair.moves : []).forEach((c) => { preview[c.move_id] = c; });

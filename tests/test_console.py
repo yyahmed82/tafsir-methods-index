@@ -309,6 +309,19 @@ def test_languages_default_and_overrides(env):
     for code in ("ar", "en", "zh", "ur"):
         assert env.get(f"/api/i18n/{code}").json()["translated"] == \
             env.get("/api/i18n/en").json()["total"]
+    # the public site follows the same languages and strings (no login, CORS)
+    r = env.get("/public/v1/languages.json")
+    assert r.headers["access-control-allow-origin"] == "*"
+    pub = r.json()
+    assert {l["code"] for l in pub["languages"]} >= {"ar", "en", "fr"} and pub["default"] == "ar"
+    assert all(set(l) == {"code", "name_native", "name_en", "dir", "is_default"} for l in pub["languages"])
+    env.patch("/api/languages/fr", json={"enabled": False}, headers=H)
+    assert "fr" not in {l["code"] for l in env.get("/public/v1/languages.json").json()["languages"]}
+    assert env.get("/public/v1/i18n/fr.json").status_code == 404
+    env.put("/api/translations/en", json={"site.toc": "Go to"}, headers=H)
+    strings = env.get("/public/v1/i18n/en.json").json()["strings"]
+    assert strings["site.toc"] == "Go to" and strings["site.ayah"] == "Ayah"
+    assert all(k.startswith("site.") for k in strings) and "nav.tasks" not in strings
 
 
 # ------------------------------------------------------------------ tasks & gates
