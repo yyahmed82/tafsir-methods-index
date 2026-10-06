@@ -239,9 +239,6 @@ PATCHES: list[tuple[str, str]] = [
      '    tafsirSel.addEventListener("change", function () {\n      state.tafsirId = tafsirSel.value;\n      if (availableWindows().indexOf(state.windowId) < 0) state.windowId = availableWindows()[0] || state.windowId;\n      fillVerseSelect();'),
     ('  function navigateVerse(delta) {',
      '  function availableWindows() {\n    var T = activeTafsir();\n    return (DATA.window_order || []).filter(function (wid) { return T && T.windows && T.windows[wid]; });\n  }\n  function fillVerseSelect() {\n    var verseSel = document.getElementById("verse-sel");\n    if (!verseSel) return;\n    verseSel.textContent = "";\n    availableWindows().forEach(function (wid) {\n      var opt = document.createElement("option");\n      opt.value = wid;\n      opt.textContent = (DATA.window_labels && DATA.window_labels[wid]) || wid;\n      if (wid === state.windowId) opt.selected = true;\n      verseSel.appendChild(opt);\n    });\n  }\n  function navigateVerse(delta) {'),
-    # every unit on the page is approved: say so, without the "proposed" remainder
-    ('      infoEl.appendChild(document.createTextNode(" بواسطة متخصص · باقي الوسوم (" + toArabicDigits(proposedCount) + ") مقترحة آلياً · النص مطابق للمصدر حرفاً بحرف (sha256 " + res.sha + ")"));',
-     '      infoEl.appendChild(document.createTextNode(" بواسطة متخصص بشري" + (proposedCount ? " · باقي الوسوم (" + toArabicDigits(proposedCount) + ") مقترحة آلياً" : "") + " · النص مطابق للمصدر حرفاً بحرف (sha256 " + res.sha + ")"));'),
     # header: no review toggle, no export, no classic page; the brand goes home
     ('<button type="button" class="btn" id="btn-export-decisions" hidden', '<button type="button" class="btn" id="btn-export-decisions" hidden style="display:none!important"'),
     ('<button type="button" class="btn btn-primary" id="btn-toggle-mode" hidden>', '<button type="button" class="btn btn-primary" id="btn-toggle-mode" hidden style="display:none!important">'),
@@ -331,11 +328,23 @@ EXTRA_JS = """
 """
 
 
+# wording that differs between template versions: applied when present, skipped otherwise
+OPTIONAL_PATCHES: list[tuple[str, str]] = [
+    # every unit on the page is approved: no "the rest is proposed" remainder
+    ('" بواسطة متخصص · باقي الوسوم (" + toArabicDigits(proposedCount) + ") مقترحة آلياً · النص مطابق',
+     '" بواسطة متخصص بشري" + (proposedCount ? " · باقي الوسوم (" + toArabicDigits(proposedCount) + ") مقترحة آلياً" : "") + " · النص مطابق'),
+    ('" بواسطة متخصص · باقي الوسوم (" + toArabicDigits(proposedCount) + ") اقتراح آلي · غير معتمد بعد · النص مطابق',
+     '" بواسطة متخصص بشري" + (proposedCount ? " · باقي الوسوم (" + toArabicDigits(proposedCount) + ") اقتراح آلي · غير معتمد بعد" : "") + " · النص مطابق'),
+]
+
+
 def render(payload: dict) -> str:
     html = TEMPLATE.read_text(encoding="utf-8")
     for old, new in PATCHES:
         if old not in html:
             raise SystemExit(f"template changed; patch anchor not found: {old[:70]!r}")
+        html = html.replace(old, new, 1)
+    for old, new in OPTIONAL_PATCHES:
         html = html.replace(old, new, 1)
     html = html.replace("</style>", EXTRA_CSS.strip() + "\n</style>", 1) if "</style>" in html else html
     html = html.replace(DATA_MARKER, embed(payload))
