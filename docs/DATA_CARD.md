@@ -34,7 +34,7 @@ Four classical commentaries (tafsir) on **Surah An-Nur (24), ayat 1–64**, cut 
 
 1,656 files (1,400 JSON, 256 text), all added in one commit (`abc9a0f`, 3 Oct 2026) and frozen since. Largest window: al-Baghawi 24:7 (17,328 characters); 12 windows sit exactly at the 110-span cap. Spans never overlap; the gaps between consecutive spans (2,405) are the editor's footnotes (1,914), brackets or `<br>` tags.
 
-An earlier three-ayah pilot (2:255, 2:102, 17:105) is kept under `data/v2/`, `data/multi/`, `data/spans*/`, `data/tags/` for its tests and history, and Surah Al-Anfal is prepared under `data/anfal/` (325 windows, no proposals).
+An earlier three-ayah pilot (2:255, 2:102, 17:105) is kept under `data/v2/`, `data/multi/`, `data/spans*/`, `data/tags/` for its tests and history, and Surah Al-Anfal under `data/anfal/` is prepared and outside this submission (مُجهَّز وخارج هذا التقديم; 325 windows, no proposals).
 
 ### 3. Source and collection
 
@@ -106,7 +106,7 @@ Adding a surah: `python3 src/run_surah.py --surah <n> --base data/<name>/<tafsir
 | السعدي (ت ١٣٧٦هـ) | `tafsir_saadi` | ٦٤ | ٠ | ٨٦٤ | ٧٣٬٥٨٥ | ١٬٨٣٣ |
 | **المجموع** | | **٢٩٦** | ٢٢ ← ٦٢ | **٩٬٢٤٥** | **٩١٤٬٥١٩** | ١٥٥٬٢٤٣ |
 
-١٬٦٥٦ ملفاً أُضيفت في إيداع واحد (`abc9a0f`، ٣ أكتوبر ٢٠٢٦) وجُمّدت منذئذ. أكبر نافذة: البغوي ٢٤:٧ (١٧٬٣٢٨ حرفاً)؛ ١٢ نافذة عند سقف ١١٠ أجزاء بالضبط. الأجزاء لا تتداخل؛ والفجوات بينها (٢٬٤٠٥) حواشي محقق (١٬٩١٤) أو أقواس أو وسوم `<br>`. التجربة الأولى (ثلاث آيات) محفوظة في `data/v2/` و`data/multi/`، وسورة الأنفال محضَّرة في `data/anfal/` (٣٢٥ نافذة بلا اقتراحات).
+١٬٦٥٦ ملفاً أُضيفت في إيداع واحد (`abc9a0f`، ٣ أكتوبر ٢٠٢٦) وجُمّدت منذئذ. أكبر نافذة: البغوي ٢٤:٧ (١٧٬٣٢٨ حرفاً)؛ ١٢ نافذة عند سقف ١١٠ أجزاء بالضبط. الأجزاء لا تتداخل؛ والفجوات بينها (٢٬٤٠٥) حواشي محقق (١٬٩١٤) أو أقواس أو وسوم `<br>`. التجربة الأولى (ثلاث آيات) محفوظة في `data/v2/` و`data/multi/`، وسورة الأنفال في `data/anfal/` مُجهَّزة وخارج هذا التقديم (٣٢٥ نافذة بلا اقتراحات).
 
 ### ٣. المصدر والجمع
 
