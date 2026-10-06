@@ -820,7 +820,10 @@ EXTRA_JS = """
     if (tg[0]) setText(tg[0], T("site.footnotes"));
     if (tg[1]) setText(tg[1], T("site.font_size"));
     var src = document.getElementById("reader-source-box");
-    if (src) { var tn = src.firstChild; if (tn && tn.nodeType === 3 && tn.nodeValue.trim() !== T("site.read_source")) tn.nodeValue = T("site.read_source") + " "; }
+    if (src) {
+      var tn = Array.prototype.filter.call(src.childNodes, function (n) { return n.nodeType === 3 && n.nodeValue.trim(); })[0];
+      if (tn && tn.nodeValue.trim() !== T("site.read_source")) tn.nodeValue = T("site.read_source") + " ";
+    }
     setText("#reader-dorar-link", T("site.dorar"));
     setText("#reader-quranpedia-link", T("site.quranpedia"));
     setText("#ec-copy-btn", T("site.copy_cite"));
