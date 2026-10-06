@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import (__version__, auth, config, db, demo, learning, mailer, mailtpl, pipeline, publish,
+from . import (__version__, auth, config, db, demo, learning, mailer, mailtpl, pen, pipeline, publish,
                runner, settings, team, workflow)
 
 
@@ -263,6 +263,21 @@ class DecisionIn(BaseModel):
     error_type: str = Field(default="", max_length=40)
     correct_primary: str = Field(default="", max_length=20)
     teach: bool = False
+
+
+class PenIn(BaseModel):
+    """A unit marked by hand (قلم التمييز): a slice of the pinned window, a method."""
+    tafsir: str
+    window: str
+    arm: str = Field(default="", max_length=1)
+    id: int | None = None            # update an existing pen unit
+    start: int
+    end: int
+    primary: str = Field(max_length=20)
+    content_tags: list[str] = Field(default_factory=list, max_length=8)
+    note: str = Field(default="", max_length=1000)
+    parent_key: str = Field(default="", max_length=20)   # the machine move it replaces
+    compared_with_source: bool = False
 
 
 class UserIn(BaseModel):
@@ -876,6 +891,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
                 "summary": (com or {}).get("summary") or v.get("summary"),
                 "models": models, "is_committee": com is not None,
                 "moves": moves,
+                "pen": pen.units(tafsir, window), "content_tags": list(pen.CONTENT_TAGS),
                 "chair": None if com is not None else pipeline.chair_preview(tafsir, window,
                                                                              variant),
                 "error_types": learning.error_types(), "methods": list(learning.METHODS),
@@ -1035,6 +1051,74 @@ def _routes(app: FastAPI) -> None:  # noqa: C901 - one place for the API surface
         bank = learning.rebuild_bank(body.tafsir)
         done = workflow.close_if_done(body.tafsir, body.window)
         return {"ok": True, "teaching_examples": bank, "window_done": done}
+
+    @app.post("/api/review/pen")
+    @operational(write=True)
+    def review_pen(body: PenIn, request: Request,
+                   user: dict = Depends(need("review_units"))) -> dict:
+        """قلم التمييز: save (or move) a unit the specialist marked in the pinned text. The
+        slice is read back from the pinned file letter for letter and snapped to whole
+        words; a unit that replaces a machine move puts «needs_edit» on that move."""
+        if not auth.can_decide(user):
+            raise _err(403, "specialists_only")
+        if body.tafsir not in config.TAFSIRS or not pipeline.WINDOW_RE.match(body.window):
+            raise _err(400, "bad_unit")
+        if body.primary not in learning.METHODS:
+            raise _err(400, "bad_method")
+        held = workflow.assignment(body.tafsir, body.window)
+        if held and held["status"] == "open" and held["user_id"] != user["id"]:
+            raise _err(403, "assigned_to_other", name=held.get("user_name"))
+        if body.id is not None:
+            cur = pen.get(body.id)
+            if cur is None or cur.get("deleted_at") or cur["tafsir"] != body.tafsir \
+                    or cur["window"] != body.window:
+                raise _err(404, "unit_not_found")
+        parent_annotator = ""
+        if body.parent_key and body.id is None:
+            variant = _variant(body.tafsir, body.window, body.arm)
+            annotator, v, com = pipeline.review_source(body.tafsir, body.window, variant)
+            keys = {k for k, _mv, _c in _units(v, com)} if v is not None else set()
+            if body.parent_key not in keys:
+                raise _err(404, "unit_not_found")
+            parent_annotator = annotator
+        try:
+            u = pen.save(body.tafsir, body.window, user["id"], body.start, body.end, body.primary,
+                         body.content_tags, body.note.strip(), pen_id=body.id,
+                         parent_key=body.parent_key, parent_annotator=parent_annotator)
+        except ValueError as e:
+            raise _err(400, f"pen_{e}") from e
+        if parent_annotator:
+            # the machine move is replaced by the specialist's unit: it must not publish
+            db.execute(
+                "INSERT INTO decisions(tafsir,window,annotator,move_id,decision,compared_with_source,"
+                "note,user_id,created_at,teach) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (body.tafsir, body.window, parent_annotator, body.parent_key, "needs_edit",
+                 int(body.compared_with_source), f"قلم التمييز → {u['key']}", user["id"], db.now(),
+                 ""))
+        if held is None:
+            workflow.claim(body.tafsir, body.window, user["id"])
+        db.audit("review.pen", user_id=user["id"], ip=_ip(request),
+                 target=f"{body.tafsir}/{body.window}/{u['key']}",
+                 detail={"start": u["start"], "end": u["end"], "primary": u["primary"],
+                         "parent": body.parent_key or None, "update": body.id is not None})
+        return {"ok": True, "unit": u}
+
+    @app.delete("/api/review/pen/{pen_id}")
+    @operational(write=True)
+    def review_pen_delete(pen_id: int, request: Request,
+                          user: dict = Depends(need("review_units"))) -> dict:
+        if not auth.can_decide(user):
+            raise _err(403, "specialists_only")
+        cur = pen.get(pen_id)
+        if cur is None or cur.get("deleted_at"):
+            raise _err(404, "unit_not_found")
+        held = workflow.assignment(cur["tafsir"], cur["window"])
+        if held and held["status"] == "open" and held["user_id"] != user["id"]:
+            raise _err(403, "assigned_to_other", name=held.get("user_name"))
+        pen.delete(pen_id, user["id"])
+        db.audit("review.pen_delete", user_id=user["id"], ip=_ip(request),
+                 target=f"{cur['tafsir']}/{cur['window']}/{cur['key']}")
+        return {"ok": True}
 
     @app.get("/api/review/export")
     @operational()

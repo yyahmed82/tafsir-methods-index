@@ -114,6 +114,8 @@
     out: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
     brain: 'M9.5 2A2.5 2.5 0 0 0 7 4.5v.1A3 3 0 0 0 4.5 8 3 3 0 0 0 3 10.6 3 3 0 0 0 4 15a3 3 0 0 0 3 4 2.5 2.5 0 0 0 5 .5V4.5A2.5 2.5 0 0 0 9.5 2zM14.5 2A2.5 2.5 0 0 1 17 4.5v.1A3 3 0 0 1 19.5 8 3 3 0 0 1 21 10.6 3 3 0 0 1 20 15a3 3 0 0 1-3 4 2.5 2.5 0 0 1-5 .5',
     arrow: 'M5 12h14M13 6l6 6-6 6',
+    pen: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z',
+    trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6',
     eye: 'M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
     flask: 'M9 3h6M10 3v6L4.5 18.5A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 1.7-2.5L14 9V3M7.5 14h9',
     upload: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',
@@ -1371,7 +1373,7 @@
       if (m.s < pos) continue;
       out += fmt(text.slice(pos, m.s));
       const dec = m.decision && (m.decision.decision || m.decision);
-      out += `<mark class="u ${mClass(m.primary)} ${dec ? 'd-' + dec : 'd-open'}" data-key="${esc(m.key)}" data-act="goto-move" title="${esc(m.key)}${m.title ? ' · ' + esc(m.title) : ''}">${fmt(text.slice(m.s, m.e))}</mark>`;
+      out += `<mark class="u ${mClass(m.primary)} ${dec ? 'd-' + dec : 'd-open'}${m.pen ? ' pen' : ''}${m.draft ? ' draft' : ''}" data-key="${esc(m.key)}" data-act="${m.draft ? 'pen-draft' : 'goto-move'}" title="${esc(m.key)}${m.title ? ' · ' + esc(m.title) : ''}">${fmt(text.slice(m.s, m.e))}</mark>`;
       pos = m.e;
     }
     return out + fmt(text.slice(pos));
@@ -1387,6 +1389,126 @@
   const arNum = (n) => String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]);
   const ayahRef = (d) => `${T('review.surah')} ${esc(d.surah_name_ar || '')} · ${T('review.ayah')} ${arNum(d.ayah_number || '')}`;
   const verseBlock = (d) => d.ayah_text ? `<blockquote class="ayah-text">﴿${esc(d.ayah_text)}﴾</blockquote>` : '';
+
+
+  // ------------------------------------------------------------ قلم التمييز (the highlighter)
+  // A specialist marks a slice of the pinned text by hand: select with the pen on → the
+  // unit panel opens (method, content, note, word-by-word bounds, the exact slice with its
+  // absolute offsets) → «اعتماد» saves it; the server reads the slice back from the pinned
+  // file letter for letter. A machine move can be taken over the same way (تعديل بالقلم).
+  const PEN = { on: store.get('mq-pen', '0') === '1', ctx: null, draft: null };
+  const penOn = () => PEN.on && PEN.ctx && PEN.ctx.canDecide;
+  const isWordChar = (ch) => !!ch && !/\s/.test(ch);
+  const SENT_END = /[.؟!؛:\n]/;
+  function penSnap(text, a, b) {   // trim spaces, then whole words
+    while (a < b && /\s/.test(text[a])) a++;
+    while (b > a && /\s/.test(text[b - 1])) b--;
+    while (a > 0 && isWordChar(text[a - 1])) a--;
+    while (b < text.length && isWordChar(text[b])) b++;
+    return [a, b];
+  }
+  function penAdjust(which) {        // bounds move by whole words / sentences, in window offsets
+    const c = PEN.ctx, d = PEN.draft; if (!c || !d) return;
+    const text = c.text; let a = d.start - c.base, b = d.end - c.base;
+    const prevWordStart = (i) => { i--; while (i > 0 && !isWordChar(text[i])) i--; while (i > 0 && isWordChar(text[i - 1])) i--; return Math.max(0, i); };
+    const nextWordStart = (i) => { while (i < text.length && isWordChar(text[i])) i++; while (i < text.length && !isWordChar(text[i])) i++; return i; };
+    const nextWordEnd = (i) => { while (i < text.length && !isWordChar(text[i])) i++; while (i < text.length && isWordChar(text[i])) i++; return i; };
+    const prevWordEnd = (i) => { i--; while (i > 0 && isWordChar(text[i])) i--; while (i > 0 && !isWordChar(text[i - 1])) i--; return i; };
+    if (which === 'word_before') a = prevWordStart(a);
+    else if (which === 'shrink_start') { const n = nextWordStart(a); if (n < b) a = n; }
+    else if (which === 'word_after') b = nextWordEnd(b);
+    else if (which === 'shrink_end') { const n = prevWordEnd(b); if (n > a) b = n; }
+    else if (which === 'prev_sentence') { let i = a - 1; while (i > 0 && !SENT_END.test(text[i - 1])) i--; let j = i; while (j > 0 && !SENT_END.test(text[j - 1])) j--; a = j; }
+    else if (which === 'next_sentence') { let i = b; while (i < text.length && !SENT_END.test(text[i])) i++; if (i < text.length) i++; b = i; }
+    else if (which === 'restore') { a = d.orig[0] - c.base; b = d.orig[1] - c.base; }
+    [a, b] = penSnap(text, a, b);
+    if (a >= b) return;
+    d.start = a + c.base; d.end = b + c.base;
+    penPaint();
+  }
+  // the character offset of a selection boundary inside #ctx-text: text as rendered, <br> = \n
+  function penOffset(root, node, off) {
+    const r = document.createRange(); r.selectNodeContents(root); r.setEnd(node, off);
+    const frag = r.cloneContents();
+    return frag.textContent.length + frag.querySelectorAll('br').length;
+  }
+  function penFromSelection() {
+    if (!penOn()) return;
+    const root = $('#ctx-text'); const sel = window.getSelection();
+    if (!root || !sel || sel.isCollapsed || !sel.rangeCount) return;
+    const r = sel.getRangeAt(0);
+    if (!root.contains(r.startContainer) || !root.contains(r.endContainer)) return;
+    let a = penOffset(root, r.startContainer, r.startOffset), b = penOffset(root, r.endContainer, r.endOffset);
+    if (a > b) [a, b] = [b, a];
+    [a, b] = penSnap(PEN.ctx.text, a, b);
+    if (a >= b) return;
+    sel.removeAllRanges();
+    penOpen({ start: a + PEN.ctx.base, end: b + PEN.ctx.base, primary: PEN.ctx.lastPrimary || '', tags: [], note: '' });
+  }
+  function penOpen(d) {
+    PEN.draft = { id: d.id || null, key: d.key || '', start: d.start, end: d.end, orig: [d.start, d.end], primary: d.primary || '',
+      tags: d.tags || [], note: d.note || '', parent_key: d.parent_key || '', parent_primary: d.parent_primary || '' };
+    penPaint();
+    const p = $('#pen-panel'); if (p) p.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  function penClose() { PEN.draft = null; penPaint(); }
+  function penMoves() {   // the marks in the text: machine moves, pen units, and the draft
+    const c = PEN.ctx; const d = PEN.draft;
+    const base = c.moves.filter((m) => !(d && d.parent_key && m.key === d.parent_key));
+    const pen = c.pen.filter((u) => !(d && d.id && u.id === d.id)).map((u) => ({ key: u.key, start: u.start, end: u.end, primary: u.primary, pen: true, decision: 'approve', title: `${mLabel(c.names, u.primary) || '—'} · ${t('review.pen')}` }));
+    const draft = d ? [{ key: d.key || t('review.pen_new'), start: d.start, end: d.end, primary: d.primary, draft: true, decision: 'approve', title: t('review.pen_draft') }] : [];
+    return [...draft, ...pen, ...base];
+  }
+  function penPanelHTML() {
+    const c = PEN.ctx, d = PEN.draft; if (!c || !d) return '';
+    const slice = c.text.slice(d.start - c.base, d.end - c.base);
+    const bt = (k, label) => `<button type="button" class="btn sm" data-act="pen-adj" data-k="${k}">${label}</button>`;
+    const methods = c.methods.map((k) => `<button type="button" class="chip sel ${mClass(k)}${d.primary === k ? ' on' : ''}" data-act="pen-method" data-k="${esc(k)}" aria-pressed="${d.primary === k}"><i class="dot"></i>${esc(mLabel(c.names, k))}</button>`).join('');
+    const tags = c.contentTags.map((k) => `<button type="button" class="chip sel${d.tags.includes(k) ? ' on' : ''}" data-act="pen-tag" data-k="${esc(k)}" aria-pressed="${d.tags.includes(k)}">${T('content.' + k)}</button>`).join('');
+    return `<section class="pen-panel" id="pen-panel"><div class="row between wrap"><div class="row"><b>${ico('pen')} ${d.id ? `<span class="mono">${esc(d.key)}</span> · ${T('review.pen_unit')}` : T('review.pen_new')}</b>
+        ${d.parent_key ? `<span class="chip warn">${T('review.pen_replaces', { k: d.parent_key })}${d.parent_primary ? ' · ' + esc(mLabel(c.names, d.parent_primary)) : ''}</span>` : ''}</div>
+        <button type="button" class="btn sm ghost" data-act="pen-close">${ico('x')} ${T('common.cancel')}</button></div>
+      <div class="pen-grid mt-s">
+        <div><div class="label">${T('review.pen_method')}</div><div class="row wrap tight">${methods}</div>
+          <div class="label mt-s">${T('review.pen_content')}</div><div class="row wrap tight">${tags}</div>
+          <div class="label mt-s">${T('review.pen_note')}</div><input class="input" id="pen-note" maxlength="1000" placeholder="${T('review.note_ph')}" value="${esc(d.note)}"></div>
+        <div><div class="label">${T('review.pen_bounds')}</div>
+          <div class="row wrap tight">${bt('word_before', T('review.pen_word_before'))}${bt('shrink_start', T('review.pen_shrink_start'))}${bt('word_after', T('review.pen_word_after'))}${bt('shrink_end', T('review.pen_shrink_end'))}</div>
+          <div class="row wrap tight mt-s">${bt('prev_sentence', T('review.pen_prev_sentence'))}${bt('next_sentence', T('review.pen_next_sentence'))}${bt('restore', T(d.parent_key ? 'review.pen_restore_machine' : 'review.pen_restore'))}</div>
+          <div class="label mt-s">${T('review.pen_compare')}</div>
+          <div class="faint mono">${T('review.pen_offsets', { s: d.start, e: d.end, n: d.end - d.start })}</div>
+          <div class="move-text pen-slice" dir="rtl">${esc(slice)}</div></div></div>
+      <div class="row between wrap mt-s"><span class="faint">${T('review.pen_save_note')}</span>
+        <div class="row">${d.id ? `<button type="button" class="btn danger" data-act="pen-delete" data-id="${d.id}">${ico('trash')} ${T('review.pen_delete')}</button>` : ''}
+          <button type="button" class="btn primary" data-act="pen-save" ${d.primary ? '' : 'disabled'}>${ico('check')} ${T('review.approve')}</button></div></div></section>`;
+  }
+  function penPaint() {
+    const c = PEN.ctx; if (!c) return;
+    const txt = $('#ctx-text'); if (txt) txt.innerHTML = markedText(c.text, penMoves(), c.base);
+    const host = $('#pen-host'); if (host) host.innerHTML = penPanelHTML();
+    const tg = $('[data-act="pen-toggle"]');
+    if (tg) { tg.classList.toggle('on', PEN.on); tg.setAttribute('aria-pressed', String(PEN.on)); $('.pen-label', tg).textContent = t(PEN.on ? 'review.pen_on' : 'review.pen_off'); }
+    const hint = $('#pen-hint'); if (hint) hint.textContent = t(PEN.on ? 'review.pen_hint_on' : 'review.pen_hint_off');
+    const body = $('.ctx-body'); if (body) body.classList.toggle('pen-on', PEN.on);
+    applyLegend($('#app'));
+    const mk = $('mark.u.draft'); if (mk && PEN.draft) mk.scrollIntoView({ block: 'nearest' });
+  }
+  async function penSave() {
+    const d = PEN.draft, c = PEN.ctx; if (!d || !c) return;
+    const note = $('#pen-note'); if (note) d.note = note.value;
+    const body = { tafsir: c.tafsir, window: c.win, arm: c.arm || '', id: d.id, start: d.start, end: d.end, primary: d.primary,
+      content_tags: d.tags, note: d.note, parent_key: d.id ? '' : d.parent_key, compared_with_source: !!c.compared };
+    const r = await api('/review/pen', { method: 'POST', body });
+    PEN.ctx.lastPrimary = d.primary; PEN.draft = null;
+    toast(t('review.pen_saved', { k: r.unit.key }), 'ok'); render();
+  }
+  async function penDelete(id) {
+    if (!(await confirmBox(t('review.pen_confirm_delete')))) return;
+    await api('/review/pen/' + id, { method: 'DELETE' });
+    PEN.draft = null; toast(t('review.pen_deleted'), 'ok'); render();
+  }
+  document.addEventListener('mouseup', (e) => { if (e.target.closest && e.target.closest('#ctx-text')) setTimeout(penFromSelection, 0); });
+  document.addEventListener('keyup', (e) => { if (e.key === 'Shift' && e.target.closest && e.target.closest('#ctx-text')) penFromSelection(); });
 
   async function viewReview() {
     if (S.reviewView === 'reader') return viewReviewReader();
@@ -1559,6 +1681,7 @@
       const article = `<article class="move" data-move="${esc(m.key)}"${dec ? ' data-decided="1"' : ''}>
         <div class="row between"><div class="row"><b class="mono">${esc(m.key)}</b><span class="dot-chip ${mClass(m.primary)}" title="${esc(mLabel(names, m.primary) || '')}"><i class="dot"></i></span><span class="chip ${m.route === 'auto_candidate' ? 'ok' : 'warn'}">${T('route.' + (m.route || 'specialist'))}</span>
           ${d.window_text ? `<button type="button" class="btn sm ghost" data-act="goto-mark" data-key="${esc(m.key)}">${ico('eye')} ${T('review.show_in_text')}</button>` : ''}
+          ${canDecide && d.window_text && !d.simulated ? `<button type="button" class="btn sm ghost" data-act="pen-edit" data-key="${esc(m.key)}" title="${T('review.pen_edit_hint')}">${ico('pen')} ${T('review.pen_edit')}</button>` : ''}
           ${chairChip}${reasonChip(m.reason_code)}</div>
           <div class="row">${dec ? `<span class="chip ${dec.decision === 'approve' ? 'ok' : dec.decision === 'reject' ? 'bad' : 'warn'}">${T('review.decision.' + dec.decision)} · ${esc(dec.user_name)} · ${esc(fDT(dec.created_at))}</span>` : ''}${lessonChip(dec)}</div></div>
         ${agents}
@@ -1587,10 +1710,21 @@
     // the whole pinned passage with every move placed in it (the fahras view, for the reviewer)
     const inText = d.moves.map((m) => ({ key: m.key, start: m.start, end: m.end, primary: m.primary, decision: m.decision, title: `${mLabel(names, m.primary) || '—'}${m.decision ? ' · ' + t('review.decision.' + m.decision.decision) : ''}` }));
     const mCounts = {}; d.moves.forEach((m) => { mCounts[m.primary] = (mCounts[m.primary] || 0) + 1; });
+    (d.pen || []).forEach((u) => { mCounts[u.primary] = (mCounts[u.primary] || 0) + 1; });
+    // the highlighter's working set for this window (the draft survives a re-render of the same window)
+    const penKey = `${tafsir}/${win}/${arm || ''}`;
+    if (!PEN.ctx || PEN.ctx.key !== penKey) PEN.draft = null;
+    PEN.ctx = { key: penKey, tafsir, win, arm: arm || '', text: d.window_text || '', base: d.window_start || 0, moves: inText, pen: d.pen || [],
+      names, methods, contentTags: d.content_tags || [], canDecide: canDecide && !!d.window_text && !d.simulated, compared: !!(chk && chk.ok), lastPrimary: PEN.ctx && PEN.ctx.lastPrimary };
+    const penBar = PEN.ctx.canDecide ? `<button type="button" class="btn sm pen-toggle${PEN.on ? ' on' : ''}" data-act="pen-toggle" aria-pressed="${PEN.on}">${ico('pen')} <span class="pen-label">${T(PEN.on ? 'review.pen_on' : 'review.pen_off')}</span></button>` : '';
+    const penList = (d.pen || []).length ? `<div class="pen-list mt-s"><div class="label">${T('review.pen_list')} <span class="chip ok">${fNum(d.pen.length)}</span></div>${d.pen.map((u) => `<div class="pen-row"><span class="dot-chip ${mClass(u.primary)}"><i class="dot"></i></span><b class="mono">${esc(u.key)}</b><span>${esc(mLabel(names, u.primary))}</span>${u.parent_key ? `<span class="chip warn">${T('review.pen_replaces', { k: u.parent_key })}</span>` : ''}${(u.content_tags || []).map((k) => `<span class="chip">${T('content.' + k)}</span>`).join('')}<span class="faint pen-text">${esc(u.text.slice(0, 90))}${u.text.length > 90 ? '…' : ''}</span><span class="faint">${esc(u.user_name || '')} · ${esc(fDT(u.updated_at))}</span>
+        <span class="row"><button type="button" class="btn sm ghost" data-act="goto-mark" data-key="${esc(u.key)}">${ico('eye')}</button>${PEN.ctx.canDecide ? `<button type="button" class="btn sm" data-act="pen-open" data-id="${u.id}">${ico('pen')} ${T('common.edit')}</button>` : ''}</span></div>`).join('')}</div>` : '';
     const context = d.window_text && !d.simulated ? `<section class="card mb ctx-card"><div class="row between wrap"><div class="row"><b>${T('review.in_context')}</b><span class="faint">${T('review.in_context_note')}</span></div>
-        <div class="row"><button type="button" class="btn sm" data-act="toggle-context">${T(S.reviewHideText ? 'review.show_text' : 'review.hide_text')}</button></div></div>
-        <div class="ctx-body"${S.reviewHideText ? ' hidden' : ''}>${methodLegend(names, mCounts, S.legendHidden)}
-          <div class="move-text ctx mt-s" id="ctx-text">${markedText(d.window_text, inText, d.window_start || 0)}</div></div></section>` : '';
+        <div class="row">${penBar}<button type="button" class="btn sm" data-act="toggle-context">${T(S.reviewHideText ? 'review.show_text' : 'review.hide_text')}</button></div></div>
+        ${PEN.ctx.canDecide ? `<p class="faint pen-hint" id="pen-hint">${T(PEN.on ? 'review.pen_hint_on' : 'review.pen_hint_off')}</p>` : ''}
+        <div class="ctx-body${PEN.on ? ' pen-on' : ''}"${S.reviewHideText ? ' hidden' : ''}>${methodLegend(names, mCounts, S.legendHidden)}
+          <div class="move-text ctx mt-s" id="ctx-text">${markedText(d.window_text, penMoves(), d.window_start || 0)}</div>
+          <div id="pen-host">${penPanelHTML()}</div>${penList}</div></section>` : '';
     const compareBox = chk ? (chk.ok ? `<div class="notice ok mb"><span>${ico('check')}</span><span>${T('review.compare_ok', { n: fNum(chk.moves_ok), m: fNum(chk.moves.length) })} <span class="mono">${esc((chk.sha256 || '').slice(0, 12))}…</span></span>
         <button type="button" class="btn sm" data-act="toggle-source">${T(S.showSource ? 'review.hide_source' : 'review.show_source')}</button></div>${S.showSource ? `<section class="card mb"><div class="kicker mb-s">${T('review.source_text')} · <span class="mono">${esc(chk.source_file || '')}</span></div><div class="move-text ctx src">${textFormatter()(chk.source_text || '')}</div></section>` : ''}`
       : `<div class="notice bad mb"><span>${ico('warn')}</span><span>${T(chk.reason === 'source_missing' ? 'review.compare_missing' : !chk.sha_ok ? 'review.compare_sha' : !chk.window_ok ? 'review.compare_diff' : 'review.compare_moves', { n: fNum(chk.moves_ok || 0), m: fNum((chk.moves || []).length), pos: fNum(chk.first_diff ?? 0) })}</span></div>
@@ -2065,7 +2199,26 @@
           el.classList.toggle('off', S.legendHidden.has(el.dataset.m)); el.setAttribute('aria-pressed', String(!S.legendHidden.has(el.dataset.m)));
           applyLegend($('#app')); break;
         }
+        case 'pen-toggle': PEN.on = !PEN.on; store.set('mq-pen', PEN.on ? '1' : '0'); if (!PEN.on) PEN.draft = null; penPaint(); break;
+        case 'pen-close': penClose(); break;
+        case 'pen-draft': { const p = $('#pen-panel'); if (p) p.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); break; }
+        case 'pen-adj': penAdjust(el.dataset.k); break;
+        case 'pen-method': if (PEN.draft) { PEN.draft.primary = el.dataset.k; const n = $('#pen-note'); if (n) PEN.draft.note = n.value; penPaint(); } break;
+        case 'pen-tag': if (PEN.draft) { const k = el.dataset.k; const i = PEN.draft.tags.indexOf(k); if (i >= 0) PEN.draft.tags.splice(i, 1); else PEN.draft.tags.push(k); const n = $('#pen-note'); if (n) PEN.draft.note = n.value; penPaint(); } break;
+        case 'pen-save': el.disabled = true; try { await penSave(); } finally { el.disabled = false; } break;
+        case 'pen-delete': await penDelete(Number(el.dataset.id)); break;
+        case 'pen-open': { const u = (PEN.ctx && PEN.ctx.pen || []).find((x) => String(x.id) === String(el.dataset.id)); if (u) { PEN.on = true; store.set('mq-pen', '1'); penOpen({ id: u.id, key: u.key, start: u.start, end: u.end, primary: u.primary, tags: u.content_tags || [], note: u.note || '' }); } break; }
+        case 'pen-edit': {   // take a machine move over with the pen: its bounds and method become the draft
+          const m = (PEN.ctx && PEN.ctx.moves || []).find((x) => x.key === el.dataset.key);
+          if (!m) break;
+          PEN.on = true; store.set('mq-pen', '1');
+          const body = $('.ctx-body'); if (body && body.hidden) { S.reviewHideText = false; body.hidden = false; const b = $('[data-act="toggle-context"]'); if (b) b.textContent = t('review.hide_text'); }
+          penOpen({ start: m.start, end: m.end, primary: m.primary, tags: [], note: '', parent_key: m.key, parent_primary: m.primary });
+          break;
+        }
         case 'goto-move': {   // a mark in the text → its decision card (or the window page from the reader)
+          if (el.classList.contains('pen')) { const u = (PEN.ctx && PEN.ctx.pen || []).find((x) => x.key === el.dataset.key); if (u && PEN.ctx.canDecide) { PEN.on = true; store.set('mq-pen', '1'); penOpen({ id: u.id, key: u.key, start: u.start, end: u.end, primary: u.primary, tags: u.content_tags || [], note: u.note || '' }); } break; }
+          if (penOn() && el.closest('#ctx-text')) { const m = PEN.ctx.moves.find((x) => x.key === el.dataset.key); if (m) { penOpen({ start: m.start, end: m.end, primary: m.primary, tags: [], note: '', parent_key: m.key, parent_primary: m.primary }); break; } }
           const win = el.closest('.reader-win');
           if (win) { S.reviewFocus = el.dataset.key; location.hash = `#/review/${S.readerTafsir}/${win.dataset.win}${win.dataset.arm ? '/' + win.dataset.arm : ''}`; break; }
           const art = $(`article.move[data-move="${CSS.escape(el.dataset.key)}"]`);

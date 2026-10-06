@@ -71,6 +71,26 @@ CREATE TABLE IF NOT EXISTS demo_units (
   PRIMARY KEY (tafsir, window)
 );
 CREATE TABLE IF NOT EXISTS demo_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS pen_units (
+  id INTEGER PRIMARY KEY,
+  tafsir TEXT NOT NULL,
+  window TEXT NOT NULL,
+  key TEXT NOT NULL,
+  parent_key TEXT NOT NULL DEFAULT '',
+  parent_annotator TEXT NOT NULL DEFAULT '',
+  start INTEGER NOT NULL,
+  end INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  primary_method TEXT NOT NULL,
+  content_tags TEXT NOT NULL DEFAULT '[]',
+  note TEXT NOT NULL DEFAULT '',
+  source_sha256 TEXT NOT NULL DEFAULT '',
+  user_id INTEGER NOT NULL,
+  created_at REAL NOT NULL,
+  updated_at REAL NOT NULL,
+  deleted_at REAL
+);
+CREATE INDEX IF NOT EXISTS pen_units_win ON pen_units(tafsir, window);
 CREATE TABLE IF NOT EXISTS assignments (
   tafsir TEXT NOT NULL, window TEXT NOT NULL, user_id INTEGER NOT NULL, assigned_at REAL NOT NULL,
   assigned_by INTEGER, status TEXT NOT NULL DEFAULT 'open', done_at REAL, last_reminder_at REAL,
@@ -247,6 +267,26 @@ CREATE TABLE IF NOT EXISTS publications (
   made_live_by INTEGER,
   summary TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS pen_units (
+  id INTEGER PRIMARY KEY,
+  tafsir TEXT NOT NULL,
+  window TEXT NOT NULL,
+  key TEXT NOT NULL,
+  parent_key TEXT NOT NULL DEFAULT '',
+  parent_annotator TEXT NOT NULL DEFAULT '',
+  start INTEGER NOT NULL,
+  end INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  primary_method TEXT NOT NULL,
+  content_tags TEXT NOT NULL DEFAULT '[]',
+  note TEXT NOT NULL DEFAULT '',
+  source_sha256 TEXT NOT NULL DEFAULT '',
+  user_id INTEGER NOT NULL,
+  created_at REAL NOT NULL,
+  updated_at REAL NOT NULL,
+  deleted_at REAL
+);
+CREATE INDEX IF NOT EXISTS pen_units_win ON pen_units(tafsir, window);
 -- small scheduler state: last reminder day, last alert time…
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,

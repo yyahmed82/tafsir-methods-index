@@ -4401,9 +4401,10 @@ html[dir="ltr"] .reading-article .src-run, html[dir="ltr"] .reading-article .fn 
       var base = w.window_start; var byId = {};
       (w.spans || []).forEach(function (sp) { byId[sp.id] = sp; });
       var ids = u.span_ids || [];
-      if (!ids.length || ids.some(function (i) { return !byId[i]; })) return;
-      var joined = ids.map(function (i) { return w.window_text.slice(byId[i].start - base, byId[i].end - base); }).join("");
+      if (ids.some(function (i) { return !byId[i]; })) return;
       var a = +u.start, b = +u.end;
+      var joined = ids.length ? ids.map(function (i) { return w.window_text.slice(byId[i].start - base, byId[i].end - base); }).join("")
+        : w.window_text.slice(a - base, b - base);
       if (joined !== u.text || !(w.window_start <= a && a < b && b <= w.window_end)) return;
       (fresh[u.tafsir][key] = fresh[u.tafsir][key] || []).push({
         move_id: u.move, id: u.id, span_ids: ids, start: a, end: b, text: u.text, primary: u.primary,

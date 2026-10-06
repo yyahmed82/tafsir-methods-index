@@ -575,6 +575,23 @@ def test_publish_candidate_requires_source_comparison(env, tmp_path, monkeypatch
         encoding="utf-8")
     cand = publish.candidate()
     assert {u["move"] for u in cand["units"]} == {"m02"}
+    # a unit the specialist marked by hand publishes as a contiguous slice (no spans),
+    # read back from the file; one whose text no longer matches is reported, not published
+    from console import pen
+    hu = pen.save("al_saadi", "24_35", uid, 5, 11, "M_LUGHA", ["C_FIQH", "nope"], "n")
+    assert (hu["key"], hu["start"], hu["end"], hu["text"]) == ("h01", 5, 14, "bbbb cccc")
+    db.execute("INSERT INTO pen_units(tafsir,window,key,start,end,text,primary_method,"
+               "source_sha256,user_id,created_at,updated_at) VALUES ('al_saadi','24_35','h02',"
+               "0,4,'zzzz',?,?,?,?,?)", ("M_LUGHA", sha, uid, now, now))
+    cand = publish.candidate()
+    got = {u["move"]: u for u in cand["units"]}
+    assert set(got) == {"m02", "h01"}
+    assert got["h01"]["span_ids"] == [] and got["h01"]["slice"] == "bbbb cccc" \
+        and got["h01"]["content_tags"] == ["C_FIQH"] and got["h01"]["origin"] == "specialist"
+    assert {f["id"]: f["reason"] for f in cand["failed"]}["al_saadi/24_35/h02"] == "text_mismatch"
+    assert "decision_id" not in publish._public(cand["units"])[0]
+    assert pen.delete(hu["id"], uid)["deleted_at"]
+    assert {u["move"] for u in publish.candidate()["units"]} == {"m02"}
     assert [f["id"] for f in cand["failed"] if f["id"].rsplit("/", 1)[-1] in ("m01", "m03")] == []
     # the public reader gets the pinned passage of every window with an approved unit
     assert [(w["window"], w["text"], w["surah_name_ar"], w["part"], w["parts"])
@@ -850,12 +867,46 @@ def test_committee_runs_pipeline_end_to_end(env, tmp_path, monkeypatch):
         rv = env.get("/api/review/al_saadi/24_35").json()
         assert rv["surah_name_ar"] == "النور" and rv["ayah_number"] == 35 and rv["parts"] == 1
         assert rv["window_text"] and rv["window_start"] == 0 and rv["ayah_text"]
-        assert rv["source_url"].endswith("/tafseer/saadi/sura24-aya35.html")
+        assert rv["source_url"] == "https://quranpedia.net/surah/1/24/book/3#verse-2826"
         # «compare with the source»: letter for letter, nothing changed
         chk = env.get("/api/review/al_saadi/24_35/source").json()
         assert chk["ok"] and chk["sha_ok"] and chk["window_ok"] and chk["first_diff"] is None
         assert chk["moves_ok"] == len(chk["moves"]) == len(rv["moves"])
         assert chk["source_text"] == rv["window_text"]
+        # قلم التمييز: the specialist marks a slice by hand; it is read back from the pinned
+        # file, snapped to whole words, and a machine move it replaces takes «needs_edit»
+        assert rv["pen"] == [] and "C_FIQH" in rv["content_tags"]
+        wt, w0 = rv["window_text"], rv["window_start"]
+        sp = [i for i, ch in enumerate(wt) if ch == " "]
+        a, b = sp[2] + 2, sp[6] - 1          # inside words on both ends → snapped outward
+        pen_body = {"tafsir": "al_saadi", "window": "24_35", "start": w0 + a, "end": w0 + b,
+                    "primary": "M_LUGHA", "content_tags": ["C_FIQH", "bogus"], "note": "بيان",
+                    "parent_key": "P-m01", "compared_with_source": True}
+        assert env.post("/api/review/pen", json={**pen_body, "primary": "M_X"},
+                        headers=H).json()["detail"]["error"] == "bad_method"
+        assert env.post("/api/review/pen", json={**pen_body, "end": w0 + len(wt) + 5},
+                        headers=H).json()["detail"]["error"] == "pen_bad_bounds"
+        pu = env.post("/api/review/pen", json=pen_body, headers=H).json()["unit"]
+        assert pu["key"] == "h01" and pu["primary"] == "M_LUGHA" and pu["content_tags"] == ["C_FIQH"]
+        assert pu["start"] == w0 + sp[2] + 1 and pu["end"] == w0 + sp[6]
+        assert pu["text"] == wt[sp[2] + 1:sp[6]] and not pu["text"][0].isspace()
+        rv = env.get("/api/review/al_saadi/24_35").json()
+        assert [u["key"] for u in rv["pen"]] == ["h01"] and rv["pen"][0]["parent_key"] == "P-m01"
+        parent = next(m for m in rv["moves"] if m["key"] == "P-m01")
+        assert parent["decision"]["decision"] == "needs_edit" and "h01" in parent["decision"]["note"]
+        # moved by a word, then deleted (kept for the audit trail)
+        pu2 = env.post("/api/review/pen", json={**pen_body, "id": pu["id"], "parent_key": "",
+                                                "start": w0 + sp[1] + 1, "end": pu["end"]},
+                       headers=H).json()["unit"]
+        assert pu2["key"] == "h01" and pu2["start"] == w0 + sp[1] + 1
+        assert env.get("/api/review/al_saadi/24_35").json()["pen"][0]["start"] == pu2["start"]
+        assert env.delete(f"/api/review/pen/{pu['id']}", headers=H).json()["ok"]
+        assert env.get("/api/review/al_saadi/24_35").json()["pen"] == []
+        assert env.delete(f"/api/review/pen/{pu['id']}", headers=H).status_code == 404
+        pen_acts = [a["action"] for a in env.get("/api/audit").json()["audit"]]
+        assert "review.pen" in pen_acts and "review.pen_delete" in pen_acts
+        # the parent's «needs_edit» stays; the specialist approves it again explicitly
+        assert env.post("/api/review/decision", json=body, headers=H).status_code == 200
         # the list shows the decisions and their reasons, and the reader places the moves
         u = next(x for x in env.get("/api/review/units").json()["units"] if x["window"] == "24_35")
         assert u["decisions"] == {"approve": 1, "needs_edit": 0, "reject": 0} and u["decided"] == 1
@@ -905,7 +956,8 @@ def test_committee_runs_pipeline_end_to_end(env, tmp_path, monkeypatch):
         perf = env.get("/api/llm/perf").json()["agents"]
         assert {a["agent"] for a in perf} == {"classifier", "verifier", "chair"}
         assert all(a["median_s"] is not None for a in perf)
-        assert rep["decisions"]["approve"] == 1
+        # two approvals of P-m01 (before and after the pen took it over) and the pen's needs_edit
+        assert rep["decisions"]["approve"] == 2 and rep["decisions"].get("needs_edit", 0) == 1
         md = env.get(f"/api/reports/{day}/markdown").text
         assert "التقرير اليومي" in md
         assert env.post(f"/api/reports/{day}/mail", headers=H).json()["sent"] == 1

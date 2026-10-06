@@ -107,11 +107,36 @@ def candidate() -> dict[str, Any]:
             "approved_at": d["created_at"], "decision_id": d["id"],
             "_annotator": d["annotator"],  # console-only, stripped from the public file
         })
+    # units the specialist marked by hand (قلم التمييز): a contiguous slice, read back
+    from . import pen
+    for pu in pen.all_active():
+        uid = f"{pu['tafsir']}/{pu['window']}/{pu['key']}"
+        ok, reason, sha = pen.verify(pu)
+        if not ok:
+            failed.append({"id": uid, "reason": reason})
+            continue
+        w = pipeline.load_window(pu["tafsir"], pu["window"]) or {}
+        rel = pen._source_of(pu["tafsir"], pu["window"], w)[2]
+        if rel not in sources:
+            sources[rel] = _source(pu["tafsir"], rel)
+        units.append({
+            "id": uid, "tafsir": pu["tafsir"],
+            "tafsir_name_ar": config.TAFSIR_NAMES_AR.get(pu["tafsir"], pu["tafsir"]),
+            "window": pu["window"], "ayah": w.get("ayah"), "move": pu["key"],
+            "primary": pu["primary"], "secondary": [], "certainty": "explicit",
+            "content_tags": pu.get("content_tags") or [], "span_ids": [],
+            "evidence_span_ids": [], "references": {}, "origin": "specialist",
+            "start": int(pu["start"]), "end": int(pu["end"]), "text": pu["text"],
+            "slice": pu["text"], "source_file": rel, "source_sha256": sha,
+            "approved_at": pu["updated_at"], "decision_id": f"pen:{pu['id']}",
+            "_annotator": "pen",
+        })
     # the same span set with the same method approved in both blind versions → one unit
     seen: dict[tuple, dict] = {}
     duplicates = 0
     for u in sorted(units, key=lambda u: u["approved_at"]):
-        k = (u["tafsir"], u["window"], u["primary"], tuple(sorted(u["span_ids"])))
+        k = (u["tafsir"], u["window"], u["primary"],
+             tuple(sorted(u["span_ids"])) or (u["start"], u["end"]))
         if k in seen:
             duplicates += 1
             continue
@@ -124,7 +149,9 @@ def candidate() -> dict[str, Any]:
     for (t, w), us in by_window.items():
         for i, a in enumerate(us):
             for b in us[i + 1:]:
-                if a["primary"] != b["primary"] and set(a["span_ids"]) & set(b["span_ids"]):
+                if a["primary"] != b["primary"] and (set(a["span_ids"]) & set(b["span_ids"])
+                                                    or (not a["span_ids"] or not b["span_ids"])
+                                                    and a["start"] < b["end"] and b["start"] < a["end"]):
                     overlaps.append({"tafsir": t, "window": w, "a": a["id"], "b": b["id"],
                                      "a_primary": a["primary"], "b_primary": b["primary"]})
     return {"units": kept, "failed": failed, "duplicates": duplicates, "overlaps": overlaps,

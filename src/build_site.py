@@ -215,7 +215,11 @@ def approved_moves(w: dict, us: list[dict], skipped: list[str]) -> list[dict]:
     for u in sorted(us, key=lambda u: int(u["start"])):
         a, b = int(u["start"]), int(u["end"])
         ids = u.get("span_ids") or []
-        joined = "".join(by_id[i]["text"] for i in ids if i in by_id)
+        # a machine unit is the join of its spans; a unit marked by hand (no spans) is the
+        # contiguous slice — either way the text must read back from the pinned window
+        base = w["window_start"]
+        joined = ("".join(by_id[i]["text"] for i in ids if i in by_id) if ids
+                  else w["window_text"][a - base:b - base])
         if not (w["window_start"] <= a < b <= w["window_end"]) or not joined or joined != u["text"] \
                 or any(i not in by_id for i in ids):
             skipped.append(f"{u['id']} (text differs from the pinned source)")
@@ -879,9 +883,10 @@ EXTRA_JS = """
       var base = w.window_start; var byId = {};
       (w.spans || []).forEach(function (sp) { byId[sp.id] = sp; });
       var ids = u.span_ids || [];
-      if (!ids.length || ids.some(function (i) { return !byId[i]; })) return;
-      var joined = ids.map(function (i) { return w.window_text.slice(byId[i].start - base, byId[i].end - base); }).join("");
+      if (ids.some(function (i) { return !byId[i]; })) return;
       var a = +u.start, b = +u.end;
+      var joined = ids.length ? ids.map(function (i) { return w.window_text.slice(byId[i].start - base, byId[i].end - base); }).join("")
+        : w.window_text.slice(a - base, b - base);
       if (joined !== u.text || !(w.window_start <= a && a < b && b <= w.window_end)) return;
       (fresh[u.tafsir][key] = fresh[u.tafsir][key] || []).push({
         move_id: u.move, id: u.id, span_ids: ids, start: a, end: b, text: u.text, primary: u.primary,

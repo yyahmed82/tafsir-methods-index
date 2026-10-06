@@ -802,3 +802,25 @@ mark.u.flash, article.move.flash { animation: flash 1.6s ease-out; }
 @media (max-width: 900px) { .reader-grid { grid-template-columns: 1fr; } .reader-legend { position: static; } .reader-legend .legend { flex-direction: row; } .reader-legend .legend .lg .dot { order: 0; }
   .move-text.ctx { font-size: 16.5px; max-height: 50vh; } .notes-cell { display: none; } }
 .kicker .mono { text-transform: none; }
+
+/* قلم التمييز — the specialist's highlighter on the pinned text */
+.pen-toggle.on { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); font-weight: 600; }
+.pen-hint { margin: 6px 0 0; }
+.ctx-body.pen-on #ctx-text { cursor: text; }
+.ctx-body.pen-on #ctx-text::selection, .ctx-body.pen-on #ctx-text *::selection { background: color-mix(in srgb, var(--warn) 35%, transparent); }
+mark.u.pen { border-bottom: 3px double var(--mc); background: color-mix(in srgb, var(--mc) 20%, transparent); }
+mark.u.draft { background: color-mix(in srgb, var(--warn) 32%, transparent); border-bottom: 3px solid var(--warn); outline: 2px solid color-mix(in srgb, var(--warn) 60%, transparent); outline-offset: 1px; }
+mark.u.draft.m-none { --mc: var(--warn); }
+.pen-panel { margin-top: 10px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--warn) 6%, var(--surface)); }
+.pen-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.row.tight { gap: 6px; }
+.chip.sel { cursor: pointer; font: inherit; font-size: 13px; background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
+.chip.sel:hover { color: var(--text); border-color: var(--text-3); }
+.chip.sel.on { background: color-mix(in srgb, var(--mc, var(--accent)) 18%, var(--surface)); color: var(--text); border-color: var(--mc, var(--accent)); font-weight: 600; }
+.chip.sel .dot { width: 9px; height: 9px; }
+.pen-slice { margin-top: 6px; padding: 10px 12px; max-height: 26vh; overflow: auto; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; font-size: 16px; line-height: 1.9; }
+.pen-list { border-top: 1px solid var(--border); padding-top: 10px; }
+.pen-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+.pen-row .pen-text { flex: 1 1 240px; direction: rtl; }
+.pen-row:last-child { border-bottom: 0; }
+@media (max-width: 760px) { .pen-grid { grid-template-columns: 1fr; } .pen-panel { padding: 12px; } }
